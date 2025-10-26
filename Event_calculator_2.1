@@ -1,0 +1,144 @@
+import { useState } from "react";
+
+// --- Main Layout ---
+export default function AppLayout() {
+  const [active, setActive] = useState("Dashboard");
+
+  const renderContent = () => {
+    switch (active) {
+      case "Dashboard": return <Dashboard />;
+      case "SalesEntry": return <SalesEntry />;
+      case "EmployeeManager": return <EmployeeManager />;
+      case "FeeTracker": return <FeeTracker />;
+      case "Reports": return <Reports />;
+      default: return <Dashboard />;
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* Sidebar */}
+      <div className="w-64 bg-white shadow-lg flex flex-col">
+        <h1 className="text-2xl font-bold p-4 border-b">Event Calculator</h1>
+        <nav className="flex-1 p-2">
+          {["Dashboard", "SalesEntry", "EmployeeManager", "FeeTracker", "Reports"].map((item) => (
+            <button
+              key={item}
+              onClick={() => setActive(item)}
+              className={`w-full text-left p-2 rounded-lg mb-1 transition ${
+                active === item ? "bg-blue-500 text-white" : "hover:bg-gray-200"
+              }`}
+            >
+              {item.replace(/([A-Z])/g, ' $1').trim()}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto p-6">
+        {renderContent()}
+      </div>
+    </div>
+  );
+}
+
+// --- Dashboard Module ---
+export function Dashboard() {
+  return (
+    <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
+      <div className="bg-white rounded-2xl shadow p-6">Total Sales: $12,000</div>
+      <div className="bg-white rounded-2xl shadow p-6">Tickets Sold: 450</div>
+      <div className="bg-white rounded-2xl shadow p-6">Active Employees: 18</div>
+      <div className="bg-white rounded-2xl shadow p-6 col-span-3">[Charts Placeholder]</div>
+      <div className="bg-white rounded-2xl shadow p-6 col-span-3">Recent Activity Feed</div>
+    </div>
+  );
+}
+
+// --- Sales Entry Module ---
+export function SalesEntry() {
+  return (
+    <div className="max-w-xl">
+      <h2 className="text-xl font-bold mb-4">Record a Sale</h2>
+      <form className="space-y-4">
+        <input type="text" placeholder="Customer Name" className="w-full border rounded p-2" />
+        <input type="number" placeholder="Number of Tickets" className="w-full border rounded p-2" />
+        <input type="number" placeholder="Price per Ticket" className="w-full border rounded p-2" />
+        <select className="w-full border rounded p-2">
+          <option>Payment Method</option>
+          <option>Cash</option>
+          <option>Credit Card</option>
+          <option>Online</option>
+        </select>
+        <button className="bg-blue-500 text-white px-4 py-2 rounded">Save Sale</button>
+      </form>
+    </div>
+  );
+}
+
+// --- Employee Manager Module ---
+export function EmployeeManager() {
+  return (
+    <div>
+      <h2 className="text-xl font-bold mb-4">Employee Manager</h2>
+      <div className="overflow-x-auto">
+        <table className="min-w-full border text-sm">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="p-2 border">Name</th>
+              <th className="p-2 border">Role</th>
+              <th className="p-2 border">Hours Worked</th>
+              <th className="p-2 border">Rate</th>
+              <th className="p-2 border">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="p-2 border">Jane Doe</td>
+              <td className="p-2 border">Cashier</td>
+              <td className="p-2 border">35</td>
+              <td className="p-2 border">$15/hr</td>
+              <td className="p-2 border"><button className="text-blue-500">Edit</button></td>
+            </tr>
+            <tr>
+              <td className="p-2 border">John Smith</td>
+              <td className="p-2 border">Security</td>
+              <td className="p-2 border">40</td>
+              <td className="p-2 border">$20/hr</td>
+              <td className="p-2 border"><button className="text-blue-500">Edit</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// --- Fee Tracker Module ---
+export function FeeTracker() {
+  return (
+    <div>
+      <h2 className="text-xl font-bold mb-4">Fee Tracker</h2>
+      <div className="grid gap-3">
+        <div className="bg-white shadow rounded p-4 flex justify-between"><span>Venue Rental</span><span>$500</span></div>
+        <div className="bg-white shadow rounded p-4 flex justify-between"><span>Marketing</span><span>$200</span></div>
+        <div className="bg-white shadow rounded p-4 flex justify-between"><span>Equipment</span><span>$150</span></div>
+      </div>
+    </div>
+  );
+}
+
+// --- Reports Module ---
+export function Reports() {
+  return (
+    <div>
+      <h2 className="text-xl font-bold mb-4">Reports</h2>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="bg-white rounded-2xl shadow p-6">Sales Report [Bar Chart Placeholder]</div>
+        <div className="bg-white rounded-2xl shadow p-6">Employee Cost Report [Table Placeholder]</div>
+        <div className="bg-white rounded-2xl shadow p-6">Profit & Loss [Line Chart Placeholder]</div>
+      </div>
+    </div>
+  );
+}

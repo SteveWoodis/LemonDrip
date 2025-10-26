@@ -1,0 +1,1731 @@
+Drink Name,Ingredient Name,Quantity Used,Unit Type,Unit Cost,Cost Per Item
+Regular Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Regular Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Regular Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Regular Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Regular Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Regular Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Regular Lemonade,Ice,1,per lb,$0.19,$0.19
+Regular Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Regular Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Regular Lemonade,Simple Syrup,3,Per Oz,$0.03,$0.10
+Regular Lemonade,,,,Cost Per Drink,$0.96
+Blue Raspberry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry Lemonade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Blue Raspberry Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Raspberry Lemonade,Blue Raspberry,0.75,Per Oz,$0.29,$0.22
+Blue Raspberry Lemonade,,,,Cost Per Drink,$1.14
+Candied Orange Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Candied Orange Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Candied Orange Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Candied Orange Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Candied Orange Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Candied Orange Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Candied Orange Lemonade,Ice,1,per lb,$0.19,$0.19
+Candied Orange Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Candied Orange Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Candied Orange Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Candied Orange Lemonade,Candied Orange,0.75,Per Oz,$0.29,$0.22
+Candied Orange Lemonade,,,,Cost Per Drink,$1.14
+Coconut Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Coconut Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut Lemonade,Ice,1,per lb,$0.19,$0.19
+Coconut Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Coconut Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Coconut Lemonade,Coconut,$0.75,Per Oz,$0.29,$0.22
+Coconut Lemonade,,,,Cost Per Drink,$1.14
+Cucumber Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber Lemonade,Ice,1,per lb,$0.19,$0.19
+Cucumber Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Cucumber Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cucumber Lemonade,Cucumber,$0.75,Per Oz,$0.30,$0.22
+Cucumber Lemonade,,,,Cost Per Drink,$1.14
+Lavender Lemonade,Straw,2,Per Cup,$0.01,$0.01
+Lavender Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender Lemonade,Ice,1,per lb,$0.19,$0.19
+Lavender Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Lavender Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Lavender Lemonade,Lavender,0.75,Per Oz,$0.29,$0.22
+Lavender Lemonade,,,,Cost Per Drink,$1.15
+Peach Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Peach Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach Lemonade,Ice,1,per lb,$0.19,$0.19
+Peach Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Peach Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Peach Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Peach Lemonade,Peach,$0.75,Per Oz,$0.29,$0.22
+Peach Lemonade,,,,Cost Per Drink,$1.14
+Pineapple Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple Lemonade,Ice,1,per lb,$0.19,$0.19
+Pineapple Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Pineapple Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Pineapple Lemonade,Pineapple,0.75,Per Oz,$0.29,$0.22
+Pineapple Lemonade,,,,Cost Per Drink,$1.14
+Raspberry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry Lemonade,Ice,1,per lb,$0.19,$0.19
+Raspberry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Raspberry Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Raspberry Lemonade,Raspberry,0.75,Per Oz,$0.29,$0.22
+Raspberry Lemonade,,,,Cost Per Drink,$1.14
+Strawberry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry Lemonade,Ice,1,per lb,$0.19,$0.19
+Strawberry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Strawberry Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Strawberry Lemonade,Strawberry,0.75,Per Oz,$0.29,$0.22
+Strawberry Lemonade,,,,Cost Per Drink,$1.14
+Watermelon Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon Lemonade,Ice,1,per lb,$0.19,$0.19
+Watermelon Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Watermelon Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Watermelon Lemonade,Watermelon,0.75,Per Oz,$0.29,$0.22
+Watermelon Lemonade,,,,Cost Per Drink,$1.14
+French Vanilla Lemonade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla Lemonade,Ice,1,per lb,$0.19,$0.19
+French Vanilla Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+French Vanilla Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+French Vanilla Lemonade,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla Lemonade,,,,Cost Per Drink,$1.14
+Cherry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Cherry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry Lemonade,Ice,1,per lb,$0.19,$0.19
+Cherry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Cherry Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cherry Lemonade,Cherry,0.75,Per Oz,$0.29,$0.22
+Cherry Lemonade,,,,Cost Per Drink,$1.14
+Sugar Free Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Lemonade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Lemonade,Sugar Free Simple Syrup,6,Per Oz,$0.13,$0.75
+Sugar Free Lemonade,,,,Cost Per Drink,$1.61
+Sugar Free Coconut Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Coconut Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Coconut Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Coconut Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Coconut Lemonade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Coconut Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Coconut Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Coconut Lemonade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Coconut Lemonade,Sugar Free Coconut,1,Per Oz,$0.29,$0.29
+Sugar Free Coconut Lemonade,,,,Cost Per Drink,$1.65
+Sugar Free Peach Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Peach Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Peach Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Peach Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Peach Lemonade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Peach Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Peach Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Peach Lemonade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Peach Lemonade,Sugar Free Peach,1,Per Oz,$0.29,$0.29
+Sugar Free Peach Lemonade,,,,Cost Per Drink,$1.65
+Sugar Free Raspberry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Raspberry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Raspberry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Raspberry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Raspberry Lemonade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Raspberry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Raspberry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Raspberry Lemonade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Raspberry Lemonade,Sugar Free Raspberry,1,Per Oz,$0.29,$0.29
+Sugar Free Raspberry Lemonade,,,,Cost Per Drink,$1.65
+Sugar Free Strawberry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Strawberry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Strawberry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Strawberry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Strawberry Lemonade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Strawberry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Strawberry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Strawberry Lemonade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Strawberry Lemonade,Sugar Free Strawberry,1,Per Oz,$0.29,$0.29
+Sugar Free Strawberry Lemonade,,,,Cost Per Drink,$1.65
+Sugar Free Cherry Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Cherry Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Cherry Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Cherry Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Cherry Lemonade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Cherry Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Cherry Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Cherry Lemonade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Cherry Lemonade,Sugar Free Cherry,1,Per Oz,$0.29,$0.29
+Sugar Free Cherry Lemonade,,,,Cost Per Drink,$1.65
+Regular Limeade,Straw,1,Per Cup,$0.01,$0.01
+Regular Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Regular Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Regular Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Regular Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Regular Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Regular Limeade,Ice,1,per lb,$0.19,$0.19
+Regular Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Regular Limeade,Lime,1,Per Cup,$0.22,$0.22
+Regular Limeade,Simple Syrup,3,Per Oz,$0.03,$0.10
+Regular Limeade,,,,Cost Per Drink,$0.89
+Blue Raspberry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry Limeade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Blue Raspberry Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Raspberry Limeade,Blue Raspberry,0.75,Per Oz,$0.29,$0.22
+Blue Raspberry Limeade,,,,Cost Per Drink,$1.08
+Candied Orange Limeade,Straw,1,Per Cup,$0.01,$0.01
+Candied Orange Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Candied Orange Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Candied Orange Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Candied Orange Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Candied Orange Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Candied Orange Limeade,Ice,1,per lb,$0.19,$0.19
+Candied Orange Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Candied Orange Limeade,Lime,1,Per Cup,$0.22,$0.22
+Candied Orange Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Candied Orange Limeade,Candied Orange,0.75,Per Oz,$0.29,$0.22
+Candied Orange Limeade,,,,Cost Per Drink,$1.08
+Coconut Limeade,Straw,1,Per Cup,$0.01,$0.01
+Coconut Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut Limeade,Ice,1,per lb,$0.19,$0.19
+Coconut Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut Limeade,Lime,1,Per Cup,$0.22,$0.22
+Coconut Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Coconut Limeade,Coconut,0.75,Per Oz,$0.29,$0.22
+Coconut Limeade,,,,Cost Per Drink,$1.08
+Cucumber Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber Limeade,Ice,1,per lb,$0.19,$0.19
+Cucumber Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cucumber Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cucumber Limeade,Cucumber,0.75,Per Oz,$0.30,$0.22
+Cucumber Limeade,,,,Cost Per Drink,$1.08
+Lavender Limeade,Straw,1,Per Cup,$0.01,$0.01
+Lavender Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender Limeade,Ice,1,per lb,$0.19,$0.19
+Lavender Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender Limeade,Lime,1,Per Cup,$0.22,$0.22
+Lavender Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Lavender Limeade,Lavender,0.75,Per Oz,$0.29,$0.22
+Lavender Limeade,,,,Cost Per Drink,$1.08
+Peach Limeade,Straw,1,Per Cup,$0.01,$0.01
+Peach Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach Limeade,Ice,1,per lb,$0.19,$0.19
+Peach Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Peach Limeade,Lime,1,Per Cup,$0.22,$0.22
+Peach Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Peach Limeade,Peach,0.75,Per Oz,$0.29,$0.22
+Peach Limeade,,,,Cost Per Drink,$1.08
+Pineapple Limeade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple Limeade,Ice,1,per lb,$0.19,$0.19
+Pineapple Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple Limeade,Lime,1,Per Cup,$0.22,$0.22
+Pineapple Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Pineapple Limeade,Pineapple,0.75,Per Oz,$0.29,$0.22
+Pineapple Limeade,,,,Cost Per Drink,$1.08
+Raspberry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry Limeade,Ice,1,per lb,$0.19,$0.19
+Raspberry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Raspberry Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Raspberry Limeade,Raspberry,0.75,Per Oz,$0.29,$0.22
+Raspberry Limeade,,,,Cost Per Drink,$1.08
+Strawberry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry Limeade,Ice,1,per lb,$0.19,$0.19
+Strawberry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Strawberry Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Strawberry Limeade,Strawberry,0.75,Per Oz,$0.29,$0.22
+Strawberry Limeade,,,,Cost Per Drink,$1.08
+Watermelon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon Limeade,Ice,1,per lb,$0.19,$0.19
+Watermelon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Watermelon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Watermelon Limeade,Watermelon,0.75,Per Oz,$0.29,$0.22
+Watermelon Limeade,,,,Cost Per Drink,$1.08
+French Vanilla Limeade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla Limeade,Ice,1,per lb,$0.19,$0.19
+French Vanilla Limeade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla Limeade,Lime,1,Per Cup,$0.22,$0.22
+French Vanilla Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+French Vanilla Limeade,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla Limeade,,,,Cost Per Drink,$1.08
+Cherry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cherry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry Limeade,Ice,1,per lb,$0.19,$0.19
+Cherry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cherry Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cherry Limeade,Cherry,1,Per Oz,$0.29,$0.29
+Cherry Limeade,,,,Cost Per Drink,$1.15
+Sugar Free Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Limeade,Sugar Free Simple Syrup,6,Per Oz,$0.13,$0.75
+Sugar Free Limeade,,,,Cost Per Drink,$1.55
+Sugar Free Coconut Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Coconut Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Coconut Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Coconut Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Coconut Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Coconut Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Coconut Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Coconut Limeade,Sugar Fee Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Coconut Limeade,Sugar Free Coconut,1,Per Oz,$0.29,$0.29
+Sugar Free Coconut Limeade,,,,Cost Per Drink,$1.59
+Sugar Free Peach Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Peach Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Peach Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Peach Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Peach Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Peach Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Peach Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Peach Limeade,Sugar Fee Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Peach Limeade,Sugar Free Peach,1,Per Oz,$0.29,$0.29
+Sugar Free Peach Limeade,,,,Cost Per Drink,$1.59
+Sugar Free Raspberry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Raspberry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Raspberry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Raspberry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Raspberry Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Raspberry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Raspberry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Raspberry Limeade,Sugar Fee Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Raspberry Limeade,Sugar Free Raspberry,1,Per Oz,$0.29,$0.29
+Sugar Free Raspberry Limeade,,,,Cost Per Drink,$1.59
+Sugar Free Strawberry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Strawberry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Strawberry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Strawberry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Strawberry Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Strawberry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Strawberry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Strawberry Limeade,Sugar Fee Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Strawberry Limeade,Sugar Free Strawberry,1,Per Oz,$0.29,$0.29
+Sugar Free Strawberry Limeade,,,,Cost Per Drink,$1.59
+Sugar Free Cherry Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Cherry Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Cherry Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Cherry Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Cherry Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Cherry Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Cherry Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Cherry Limeade,Sugar Fee Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Cherry Limeade,Sugar Free Cherry,1,Per Oz,$0.29,$0.29
+Sugar Free Cherry Limeade,,,,Cost Per Drink,$1.59
+Regular Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Regular Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Regular Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Regular Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Regular Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Regular Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Regular Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Regular Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Regular Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Regular Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Regular Lemon Limeade,Simple Syrup,3,Per Oz,$0.03,$0.10
+Regular Lemon Limeade,,,,Cost Per Drink,$1.17
+Blue Raspberry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry Lemon Limeade,Sticker (Logo),$1.00,Per Cup,$0.05,$0.05
+Blue Raspberry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Blue Raspberry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Blue Raspberry Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Raspberry Lemon Limeade,Blue Raspberry,0.75,Per Oz,$0.29,$0.22
+Blue Raspberry Lemon Limeade,,,,Cost Per Drink,$1.36
+Candied Orange Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Candied Orange Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Candied Orange Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Candied Orange Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Candied Orange Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Candied Orange Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Candied Orange Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Candied Orange Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Candied Orange Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Candied Orange Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Candied Orange Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Candied Orange Lemon Limeade,Candied Orange,0.75,Per Oz,$0.29,$0.22
+Candied Orange Lemon Limeade,,,,Cost Per Drink,$1.36
+Coconut Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Coconut Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Coconut Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Coconut Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Coconut Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Coconut Lemon Limeade,Coconut,0.75,Per Oz,$0.29,$0.22
+Coconut Lemon Limeade,,,,Cost Per Drink,$1.36
+Cucumber Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Cucumber Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Cucumber Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cucumber Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cucumber Lemon Limeade,Cucumber,0.75,Per Oz,$0.30,$0.22
+Cucumber Lemon Limeade,,,,Cost Per Drink,$1.36
+Lavender Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Lavender Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Lavender Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Lavender Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Lavender Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Lavender Lemon Limeade,Lavender,0.75,Per Oz,$0.29,$0.22
+Lavender Lemon Limeade,,,,Cost Per Drink,$1.36
+Peach Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Peach Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Peach Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Peach Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Peach Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Peach Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Peach Lemon Limeade,Peach,0.75,Per Oz,$0.29,$0.22
+Peach Lemon Limeade,,,,Cost Per Drink,$1.36
+Pineapple Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Pineapple Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Pineapple Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Pineapple Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Pineapple Lemon Limeade,Pineapple,0.75,Per Oz,$0.29,$0.22
+Pineapple Lemon Limeade,,,,Cost Per Drink,$1.36
+Raspberry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Raspberry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Raspberry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Raspberry Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Raspberry Lemon Limeade,Raspberry,0.75,Per Oz,$0.29,$0.22
+Raspberry Lemon Limeade,,,,Cost Per Drink,$1.36
+Strawberry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Strawberry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Strawberry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Strawberry Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Strawberry Lemon Limeade,Strawberry,0.75,Per Oz,$0.29,$0.22
+Strawberry Lemon Limeade,,,,Cost Per Drink,$1.36
+Watermelon Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Watermelon Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Watermelon Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Watermelon Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Watermelon Lemon Limeade,Watermelon,0.75,Per Oz,$0.29,$0.22
+Watermelon Lemon Limeade,,,,Cost Per Drink,$1.36
+French Vanilla Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+French Vanilla Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+French Vanilla Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+French Vanilla Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+French Vanilla Lemon Limeade,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla Lemon Limeade,,,,Cost Per Drink,$1.36
+Cherry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cherry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Cherry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Cherry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cherry Lemon Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cherry Lemon Limeade,Cherry,0.75,Per Oz,$0.29,$0.22
+Cherry Lemon Limeade,,,,Cost Per Drink,$1.36
+Sugar Free Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Lemon Limeade,Sugar Free Simple Syrup,6,Per Oz,$0.13,$0.75
+Sugar Free Lemon Limeade,,,,Cost Per Drink,$1.83
+Sugar Free Coconut Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Coconut Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Coconut Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Coconut Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Coconut Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Coconut Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Coconut Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Coconut Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Coconut Lemon Limeade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Coconut Lemon Limeade,Sugar Free Coconut,1,Per Oz,$0.29,$0.29
+Sugar Free Coconut Lemon Limeade,,,,Cost Per Drink,$1.86
+Sugar Free Peach Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Peach Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Peach Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Peach Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Peach Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Peach Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Peach Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Peach Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Peach Lemon Limeade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Peach Lemon Limeade,Sugar Free Peach,1,Per Oz,$0.29,$0.29
+Sugar Free Peach Lemon Limeade,,,,Cost Per Drink,$1.87
+Sugar Free Raspberry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Raspberry Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Raspberry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Raspberry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Raspberry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Raspberry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Raspberry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Raspberry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Raspberry Lemon Limeade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Raspberry Lemon Limeade,Sugar Free Raspberry,1,Per Oz,$0.29,$0.29
+Sugar Free Raspberry Lemon Limeade,,,,Cost Per Drink,$1.86
+Sugar Free Strawberry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Strawberry Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Strawberry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Strawberry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Strawberry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Strawberry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Strawberry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Strawberry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Strawberry Lemon Limeade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Strawberry Lemon Limeade,Sugar Free Strawberry,1,Per Oz,$0.29,$0.29
+Sugar Free Strawberry Lemon Limeade,,,,Cost Per Drink,$1.86
+Sugar Free Cherry Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Cherry Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Cherry Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Cherry Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Cherry Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Sugar Free Cherry Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Cherry Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Cherry Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Sugar Free Cherry Lemon Limeade,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Cherry Lemon Limeade,Sugar Free Cherry,1,Per Oz,$0.29,$0.29
+Sugar Free Cherry Lemon Limeade,,,,Cost Per Drink,$1.86
+Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Brazilian Lemonade,,,,Cost Per Drink,$1.36
+Blue Raspberry Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Blue Raspberry Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Raspberry Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Blue Raspberry Brazilian Lemonade,Blue Raspberry,0.25,Per oz,$0.29,$0.07
+Blue Raspberry Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Candied Orange Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Candied Orange Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Candied Orange Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Candied Orange Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Candied Orange Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Candied Orange Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Candied Orange Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Candied Orange Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Candied Orange Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Candied Orange Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Candied Orange Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Candied Orange Brazilian Lemonade,Candied Orange,0.25,Per oz,$0.29,$0.07
+Candied Orange Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Coconut Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Coconut Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Coconut Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Coconut Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Coconut Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Coconut Brazilian Lemonade,Coconut,0.25,Per oz,$0.29,$0.07
+Coconut Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Cucumber Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Cucumber Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Cucumber Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cucumber Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Cucumber Brazilian Lemonade,Cucumber,0.25,Per oz,$0.30,$0.07
+Cucumber Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Lavender Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Lavender Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Lavender Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Lavender Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Lavender Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Lavender Brazilian Lemonade,Lavender,0.25,Per oz,$0.29,$0.07
+Lavender Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Peach Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Peach Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Peach Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Peach Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Peach Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Peach Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Peach Brazilian Lemonade,Peach,0.25,Per oz,$0.29,$0.07
+Peach Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Pineapple Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Pineapple Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Pineapple Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Pineapple Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Pineapple Brazilian Lemonade,Pineapple,0.25,Per oz,$0.29,$0.07
+Pineapple Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Raspberry Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Raspberry Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Raspberry Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Raspberry Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Raspberry Brazilian Lemonade,Raspberry,0.25,Per oz,$0.29,$0.07
+Raspberry Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Strawberry Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Strawberry Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Strawberry Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Strawberry Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Strawberry Brazilian Lemonade,Strawberry,0.25,Per oz,$0.29,$0.07
+Strawberry Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Watermelon Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Watermelon Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Watermelon Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Watermelon Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Watermelon Brazilian Lemonade,Watermelon,0.25,Per oz,$0.29,$0.07
+Watermelon Brazilian Lemonade,,,,Cost Per Drink,$1.43
+French Vanilla Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+French Vanilla Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+French Vanilla Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+French Vanilla Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+French Vanilla Brazilian Lemonade,French Vanilla,0.25,Per oz,$0.29,$0.07
+French Vanilla Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Cherry Brazilian Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Cherry Brazilian Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry Brazilian Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry Brazilian Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry Brazilian Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry Brazilian Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry Brazilian Lemonade,Ice,1,per lb,$0.19,$0.19
+Cherry Brazilian Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry Brazilian Lemonade,Lime,2,Per Cup,$0.22,$0.43
+Cherry Brazilian Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cherry Brazilian Lemonade,Sweetened Condensed Milk,2,Per Oz,$0.14,$0.28
+Cherry Brazilian Lemonade,Cherry,0.25,Per oz,$0.29,$0.07
+Cherry Brazilian Lemonade,,,,Cost Per Drink,$1.43
+Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Arnold Palmer,Simple Syrup,3,Per Oz,$0.03,$0.10
+Arnold Palmer,,,,Cost Per Drink,$1.08
+Blue Raspberry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Blue Raspberry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Blue Raspberry Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Raspberry Arnold Palmer,Blue Raspberry,0.75,Per Oz,$0.29,$0.22
+Blue Raspberry Arnold Palmer,,,,Cost Per Drink,$1.27
+Candied Orange Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Candied Orange Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Candied Orange Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Candied Orange Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Candied Orange Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Candied Orange Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Candied Orange Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Candied Orange Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Candied Orange Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Candied Orange Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Candied Orange Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Candied Orange Arnold Palmer,Candied Orange,0.75,Per Oz,$0.29,$0.22
+Candied Orange Arnold Palmer,,,,Cost Per Drink,$1.27
+Coconut Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Coconut Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Coconut Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Coconut Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Coconut Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Coconut Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Coconut Arnold Palmer,Coconut,0.75,Per Oz,$0.29,$0.22
+Coconut Arnold Palmer,,,,Cost Per Drink,$1.27
+Cucumber Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Cucumber Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Cucumber Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Cucumber Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Cucumber Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cucumber Arnold Palmer,Cucumber,0.75,Per Oz,$0.30,$0.22
+Cucumber Arnold Palmer,,,,Cost Per Drink,$1.27
+Lavender Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Lavender Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Lavender Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Lavender Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Lavender Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Lavender Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Lavender Arnold Palmer,Lavender,0.75,Per Oz,$0.29,$0.22
+Lavender Arnold Palmer,,,,Cost Per Drink,$1.27
+Peach Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Peach Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Peach Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Peach Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Peach Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Peach Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Peach Arnold Palmer,Peach,0.75,Per Oz,$0.29,$0.22
+Peach Arnold Palmer,,,,Cost Per Drink,$1.27
+Pineapple Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Pineapple Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Pineapple Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Pineapple Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Pineapple Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Pineapple Arnold Palmer,Pineapple,0.75,Per Oz,$0.29,$0.22
+Pineapple Arnold Palmer,,,,Cost Per Drink,$1.27
+Raspberry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Raspberry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Raspberry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Raspberry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Raspberry Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Raspberry Arnold Palmer,Raspberry,0.75,Per Oz,$0.29,$0.22
+Raspberry Arnold Palmer,,,,Cost Per Drink,$1.27
+Strawberry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Strawberry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Strawberry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Strawberry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Strawberry Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Strawberry Arnold Palmer,Strawberry,0.75,Per Oz,$0.29,$0.22
+Strawberry Arnold Palmer,,,,Cost Per Drink,$1.27
+Watermelon Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Watermelon Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Watermelon Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Watermelon Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Watermelon Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Watermelon Arnold Palmer,Watermelon,0.75,Per Oz,$0.29,$0.22
+Watermelon Arnold Palmer,,,,Cost Per Drink,$1.27
+French Vanilla Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+French Vanilla Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+French Vanilla Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+French Vanilla Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+French Vanilla Arnold Palmer,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla Arnold Palmer,,,,Cost Per Drink,$1.27
+Cherry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Cherry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Cherry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Cherry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Cherry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Cherry Arnold Palmer,Simple Syrup,2,Per Oz,$0.03,$0.07
+Cherry Arnold Palmer,Cherry,0.75,Per Oz,$0.29,$0.22
+Cherry Arnold Palmer,,,,Cost Per Drink,$1.27
+Sugar Free Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Sugar Free Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Sugar Free Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Arnold Palmer,Sugar Free Simple Syrup,6,Per Oz,$0.13,$0.75
+Sugar Free Arnold Palmer,,,,Cost Per Drink,$1.73
+Sugar Free Coconut Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Coconut Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Coconut Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Coconut Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Coconut Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Coconut Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Sugar Free Coconut Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Coconut Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Sugar Free Coconut Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Coconut Arnold Palmer,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Coconut Arnold Palmer,Sugar Free Coconut,1,Per Oz,$0.29,$0.29
+Sugar Free Coconut Arnold Palmer,,,,Cost Per Drink,$1.78
+Sugar Free Peach Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Peach Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Peach Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Peach Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Peach Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Peach Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Sugar Free Peach Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Peach Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Sugar Free Peach Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Peach Arnold Palmer,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Peach Arnold Palmer,Sugar Free Peach,1,Per Oz,$0.29,$0.29
+Sugar Free Peach Arnold Palmer,,,,Cost Per Drink,$1.78
+Sugar Free Raspberry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Raspberry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Raspberry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Raspberry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Raspberry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Raspberry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Sugar Free Raspberry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Raspberry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Sugar Free Raspberry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Raspberry Arnold Palmer,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Raspberry Arnold Palmer,Sugar Free Raspberry,1,Per Oz,$0.29,$0.29
+Sugar Free Raspberry Arnold Palmer,,,,Cost Per Drink,$1.78
+Sugar Free Strawberry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Strawberry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Strawberry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Strawberry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Strawberry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Strawberry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Sugar Free Strawberry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Strawberry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Sugar Free Strawberry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Strawberry Arnold Palmer,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Strawberry Arnold Palmer,Sugar Free Strawberry,1,Per Oz,$0.29,$0.29
+Sugar Free Strawberry Arnold Palmer,,,,Cost Per Drink,$1.78
+Sugar Free Cherry Arnold Palmer,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Arnold Palmer,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Cherry Arnold Palmer,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Cherry Arnold Palmer,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Cherry Arnold Palmer,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Cherry Arnold Palmer,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Cherry Arnold Palmer,Ice,1,per lb,$0.19,$0.19
+Sugar Free Cherry Arnold Palmer,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Cherry Arnold Palmer,Tea Concentrate,2,Per Cup,$0.06,$0.12
+Sugar Free Cherry Arnold Palmer,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Cherry Arnold Palmer,Sugar Free Simple Syrup,4,Per Oz,$0.13,$0.50
+Sugar Free Cherry Arnold Palmer,Sugar Free Cherry,1,Per Oz,$0.29,$0.29
+Sugar Free Cherry Arnold Palmer,,,,Cost Per Drink,$1.78
+Blue Lagoon,Straw,1,Per Cup,$0.01,$0.01
+Blue Lagoon,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Lagoon,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Lagoon,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Lagoon,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Lagoon,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Lagoon,Ice,1,per lb,$0.19,$0.19
+Blue Lagoon,Water,2,per cup (8oz),$0.03,$0.06
+Blue Lagoon,Lime,1,Per Cup,$0.22,$0.22
+Blue Lagoon,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Lagoon,Coconut,0.25,Per Oz,$0.29,$0.07
+Blue Lagoon,Blue Raspberry,0.75,Per Oz,$0.29,$0.22
+Blue Lagoon,,,,Cost Per Drink,$1.15
+Princess Peach,Straw,1,Per Cup,$0.01,$0.01
+Princess Peach,Cup & Lid,1,Per Cup,$0.21,$0.21
+Princess Peach,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Princess Peach,Sticker Printer,1,Per Cup,$0.01,$0.01
+Princess Peach,Sticker Menu,0,Per Cup,$0.05,$0.00
+Princess Peach,Cup Labor,1,Per Cup,$0.06,$0.06
+Princess Peach,Ice,1,per lb,$0.19,$0.19
+Princess Peach,Water,2,per cup (8oz),$0.03,$0.06
+Princess Peach,Lemon,1,Per Cup,$0.28,$0.28
+Princess Peach,Simple Syrup,2,Per Oz,$0.03,$0.07
+Princess Peach,Strawberry,0.25,Per Oz,$0.29,$0.07
+Princess Peach,Peach,0.5,Per Oz,$0.29,$0.15
+Princess Peach,Coconut,0.25,Per Oz,$0.29,$0.07
+Princess Peach,,,,Cost Per Drink,$1.22
+Sugar Free Princess Peach,Straw,1,Per Cup,$0.01,$0.01
+Sugar Free Princess Peach,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sugar Free Princess Peach,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sugar Free Princess Peach,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sugar Free Princess Peach,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sugar Free Princess Peach,Cup Labor,1,Per Cup,$0.06,$0.06
+Sugar Free Princess Peach,Ice,1,per lb,$0.19,$0.19
+Sugar Free Princess Peach,Water,2,per cup (8oz),$0.03,$0.06
+Sugar Free Princess Peach,Lemon,1,Per Cup,$0.28,$0.28
+Sugar Free Princess Peach,Sugar Free Simple Syrup,3,Per Oz,$0.13,$0.38
+Sugar Free Princess Peach,Sugar Free Strawberry,0.375,Per Oz,$0.29,$0.11
+Sugar Free Princess Peach,Sugar Free Peach,0.25,Per Oz,$0.29,$0.07
+Sugar Free Princess Peach,Sugar Free Coconut,0.375,Per Oz,$0.29,$0.11
+Sugar Free Princess Peach,,,,Cost Per Drink,$1.53
+Sweet Dream,Straw,1,Per Cup,$0.01,$0.01
+Sweet Dream,Cup & Lid,1,Per Cup,$0.21,$0.21
+Sweet Dream,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Sweet Dream,Sticker Printer,1,Per Cup,$0.01,$0.01
+Sweet Dream,Sticker Menu,0,Per Cup,$0.05,$0.00
+Sweet Dream,Cup Labor,1,Per Cup,$0.06,$0.06
+Sweet Dream,Ice,1,per lb,$0.19,$0.19
+Sweet Dream,Water,2,per cup (8oz),$0.03,$0.06
+Sweet Dream,Lemon,1,Per Cup,$0.28,$0.28
+Sweet Dream,Simple Syrup,2,Per Oz,$0.03,$0.07
+Sweet Dream,Strawberry,0.5,Per Oz,$0.29,$0.15
+Sweet Dream,French Vanilla,0.5,Per Oz,$0.29,$0.15
+Sweet Dream,,,,Cost Per Drink,$1.22
+Orange Cream,Straw,1,Per Cup,$0.01,$0.01
+Orange Cream,Cup & Lid,1,Per Cup,$0.21,$0.21
+Orange Cream,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Orange Cream,Sticker Printer,1,Per Cup,$0.01,$0.01
+Orange Cream,Sticker Menu,0,Per Cup,$0.05,$0.00
+Orange Cream,Cup Labor,1,Per Cup,$0.06,$0.06
+Orange Cream,Ice,1,per lb,$0.19,$0.19
+Orange Cream,Water,2,per cup (8oz),$0.03,$0.06
+Orange Cream,Lemon,1,Per Cup,$0.28,$0.28
+Orange Cream,Simple Syrup,2,Per Oz,$0.03,$0.07
+Orange Cream,French Vanilla,0.5,Per Oz,$0.29,$0.15
+Orange Cream,Candied Orange,0.5,Per Oz,$0.29,$0.15
+Orange Cream,,,,Cost Per Drink,$1.22
+Pina Colada,Straw,1,Per Cup,$0.01,$0.01
+Pina Colada,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pina Colada,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pina Colada,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pina Colada,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pina Colada,Cup Labor,1,Per Cup,$0.06,$0.06
+Pina Colada,Ice,1,per lb,$0.19,$0.19
+Pina Colada,Water,2,per cup (8oz),$0.03,$0.06
+Pina Colada,Lemon,1,Per Cup,$0.28,$0.28
+Pina Colada,Simple Syrup,2,Per Oz,$0.03,$0.07
+Pina Colada,Sweetened Condensed Milk,0.5,Per Oz,$0.14,$0.07
+Pina Colada,Pineapple,0.5,Per Oz,$0.29,$0.15
+Pina Colada,Coconut,0.5,Per Oz,$0.29,$0.15
+Pina Colada,,,,Cost Per Drink,$1.28
+Miami Vice,Straw,1,Per Cup,$0.01,$0.01
+Miami Vice,Cup & Lid,1,Per Cup,$0.21,$0.21
+Miami Vice,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Miami Vice,Sticker Printer,1,Per Cup,$0.01,$0.01
+Miami Vice,Sticker Menu,0,Per Cup,$0.05,$0.00
+Miami Vice,Cup Labor,1,Per Cup,$0.06,$0.06
+Miami Vice,Ice,1,per lb,$0.19,$0.19
+Miami Vice,Water,2,per cup (8oz),$0.03,$0.06
+Miami Vice,Lemon,1,Per Cup,$0.28,$0.28
+Miami Vice,Simple Syrup,1,Per Oz,$0.03,$0.03
+Miami Vice,Sweetened Condensed Milk,0.5,Per Oz,$0.14,$0.07
+Miami Vice,Strawberry,0.5,Per Oz,$0.29,$0.15
+Miami Vice,Pineapple,0.25,Per Oz,$0.29,$0.07
+Miami Vice,Coconut,0.25,Per Oz,$0.29,$0.07
+Miami Vice,,,,Cost Per Drink,$1.25
+Hawaii Blue,Straw,1,Per Cup,$0.01,$0.01
+Hawaii Blue,Cup & Lid,1,Per Cup,$0.21,$0.21
+Hawaii Blue,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Hawaii Blue,Sticker Printer,1,Per Cup,$0.01,$0.01
+Hawaii Blue,Sticker Menu,0,Per Cup,$0.05,$0.00
+Hawaii Blue,Cup Labor,1,Per Cup,$0.06,$0.06
+Hawaii Blue,Ice,1,per lb,$0.19,$0.19
+Hawaii Blue,Water,2,per cup (8oz),$0.03,$0.06
+Hawaii Blue,Lemon,1,Per Cup,$0.28,$0.28
+Hawaii Blue,Simple Syrup,2,Per Oz,$0.03,$0.07
+Hawaii Blue,Sweetened Condensed Milk,0.5,Per Oz,$0.14,$0.07
+Hawaii Blue,Pineapple,0.25,Per Oz,$0.29,$0.07
+Hawaii Blue,Blue Raspberry,0.5,Per Oz,$0.29,$0.15
+Hawaii Blue,,,,Cost Per Drink,$1.21
+Regular N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Regular N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Regular N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Regular N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Regular N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Regular N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Regular N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Regular N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Regular N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Regular N Cream Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Regular N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Regular N Cream Limeade,French Vanilla,0.25,Per OZ,$0.29,$0.07
+Regular N Cream Limeade,,,,Cost Per Drink,$1.07
+Blue Raspberry N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Blue Raspberry N Cream Limeade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Blue Raspberry N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Blue Raspberry N Cream Limeade,Blue Raspberry,0.5,Per Oz,$0.29,$0.15
+Blue Raspberry N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Blue Raspberry N Cream Limeade,,,,Cost Per Drink,$1.22
+Coconut N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Coconut N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Coconut N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Coconut N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Coconut N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Coconut N Cream Limeade,Coconut,0.5,Per Oz,$0.29,$0.15
+Coconut N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Coconut N Cream Limeade,,,,Cost Per Drink,$1.20
+Cucumber N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Cucumber N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cucumber N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Cucumber N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Cucumber N Cream Limeade,Cucumber,0.5,Per Oz,$0.30,$0.15
+Cucumber N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Cucumber N Cream Limeade,,,,Cost Per Drink,$1.20
+Lavender N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Lavender N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Lavender N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Lavender N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Lavender N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Lavender N Cream Limeade,Lavender,0.5,Per Oz,$0.29,$0.15
+Lavender N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Lavender N Cream Limeade,,,,Cost Per Drink,$1.20
+Peach N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Peach N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Peach N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Peach N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Peach N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Peach N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Peach N Cream Limeade,Peach,0.5,Per Oz,$0.29,$0.15
+Peach N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Peach N Cream Limeade,,,,Cost Per Drink,$1.20
+Pineapple N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Pineapple N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Pineapple N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Pineapple N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Pineapple N Cream Limeade,Pineapple,0.5,Per Oz,$0.29,$0.15
+Pineapple N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Pineapple N Cream Limeade,,,,Cost Per Drink,$1.20
+Raspberry N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Raspberry N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Raspberry N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Raspberry N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Raspberry N Cream Limeade,Raspberry,0.5,Per Oz,$0.29,$0.15
+Raspberry N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Raspberry N Cream Limeade,,,,Cost Per Drink,$1.20
+Strawberry N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Strawberry N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Strawberry N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Strawberry N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Strawberry N Cream Limeade,Strawberry,0.5,Per Oz,$0.29,$0.15
+Strawberry N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Strawberry N Cream Limeade,,,,Cost Per Drink,$1.20
+Watermelon N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Watermelon N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Watermelon N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Watermelon N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Watermelon N Cream Limeade,Watermelon,0.5,Per Oz,$0.29,$0.15
+Watermelon N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Watermelon N Cream Limeade,,,,Cost Per Drink,$1.20
+French Vanilla N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+French Vanilla N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+French Vanilla N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+French Vanilla N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+French Vanilla N Cream Limeade,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla N Cream Limeade,,,,Cost Per Drink,$1.20
+Cherry N Cream Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cherry N Cream Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry N Cream Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry N Cream Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry N Cream Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry N Cream Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry N Cream Limeade,Ice,1,per lb,$0.19,$0.19
+Cherry N Cream Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry N Cream Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cherry N Cream Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Cherry N Cream Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Cherry N Cream Limeade,Cherry,0.5,Per Oz,$0.29,$0.15
+Cherry N Cream Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Cherry N Cream Limeade,,,,Cost Per Drink,$1.20
+Regular N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Regular N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Regular N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Regular N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Regular N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Regular N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Regular N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Regular N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Regular N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Regular N Cream Lemonade,Simple Syrup,2,Per Oz,$0.03,$0.07
+Regular N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Regular N Cream Lemonade,French Vanilla,0.25,Per OZ,$0.29,$0.07
+Regular N Cream Lemonade,,,,Cost Per Drink,$1.13
+Blue Raspberry N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Blue Raspberry N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Blue Raspberry N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Blue Raspberry N Cream Lemonade,Blue Raspberry,0.5,Per Oz,$0.29,$0.15
+Blue Raspberry N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Blue Raspberry N Cream Lemonade,,,,Cost Per Drink,$1.26
+Coconut N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Coconut N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Coconut N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Coconut N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Coconut N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Coconut N Cream Lemonade,Coconut,0.5,Per Oz,$0.29,$0.15
+Coconut N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Coconut N Cream Lemonade,,,,Cost Per Drink,$1.26
+Cucumber N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Cucumber N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Cucumber N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Cucumber N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Cucumber N Cream Lemonade,Cucumber,0.5,Per Oz,$0.30,$0.15
+Cucumber N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Cucumber N Cream Lemonade,,,,Cost Per Drink,$1.27
+Lavender N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Lavender N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Lavender N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Lavender N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Lavender N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Lavender N Cream Lemonade,Lavender,0.5,Per Oz,$0.29,$0.15
+Lavender N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Lavender N Cream Lemonade,,,,Cost Per Drink,$1.26
+Peach N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Peach N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Peach N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Peach N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Peach N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Peach N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Peach N Cream Lemonade,Peach,0.5,Per Oz,$0.29,$0.15
+Peach N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Peach N Cream Lemonade,,,,Cost Per Drink,$1.26
+Pineapple N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Pineapple N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Pineapple N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Pineapple N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Pineapple N Cream Lemonade,Pineapple,0.5,Per Oz,$0.29,$0.15
+Pineapple N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Pineapple N Cream Lemonade,,,,Cost Per Drink,$1.26
+Raspberry N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Raspberry N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Raspberry N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Raspberry N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Raspberry N Cream Lemonade,Raspberry,0.5,Per Oz,$0.29,$0.15
+Raspberry N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Raspberry N Cream Lemonade,,,,Cost Per Drink,$1.26
+Strawberry N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Strawberry N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Strawberry N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Strawberry N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Strawberry N Cream Lemonade,Strawberry,0.5,Per Oz,$0.29,$0.15
+Strawberry N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Strawberry N Cream Lemonade,,,,Cost Per Drink,$1.26
+Watermelon N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Watermelon N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Watermelon N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Watermelon N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Watermelon N Cream Lemonade,Watermelon,0.5,Per Oz,$0.29,$0.15
+Watermelon N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Watermelon N Cream Lemonade,,,,Cost Per Drink,$1.26
+French Vanilla N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+French Vanilla N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+French Vanilla N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+French Vanilla N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+French Vanilla N Cream Lemonade,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla N Cream Lemonade,,,,Cost Per Drink,$1.26
+Cherry N Cream Lemonade,Straw,1,Per Cup,$0.01,$0.01
+Cherry N Cream Lemonade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry N Cream Lemonade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry N Cream Lemonade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry N Cream Lemonade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry N Cream Lemonade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry N Cream Lemonade,Ice,1,per lb,$0.19,$0.19
+Cherry N Cream Lemonade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry N Cream Lemonade,Lemon,1,Per Cup,$0.28,$0.28
+Cherry N Cream Lemonade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Cherry N Cream Lemonade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Cherry N Cream Lemonade,Cherry,0.5,Per Oz,$0.29,$0.15
+Cherry N Cream Lemonade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Cherry N Cream Lemonade,,,,Cost Per Drink,$1.26
+Lemon Limeade N Cream,Straw,1,Per Cup,$0.01,$0.01
+Lemon Limeade N Cream,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lemon Limeade N Cream,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lemon Limeade N Cream,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lemon Limeade N Cream,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lemon Limeade N Cream,Cup Labor,1,Per Cup,$0.06,$0.06
+Lemon Limeade N Cream,Ice,1,per lb,$0.19,$0.19
+Lemon Limeade N Cream,Water,2,per cup (8oz),$0.03,$0.06
+Lemon Limeade N Cream,Lemon,1,Per Cup,$0.28,$0.28
+Lemon Limeade N Cream,Lime,1,Per Cup,$0.22,$0.22
+Lemon Limeade N Cream,Simple Syrup,2,Per Oz,$0.03,$0.07
+Lemon Limeade N Cream,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Lemon Limeade N Cream,French Vanilla,0.25,Per OZ,$0.29,$0.07
+Lemon Limeade N Cream,,,,Cost Per Drink,$1.35
+Blue Raspberry N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Blue Raspberry N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Blue Raspberry N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Blue Raspberry N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Blue Raspberry N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Blue Raspberry N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Blue Raspberry N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Blue Raspberry N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Blue Raspberry N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Blue Raspberry N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Blue Raspberry N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Blue Raspberry N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Blue Raspberry N Cream Lemon Limeade,Blue Raspberry,0.5,Per Oz,$0.14,$0.07
+Blue Raspberry N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Blue Raspberry N Cream Lemon Limeade,,,,Cost Per Drink,$1.40
+Coconut N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Coconut N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Coconut N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Coconut N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Coconut N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Coconut N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Coconut N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Coconut N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Coconut N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Coconut N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Coconut N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Coconut N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Coconut N Cream Lemon Limeade,Coconut,0.5,Per Oz,$0.29,$0.15
+Coconut N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Coconut N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Cucumber N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cucumber N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cucumber N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cucumber N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cucumber N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cucumber N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cucumber N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Cucumber N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cucumber N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Cucumber N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cucumber N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Cucumber N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Cucumber N Cream Lemon Limeade,Cucumber,0.5,Per Oz,$0.30,$0.15
+Cucumber N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Cucumber N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Lavender N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Lavender N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Lavender N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Lavender N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Lavender N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Lavender N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Lavender N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Lavender N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Lavender N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Lavender N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Lavender N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Lavender N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Lavender N Cream Lemon Limeade,Lavender,0.5,Per Oz,$0.29,$0.15
+Lavender N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Lavender N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Peach N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Peach N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Peach N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Peach N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Peach N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Peach N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Peach N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Peach N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Peach N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Peach N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Peach N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Peach N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Peach N Cream Lemon Limeade,Peach,0.5,Per Oz,$0.29,$0.15
+Peach N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Peach N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Pineapple N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Pineapple N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Pineapple N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Pineapple N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Pineapple N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Pineapple N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Pineapple N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Pineapple N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Pineapple N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Pineapple N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Pineapple N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Pineapple N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Pineapple N Cream Lemon Limeade,Pineapple,0.5,Per Oz,$0.29,$0.15
+Pineapple N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Pineapple N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Raspberry N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Raspberry N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Raspberry N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Raspberry N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Raspberry N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Raspberry N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Raspberry N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Raspberry N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Raspberry N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Raspberry N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Raspberry N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Raspberry N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Raspberry N Cream Lemon Limeade,Raspberry,0.5,Per Oz,$0.29,$0.15
+Raspberry N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Raspberry N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Strawberry N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Strawberry N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Strawberry N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Strawberry N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Strawberry N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Strawberry N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Strawberry N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Strawberry N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Strawberry N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Strawberry N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Strawberry N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Strawberry N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Strawberry N Cream Lemon Limeade,Strawberry,0.5,Per Oz,$0.29,$0.15
+Strawberry N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Strawberry N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Watermelon N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Watermelon N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Watermelon N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Watermelon N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Watermelon N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Watermelon N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Watermelon N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Watermelon N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Watermelon N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Watermelon N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Watermelon N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Watermelon N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Watermelon N Cream Lemon Limeade,Watermelon,0.5,Per Oz,$0.29,$0.15
+Watermelon N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Watermelon N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+French Vanilla N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+French Vanilla N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+French Vanilla N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+French Vanilla N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+French Vanilla N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+French Vanilla N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+French Vanilla N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+French Vanilla N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+French Vanilla N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+French Vanilla N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+French Vanilla N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+French Vanilla N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+French Vanilla N Cream Lemon Limeade,French Vanilla,0.75,Per Oz,$0.29,$0.22
+French Vanilla N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
+Cherry N Cream Lemon Limeade,Straw,1,Per Cup,$0.01,$0.01
+Cherry N Cream Lemon Limeade,Cup & Lid,1,Per Cup,$0.21,$0.21
+Cherry N Cream Lemon Limeade,Sticker (Logo),1,Per Cup,$0.05,$0.05
+Cherry N Cream Lemon Limeade,Sticker Printer,1,Per Cup,$0.01,$0.01
+Cherry N Cream Lemon Limeade,Sticker Menu,0,Per Cup,$0.05,$0.00
+Cherry N Cream Lemon Limeade,Cup Labor,1,Per Cup,$0.06,$0.06
+Cherry N Cream Lemon Limeade,Ice,1,per lb,$0.19,$0.19
+Cherry N Cream Lemon Limeade,Water,2,per cup (8oz),$0.03,$0.06
+Cherry N Cream Lemon Limeade,Lemon,1,Per Cup,$0.28,$0.28
+Cherry N Cream Lemon Limeade,Lime,1,Per Cup,$0.22,$0.22
+Cherry N Cream Lemon Limeade,Simple Syrup,1.5,Per Oz,$0.03,$0.05
+Cherry N Cream Lemon Limeade,Sweetened Condensed Milk,1,Per Oz,$0.14,$0.14
+Cherry N Cream Lemon Limeade,Cherry,0.5,Per Oz,$0.29,$0.15
+Cherry N Cream Lemon Limeade,French Vanilla,0.25,Per Oz,$0.29,$0.07
+Cherry N Cream Lemon Limeade,,,,Cost Per Drink,$1.48
