@@ -1,0 +1,399 @@
+{
+  "Events": [
+    {
+      "EventID": 2,
+      "EventInfo": {
+        "Event Name": "Test4",
+        "Event Date": "2025-10-13",
+        "Event Color": "red",
+        "Event Coordinator": "me",
+        "Event Fee": "$1",
+        "Event Location": "Provo",
+        "Event Time(s)": "9:00",
+        "Event Docs": "Done",
+        "Event Employees": "2",
+        "Event Rating": "Family",
+        "Event Host": "Fred",
+        "Event Notes": "none",
+        "Event Status": "complete"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": [
+          {
+            "Employee": "Alyssa B",
+            "Hours Worked": 6.08,
+            "Hourly Rate": 15,
+            "Total Pay": "$91.01",
+            "Event Name": "Skyridge Football Game"
+          },
+          {
+            "Employee": "Hannah S",
+            "Hours Word=ked": 8,
+            "Total Pay": "$142.67",
+            "Event Name": "Test4"
+          }
+        ]
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCosts": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      }
+    },
+    {
+      "EventID": 3,
+      "EventInfo": {
+        "Event Name": "Testing 1",
+        "Event Date": "2025-10-16",
+        "Event Color": "Red",
+        "Event Coordinator": "Steve",
+        "Event Fee": "$1000",
+        "Event Location": "Orem",
+        "Event Time(s)": "9:00",
+        "Event Docs": "Done",
+        "Event Employees": "2",
+        "Event Rating": "Family",
+        "Event Host": "Andrea",
+        "Event Notes": "none",
+        "Event Status": "completed"
+      },
+      "Employees": {
+        "Data": []
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      }
+    },
+    {
+      "EventID": 4,
+      "EventInfo": {
+        "Event Name": "Testing1",
+        "Event Date": "2025-10-17",
+        "Event Color": "blue",
+        "Event Coordinator": "Melanie",
+        "Event Fee": "$500",
+        "Event Location": "Provo",
+        "Event Time(s)": "8:00",
+        "Event Docs": "Submitted",
+        "Event Employees": "2",
+        "Event Rating": "Family",
+        "Event Host": "Barb",
+        "Event Notes": "none",
+        "Event Status": "Complete"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      }
+    },
+    {
+      "EventID": 4,
+      "EventInfo": {
+        "Event Name": "Skyridge Football Game",
+        "Event Date": "2025-10-24",
+        "Event Color": "#cd3232",
+        "Event Coordinator": "Ciera",
+        "Event Fee": "50",
+        "Event Location": "Lehi",
+        "Event Time(s)": "7:00 PM",
+        "Event Docs": "None",
+        "Event Employees": "2",
+        "Event Rating": "Family",
+        "Event Host": "Karen",
+        "Event Notes": "none",
+        "Event Status": "Complete"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      }
+    },
+    {
+      "EventID": 5,
+      "EventInfo": {
+        "Event Name": "Orem High Football",
+        "Event Date": "2025-10-17",
+        "Event Color": "#000000",
+        "Event Coordinator": "Terren",
+        "Event Fee": "50",
+        "Event Location": "Orem",
+        "Event Time(s)": "7:00",
+        "Event Docs": "None",
+        "Event Employees": "2",
+        "Event Rating": "Family",
+        "Event Host": "Norm",
+        "Event Notes": "none",
+        "Event Status": "Complete"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      }
+    },
+    {
+      "Event Name": "Test Event",
+      "EventID": 6,
+      "createdAt": "2025-10-21T00:31:22.155Z",
+      "createdDate": "2025-10-21"
+    },
+    {
+      "EventID": 7,
+      "EventInfo": {
+        "Event Name": "Steve's Halloween Party",
+        "Event Date": "2025-10-31",
+        "Event AppDate": "2025-10-31",
+        "Event Color": "Pink",
+        "Event Coordinator": "Ciera",
+        "Event Fee": "1",
+        "Event Location": "American Fork",
+        "Event Time(s)": "6:00",
+        "Event Docs": "none",
+        "Event Employees": "Steve",
+        "Event Rating": "Family",
+        "Event Host": "Steve",
+        "Event Notes": "none",
+        "Event Status": "Planned"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      },
+      "createdAt": "2025-10-22T03:58:09.716Z",
+      "createdDate": "2025-10-22"
+    },
+    {
+      "EventID": 8,
+      "EventInfo": {
+        "Event Name": "Terrie Terror Castle",
+        "Event Date": "2025-10-22",
+        "Application Date": "2025-10-31",
+        "Event Color": "Pink",
+        "Event Coordinator": "Ben",
+        "Event Fee": "1",
+        "Event Location": "Provo",
+        "Event Time": "6 PM",
+        "Event Permits": "none",
+        "Event Employees": "Nadia",
+        "Event Rating": "Family",
+        "Event Host": "steve",
+        "Event Notes": "none",
+        "Event Status": "Planned"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      },
+      "createdAt": "2025-10-23T03:24:58.774Z",
+      "createdDate": "2025-10-23"
+    },
+    {
+      "EventID": 9,
+      "EventInfo": {
+        "Event Name": "Steve's Halloween Party",
+        "Event Date": "2025-10-31",
+        "Application Date": "",
+        "Event Color": "Yellow",
+        "Event Coordinator": "Ciera",
+        "Event Fee": "1",
+        "Event Location": "American Fork",
+        "Event Time": "6:00",
+        "Event Permits": "none",
+        "Event Employees": "Nadia",
+        "Event Rating": "Family",
+        "Event Host": "Steve",
+        "Event Notes": "none",
+        "Event Status": "Planned"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      },
+      "createdAt": "2025-10-23T03:26:24.480Z",
+      "createdDate": "2025-10-23"
+    },
+    {
+      "EventID": 10,
+      "EventInfo": {
+        "Event Name": "Fred's Happy Halloween",
+        "Event Date": "2025-10-31",
+        "Application Date": "2025-10-24",
+        "Event Color": "Blue",
+        "Event Coordinator": "Ben",
+        "Event Fee": "1",
+        "Event Location": "Home",
+        "Event Time": "6pm",
+        "Event Permits": "none",
+        "Event Employees": "Amanda",
+        "Event Rating": "Family",
+        "Event Host": "Steve",
+        "Event Notes": "none",
+        "Event Status": "Planned"
+      },
+      "DrinkSales": {
+        "Data": []
+      },
+      "EmployeeTracker": {
+        "Data": []
+      },
+      "AdditionalFees": {
+        "Data": []
+      },
+      "Discounts": {
+        "Data": [],
+        "Totals": {}
+      },
+      "SupplyCost": {
+        "Data": []
+      },
+      "TipTracker": {
+        "Data": []
+      },
+      "EventRunnerFees": {
+        "Data": []
+      },
+      "createdAt": "2025-10-24T22:37:05.230Z",
+      "createdDate": "2025-10-24"
+    }
+  ]
+}

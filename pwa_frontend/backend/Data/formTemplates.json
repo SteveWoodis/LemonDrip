@@ -1,0 +1,166 @@
+[
+  {
+    "templateName": "Default Template",
+    "fields": [
+      {
+        "label": "Event Name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "label": "Event Date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "label": "Application Date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "label": "Event Color",
+        "type": "select",
+        "required": true,
+        "options": [
+          " ",
+          "Blue",
+          "Yellow",
+          "Green",
+          "Pink",
+          "Runner"
+        ]
+      },
+      {
+        "label": "Event Coordinator",
+        "type": "select",
+        "required": true,
+        "options": [
+          " ",
+          "Melanie",
+          "Ben",
+          "Ciera"
+        ]
+      },
+      {
+        "label": "Event Fee",
+        "type": "number",
+        "required": true
+      },
+      {
+        "label": "Event Location",
+        "type": "text",
+        "required": true
+      },
+      {
+        "label": "Event Time",
+        "type": "text",
+        "required": true
+      },
+      {
+        "label": "Event Permits",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "label": "Event Employees",
+        "type": "select",
+        "required": true,
+        "options": [
+          " ",
+          "Nadia",
+          "Hannah",
+          "Amanda",
+          "Beth"
+        ]
+      },
+      {
+        "label": "Event Rating",
+        "type": "select",
+        "required": true,
+        "options": [
+          "Family",
+          "Mature",
+          "Drill",
+          "Catering"
+        ]
+      },
+      {
+        "label": "Event Host",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "label": "Event Notes",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "label": "Event Status",
+        "type": "select",
+        "required": true,
+        "options": [
+          " ",
+          "Planned",
+          "Scheduled",
+          "Completed",
+          "Cancelled"
+        ]
+      }
+    ]
+  },
+  {
+    "templateName": "Halloween Templates",
+    "fields": [
+      {
+        "label": "Event Name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "label": "Event Date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "label": "Event Description",
+        "type": "text",
+        "required": true
+      }
+    ]
+  },
+  {
+    "templateName": "FOrm Testing",
+    "fields": [
+      {
+        "label": "Form Testing",
+        "type": "text",
+        "required": true
+      },
+      {
+        "label": "Event Date",
+        "type": "date",
+        "required": true
+      }
+    ]
+  },
+  {
+    "templateName": "Apple Pie",
+    "fields": [
+      {
+        "label": "Event Name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "label": "Event Date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "label": "Event Cost",
+        "type": "text",
+        "required": false
+      }
+    ]
+  }
+]

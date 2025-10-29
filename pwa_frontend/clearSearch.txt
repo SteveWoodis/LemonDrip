@@ -1,0 +1,23 @@
+function clearSearch() {
+  // 1️⃣ Clear all search input fields
+  const nameEl = document.getElementById("searchName");
+  const dateEl = document.getElementById("searchDate");
+  const idEl = document.getElementById("searchID");
+
+  if (nameEl) nameEl.value = "";
+  if (dateEl) dateEl.value = "";
+  if (idEl) idEl.value = "";
+
+  // 2️⃣ Clear search results
+  const container = document.getElementById("searchResults");
+  if (container) container.innerHTML = "";
+
+  // 3️⃣ Hide summary card and dashboard
+  const summaryCard = document.getElementById("summaryCard");
+  if (summaryCard) summaryCard.style.display = "none";
+
+  const dashboard = document.getElementById("dashboard");
+  if (dashboard) dashboard.style.display = "none";
+
+  console.log("🔄 Search fields and results cleared.");
+}

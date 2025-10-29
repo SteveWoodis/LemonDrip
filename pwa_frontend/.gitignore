@@ -1,0 +1,52 @@
+# =========================================================
+# 🍋 LemonDrip PWA - Git Ignore File
+# Prevents unnecessary or private files from being committed
+# =========================================================
+
+# --- OS and editor junk ---
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
+
+# --- Node & Backend dependencies ---
+node_modules/
+npm-debug.log*
+package-lock.json
+.env
+.env.*
+
+# --- Python cache (for backend utilities) ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Build & cache directories ---
+dist/
+build/
+.cache/
+coverage/
+
+# --- IDE/project settings ---
+.vscode/
+.idea/
+*.iml
+
+# --- Generated or temporary files ---
+*.zip
+*.tar
+*.gz
+
+# --- Data backups ---
+Master_EventData_Full_backup*.json
+Master_EventData_Temp*.json
+
+# --- OS metadata ---
+desktop.ini
+
+# =========================================================
+# End of file
+# =========================================================

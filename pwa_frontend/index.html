@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LemonDrip Event Manager</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>🍋 LemonDrip Event Manager</h1>
+    <div class="header-buttons">
+      <button id="btnSearch" onclick="navigateTo('searchSection')">🔍 Search</button>
+      <button id="btnAdd" onclick="navigateTo('addSection')">➕ Add Event</button>
+      <button id="btnEdit" onclick="navigateTo('editSection')">✏️ Edit Event</button>
+	  <button id="btnEdit" onclick="navigateTo('companySection)">Add Company</button>
+	  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
+	  <button id="btnList" onclick="navigateTo('listEventSection')"> List All Events</button>
+      <button onclick="clearSearch()">🧹 Reset Page</button>
+    </div>
+  </header>
+
+  <!-- 🔍 Search Section -->
+  <section id="searchSection" class="card">
+    <h2>Search Events</h2>
+    <div class="search-fields">
+      <input type="text" id="searchName" placeholder="Event Name">
+      <input type="date" id="searchDate">
+      <input type="text" id="searchID" placeholder="Event ID">
+      <button type="button" onclick="searchEvents()">Search</button>
+	  <button type="button" onclick="clearSearch()">Clear Search</button>
+    </div>
+
+    <div id="summaryCard" style="display:none;">
+      <p id="summaryText"></p>
+    </div>
+
+    <div id="searchResults"></div>
+  </section>
+
+  <!-- ➕ Add Event Section -->
+ <section id="addSection" class="card hidden">
+  <h2 id="formTitle">Add New Event</h2>
+
+  <!-- Template selection area -->
+  <div class="template-selector">
+    <label for="templateSelect"><strong>Select Form Template:</strong></label>
+    <select id="templateSelect">
+      <option value="">-- Select Template --</option>
+    </select>
+    <button type="button" onclick="useSelectedTemplate()">Load Template</button>
+  </div>
+
+  <!-- 🧩 Dynamic Form Area -->
+  <form id="eventForm" onsubmit="submitEvent(); return false;" class="event-form">
+    <!-- The fields for this form will be dynamically injected here by rebuildAddEventForm() -->
+  </form>
+</section>
+<section id="companySection" class="card hidden">
+
+</section>
+
+<!-- 🧩 Design Event Form Section -->
+<section id="designFormSection" class="card hidden">
+  <h2>🧩 Design Event Form</h2>
+	<!-- 🧩 Template Activation Controls -->
+  <div class="template-activation">
+    <label for="templateSelector"><strong>Activate Template:</strong></label>
+    <select id="templateSelector">
+      <option value="">-- Select Template --</option>
+    </select>
+    <button type="button" onclick="activateTemplate()">⚡ Activate</button>
+  </div>
+
+  <div class="form-builder-controls">
+    <label>Field Label: <input type="text" id="builderLabel" placeholder="e.g. Event Name"></label>
+    
+    <label>Field Type:
+      <select id="builderType">
+        <option value="text">Text</option>
+        <option value="number">Number</option>
+        <option value="date">Date</option>
+        <option value="select">Dropdown</option>
+        <option value="multiselect">Multi-Select</option>
+        <option value="textarea">Text Area</option>
+      </select>
+    </label>
+
+    <label>Required: <input type="checkbox" id="builderRequired"></label>
+    
+    <label id="optionsLabel" style="display:none;">
+      Options (comma separated): 
+      <input type="text" id="builderOptions" placeholder="e.g. Red, Green, Blue">
+    </label>
+
+    <button type="button" onclick="addFieldToTemplate()">➕ Add Field</button>
+  </div>
+
+  <hr>
+
+  <h3>Preview:</h3>
+  <div id="formPreview" class="preview-card"></div>
+
+  <div class="form-buttons">
+    <button type="button" onclick="saveTemplate()">💾 Save Template</button>
+    <button type="button" onclick="clearTemplate()">🧹 Clear</button>
+  </div>
+</section>
+<section id="listEvents" class="card hidden">
+	<div id="listEvents" style="display:none;">
+		<h2> Hello </h2>
+	</div>
+</section>
+  
+  <!-- 📊 Dashboard Section -->
+  <section id="dashboardSection" class="card hidden">
+    <div id="dashboard" style="display:none;">
+      <h2 id="dashTitle"></h2>
+      <p id="dashDate"></p>
+      <p><strong>Coordinator:</strong> <span id="dashCoordinator"></span></p>
+      <!--<p><strong>Total Sales:</strong> <span id="dashSales"></span></p>
+      <p><strong>Net Profit:</strong> <span id="dashProfit"></span></p> -->
+      <p><strong>Square Info:</strong> <span id="dashSquareInfo"></span></p>
+      <div id="dashDetails"></div>
+    </div>
+  </section>
+
+	
+
+  <script src="app.js"></script>
+</body>
+</html>

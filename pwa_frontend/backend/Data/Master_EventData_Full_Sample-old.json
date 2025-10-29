@@ -1,0 +1,416 @@
+{
+  "Events": [
+    {
+      "EventID": 1,
+      "EventInfo": {
+        "Event Name": "Downtown Farmers Market",
+        "Event Date": "2025-07-12",
+        "Event Color": "Yellow",
+        "Coordinator": "Samantha",
+        "Status": "Completed",
+        "Location": "Main St. Plaza",
+        "Notes": "High turnout, great weather"
+      },
+      "DrinkSales": [
+        {
+          "Drink Name": "Regular Lemonade",
+          "Cost Per Drink": 0.96,
+          "Quantity Sold": 125,
+          "Total Cost": 120.0
+        },
+        {
+          "Drink Name": "Strawberry Lemonade",
+          "Cost Per Drink": 1.25,
+          "Quantity Sold": 90,
+          "Total Cost": 112.5
+        }
+      ],
+      "EmployeeTracker": [
+        {
+          "Employee": "Alex",
+          "Hours Worked": 6,
+          "Hourly Rate": 15.0,
+          "Total Pay": 90.0
+        },
+        {
+          "Employee": "Jordan",
+          "Hours Worked": 7,
+          "Hourly Rate": 15.0,
+          "Total Pay": 105.0
+        }
+      ],
+      "AdditionalFees": [
+        {
+          "Description": "Tent Rental",
+          "Category": "Rental",
+          "Amount": 50.0,
+          "Notes": "Weekend rate"
+        },
+        {
+          "Description": "Delivery Fee",
+          "Category": "Transport",
+          "Amount": 25.0,
+          "Notes": "Ice delivery"
+        }
+      ],
+      "Discounts": [
+        {
+          "Type": "Coupon",
+          "Description": "10% off for early customers",
+          "Amount": 15.0
+        }
+      ],
+      "SupplyCosts": [
+        {
+          "Item": "Cups",
+          "Quantity": 200,
+          "Cost": 20.0
+        },
+        {
+          "Item": "Lemons",
+          "Quantity": 50,
+          "Cost": 40.0
+        }
+      ],
+      "TipTracker": [
+        {
+          "Employee": "Alex",
+          "Tip Amount": 22.0
+        },
+        {
+          "Employee": "Jordan",
+          "Tip Amount": 30.0
+        }
+      ],
+      "EventRunnerFees": [
+        {
+          "Runner": "Samantha",
+          "Fee": 40.0
+        }
+      ]
+    },
+    {
+      "EventID": 2,
+      "EventInfo": {
+        "Event Name": "Summer Splash Carnival",
+        "Event Date": "2025-08-02",
+        "Event Color": "Blue",
+        "Coordinator": "Logan",
+        "Status": "Completed",
+        "Location": "City Park Center",
+        "Notes": "Needed more signage"
+      },
+      "DrinkSales": [
+        {
+          "Drink Name": "Blue Raspberry Lemonade",
+          "Cost Per Drink": 1.14,
+          "Quantity Sold": 180,
+          "Total Cost": 205.2
+        },
+        {
+          "Drink Name": "Mango Lemonade",
+          "Cost Per Drink": 1.3,
+          "Quantity Sold": 95,
+          "Total Cost": 123.5
+        }
+      ],
+      "EmployeeTracker": [
+        {
+          "Employee": "Taylor",
+          "Hours Worked": 8,
+          "Hourly Rate": 16.0,
+          "Total Pay": 128.0
+        },
+        {
+          "Employee": "Riley",
+          "Hours Worked": 6,
+          "Hourly Rate": 15.0,
+          "Total Pay": 90.0
+        }
+      ],
+      "AdditionalFees": [
+        {
+          "Description": "Permit Fee",
+          "Category": "Admin",
+          "Amount": 40.0,
+          "Notes": "Required by city"
+        },
+        {
+          "Description": "Generator Fuel",
+          "Category": "Utility",
+          "Amount": 30.0,
+          "Notes": "Used all day"
+        }
+      ],
+      "Discounts": [
+        {
+          "Type": "Event Promo",
+          "Description": "Family pack discount",
+          "Amount": 20.0
+        }
+      ],
+      "SupplyCosts": [
+        {
+          "Item": "Sugar",
+          "Quantity": 25,
+          "Cost": 15.0
+        },
+        {
+          "Item": "Cups",
+          "Quantity": 300,
+          "Cost": 30.0
+        }
+      ],
+      "TipTracker": [
+        {
+          "Employee": "Taylor",
+          "Tip Amount": 28.0
+        },
+        {
+          "Employee": "Riley",
+          "Tip Amount": 18.0
+        }
+      ],
+      "EventRunnerFees": [
+        {
+          "Runner": "Logan",
+          "Fee": 35.0
+        }
+      ]
+    },
+    {
+      "EventID": 3,
+      "EventInfo": {
+        "Event Name": "Mall Kiosk Grand Opening",
+        "Event Date": "2025-09-15",
+        "Event Color": "Pink",
+        "Coordinator": "Samantha",
+        "Status": "Ongoing",
+        "Location": "Riverbend Mall",
+        "Notes": "Permanent kiosk launch"
+      },
+      "DrinkSales": [
+        {
+          "Drink Name": "Watermelon Lemonade",
+          "Cost Per Drink": 1.2,
+          "Quantity Sold": 300,
+          "Total Cost": 360.0
+        },
+        {
+          "Drink Name": "Peach Lemonade",
+          "Cost Per Drink": 1.1,
+          "Quantity Sold": 275,
+          "Total Cost": 302.5
+        }
+      ],
+      "EmployeeTracker": [
+        {
+          "Employee": "Casey",
+          "Hours Worked": 9,
+          "Hourly Rate": 17.0,
+          "Total Pay": 153.0
+        },
+        {
+          "Employee": "Jamie",
+          "Hours Worked": 8,
+          "Hourly Rate": 15.0,
+          "Total Pay": 120.0
+        }
+      ],
+      "AdditionalFees": [
+        {
+          "Description": "Mall Rent",
+          "Category": "Lease",
+          "Amount": 200.0,
+          "Notes": "Monthly fee"
+        }
+      ],
+      "Discounts": [
+        {
+          "Type": "Opening Special",
+          "Description": "Buy 1 Get 1 Free",
+          "Amount": 60.0
+        }
+      ],
+      "SupplyCosts": [
+        {
+          "Item": "Napkins",
+          "Quantity": 500,
+          "Cost": 25.0
+        },
+        {
+          "Item": "Straws",
+          "Quantity": 1000,
+          "Cost": 40.0
+        }
+      ],
+      "TipTracker": [
+        {
+          "Employee": "Casey",
+          "Tip Amount": 45.0
+        },
+        {
+          "Employee": "Jamie",
+          "Tip Amount": 50.0
+        }
+      ],
+      "EventRunnerFees": [
+        {
+          "Runner": "Samantha",
+          "Fee": 50.0
+        }
+      ]
+    },
+    {
+      "EventID": 4,
+      "EventInfo": {
+        "Event Name": "College Homecoming",
+        "Event Date": "2025-10-04",
+        "Event Color": "Green",
+        "Coordinator": "Riley",
+        "Status": "Completed",
+        "Location": "State University",
+        "Notes": "Large crowd, ran out of ice"
+      },
+      "DrinkSales": [
+        {
+          "Drink Name": "Green Apple Lemonade",
+          "Cost Per Drink": 1.3,
+          "Quantity Sold": 210,
+          "Total Cost": 273.0
+        },
+        {
+          "Drink Name": "Regular Lemonade",
+          "Cost Per Drink": 0.96,
+          "Quantity Sold": 180,
+          "Total Cost": 172.8
+        }
+      ],
+      "EmployeeTracker": [
+        {
+          "Employee": "Jamie",
+          "Hours Worked": 10,
+          "Hourly Rate": 16.0,
+          "Total Pay": 160.0
+        },
+        {
+          "Employee": "Taylor",
+          "Hours Worked": 9,
+          "Hourly Rate": 15.0,
+          "Total Pay": 135.0
+        }
+      ],
+      "AdditionalFees": [
+        {
+          "Description": "Cooler Rental",
+          "Category": "Equipment",
+          "Amount": 30.0,
+          "Notes": "3 coolers"
+        }
+      ],
+      "Discounts": [
+        {
+          "Type": "Student Promo",
+          "Description": "15% off",
+          "Amount": 35.0
+        }
+      ],
+      "SupplyCosts": [
+        {
+          "Item": "Ice",
+          "Quantity": 100,
+          "Cost": 50.0
+        },
+        {
+          "Item": "Cups",
+          "Quantity": 400,
+          "Cost": 40.0
+        }
+      ],
+      "TipTracker": [
+        {
+          "Employee": "Jamie",
+          "Tip Amount": 20.0
+        },
+        {
+          "Employee": "Taylor",
+          "Tip Amount": 15.0
+        }
+      ],
+      "EventRunnerFees": [
+        {
+          "Runner": "Riley",
+          "Fee": 45.0
+        }
+      ]
+    },
+    {
+      "EventID": 5,
+      "EventInfo": {
+        "Event Name": "Winter Market",
+        "Event Date": "2025-12-10",
+        "Event Color": "White",
+        "Coordinator": "Logan",
+        "Status": "Upcoming",
+        "Location": "Downtown Pavilion",
+        "Notes": "Expecting cold weather, bring heaters"
+      },
+      "DrinkSales": [
+        {
+          "Drink Name": "Hot Lemon Tea",
+          "Cost Per Drink": 1.5,
+          "Quantity Sold": null,
+          "Total Cost": null
+        },
+        {
+          "Drink Name": "Spiced Lemonade",
+          "Cost Per Drink": 1.4,
+          "Quantity Sold": null,
+          "Total Cost": null
+        }
+      ],
+      "EmployeeTracker": [
+        {
+          "Employee": "Alex",
+          "Hours Worked": null,
+          "Hourly Rate": 15.0,
+          "Total Pay": null
+        }
+      ],
+      "AdditionalFees": [
+        {
+          "Description": "Heater Rental",
+          "Category": "Rental",
+          "Amount": 60.0,
+          "Notes": null
+        }
+      ],
+      "Discounts": [
+        {
+          "Type": null,
+          "Description": null,
+          "Amount": null
+        }
+      ],
+      "SupplyCosts": [
+        {
+          "Item": "Cups",
+          "Quantity": 300,
+          "Cost": 30.0
+        },
+        {
+          "Item": "Tea Bags",
+          "Quantity": 200,
+          "Cost": 20.0
+        }
+      ],
+      "TipTracker": [],
+      "EventRunnerFees": [
+        {
+          "Runner": "Logan",
+          "Fee": 40.0
+        }
+      ]
+    }
+  ]
+}
