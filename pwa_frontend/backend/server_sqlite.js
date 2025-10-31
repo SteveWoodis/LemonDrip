@@ -45,10 +45,62 @@ let db;
   console.log("✅ Connected to SQLite database", dbPath);
 })();
 
+let dbc;
+(async () => {
+  dbc = await open({
+    filename: dbPath,
+    driver: sqlite3.Database
+  });
+  console.log("✅ Connected to SQLite database", dbPath);
+
+  // Create the FormTemplate table if it doesn't exist
+  await dbc.exec(`
+    CREATE TABLE IF NOT EXISTS FormTemplate (
+      TemplateID   INTEGER PRIMARY KEY AUTOINCREMENT,
+      TemplateName TEXT NOT NULL,
+      Fields       TEXT,
+      CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+})();
+(async () => {
+  dbc = await open({
+    filename: dbPath,
+    driver: sqlite3.Database
+  });
+})();
+
+
+
 // -------------------------------
 // 🧭 Root test route
 // -------------------------------
 app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
+
+
+// ---------------------------------
+//GET for company
+// ---------------------------------
+app.get("/api/company", async(req,res) => {
+	try{
+		const { id } = req.query;
+		
+		 let sql = "SELECT * FROM Company";
+    const params = [];
+
+    if (id) {
+      sql += " WHERE CompanyID = ?";
+      params.push(id);
+    }
+
+    const rows = await db.all(sql, params);
+    res.json({ Companies: rows });
+  } catch (err) {
+    console.error("❌ Error fetching company data:", err);
+    res.status(500).json({ error: "Failed to read company data" });
+  }
+});
+		
 
 // -------------------------------
 // 🔍 GET: All events (EventInfo only)
@@ -184,6 +236,35 @@ app.get("/api/formtemplates", async (req, res) => {
 // -------------------------------
 // ➕ POST: Add new event
 // -------------------------------
+
+app.post("/api/company", async(req,res) => {
+	try {
+		const c = req.body;
+		const sql = `
+		INSERT INTO Company
+		(companyName, address, city, state, postalCode, phone, country, vendorCategory)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`;
+		const params = [
+			c.companyName,
+			c.address || null,
+			c.city || null,
+			c.state || null,
+			c.postalCode || null,
+			c.phone || null,
+			c.country || null,
+			c.vendorCategory
+		]
+		
+		const result = await db.run(sql,params);
+		res.json({success: true, companyID: result.lastID });
+	} catch (err) {
+		console.error("Error inserting Company", err);
+		res.status(500).json({ error: "Failed to save company." });
+	}
+	
+});
+
 app.post("/api/events", async (req, res) => {
   try {
     const e = req.body;

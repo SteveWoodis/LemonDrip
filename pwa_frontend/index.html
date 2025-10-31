@@ -13,7 +13,7 @@
       <button id="btnSearch" onclick="navigateTo('searchSection')">🔍 Search</button>
       <button id="btnAdd" onclick="navigateTo('addSection')">➕ Add Event</button>
       <button id="btnEdit" onclick="navigateTo('editSection')">✏️ Edit Event</button>
-	  <button id="btnEdit" onclick="navigateTo('companySection)">Add Company</button>
+	  <button id="btnEdit" onclick="navigateTo('companySection')">Add Company</button>
 	  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
 	  <button id="btnList" onclick="navigateTo('listEventSection')"> List All Events</button>
       <button onclick="clearSearch()">🧹 Reset Page</button>
@@ -56,12 +56,25 @@
     <!-- The fields for this form will be dynamically injected here by rebuildAddEventForm() -->
   </form>
 </section>
+<!-----------------------Company Section ------------------------>
 <section id="companySection" class="card hidden">
+<h2>Add Company Details</h2>
+    <div class="company-fields">
+      <input type="text" id="companyName" placeholder="Company Name">
+      <input type="text" id="address" placeholder="Street Address">
+      <input type="text" id="city" placeholder="City">
+	  <input type="text" id="state" placeholder="State">
+	  <input type="text" id="postalCode" placeholder="Postal Code">
+	  <input type="text" id="phone" placeholder="Phone">
+	  <input type="text" id="vendorCategory" placeholder="Vendor Category">
+      <button type="button" onclick="addCompany()">Submit</button>
+	  <button type="button" onclick="clearEventForm()">Clear</button>
+    </div>
 
 </section>
 
 <!-- 🧩 Design Event Form Section -->
-<section id="designFormSection" class="card hidden">
+<section id="designFormSection" class="card hidden">S
   <h2>🧩 Design Event Form</h2>
 	<!-- 🧩 Template Activation Controls -->
   <div class="template-activation">
@@ -106,6 +119,8 @@
     <button type="button" onclick="clearTemplate()">🧹 Clear</button>
   </div>
 </section>
+<!--------------------List Events Section --------------------->
+
 <section id="listEvents" class="card hidden">
 	<div id="listEvents" style="display:none;">
 		<h2> Hello </h2>

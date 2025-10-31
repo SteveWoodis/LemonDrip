@@ -161,6 +161,53 @@ function clearEventForm() {
   });
 }
 
+//---------------
+// Add Company - get company information for potential SASS down the road.
+//----------------
+async function addCompany(event) {
+ const data = {
+    companyName: document.getElementById("companyName").value.trim(),
+    address: document.getElementById("address").value.trim(),
+    city: document.getElementById("city").value.trim(),
+    state: document.getElementById("state").value.trim(),
+    postalCode: document.getElementById("postalCode").value.trim(),
+    phone: document.getElementById("phone").value.trim(),
+    vendorCategory: document.getElementById("vendorCategory").value.trim()
+  };
+
+  if (!data.companyName) {
+    alert("Company name is required.");
+    return;
+  }
+
+  try {
+    const res = await fetch("http://localhost:3000/api/company", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const result = await res.json();
+    console.log("✅ Company saved:", result);
+    alert("Company added successfully!");
+  } catch (err) {
+    console.error("❌ Error adding company:", err);
+    alert("Failed to add company. Check console for details.");
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
 
 // ---------------------------
 // ✅ Build Expanded Event Details + Dashboard Button

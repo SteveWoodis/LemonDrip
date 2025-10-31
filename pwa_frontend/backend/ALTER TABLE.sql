@@ -1,0 +1,1 @@
+ALTER TABLE EventInfo ADD COLUMN CompanyID INTEGER REFERENCES Company(CompanyID);
