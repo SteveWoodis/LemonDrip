@@ -10,33 +10,13 @@
   <header>
     <h1>🍋 LemonDrip Event Manager</h1>
     <div class="header-buttons">
-      <button id="btnSearch" onclick="navigateTo('searchSection')">🔍 Search</button>
       <button id="btnAdd" onclick="navigateTo('addSection')">➕ Add Event</button>
-      <button id="btnEdit" onclick="navigateTo('editSection')">✏️ Edit Event</button>
-	  <button id="btnEdit" onclick="navigateTo('companySection')">Add Company</button>
+      <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
 	  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
-	  <button id="btnList" onclick="navigateTo('listEventSection')"> List All Events</button>
+	  <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
       <button onclick="clearSearch()">🧹 Reset Page</button>
     </div>
   </header>
-
-  <!-- 🔍 Search Section -->
-  <section id="searchSection" class="card">
-    <h2>Search Events</h2>
-    <div class="search-fields">
-      <input type="text" id="searchName" placeholder="Event Name">
-      <input type="date" id="searchDate">
-      <input type="text" id="searchID" placeholder="Event ID">
-      <button type="button" onclick="searchEvents()">Search</button>
-	  <button type="button" onclick="clearSearch()">Clear Search</button>
-    </div>
-
-    <div id="summaryCard" style="display:none;">
-      <p id="summaryText"></p>
-    </div>
-
-    <div id="searchResults"></div>
-  </section>
 
   <!-- ➕ Add Event Section -->
  <section id="addSection" class="card hidden">
@@ -58,7 +38,7 @@
 </section>
 <!-----------------------Company Section ------------------------>
 <section id="companySection" class="card hidden">
-<h2>Add Company Details</h2>
+<h2>Register Your Company</h2>
     <div class="company-fields">
       <input type="text" id="companyName" placeholder="Company Name">
       <input type="text" id="address" placeholder="Street Address">
@@ -74,7 +54,7 @@
 </section>
 
 <!-- 🧩 Design Event Form Section -->
-<section id="designFormSection" class="card hidden">S
+<section id="designFormSection" class="card hidden">
   <h2>🧩 Design Event Form</h2>
 	<!-- 🧩 Template Activation Controls -->
   <div class="template-activation">
@@ -82,7 +62,7 @@
     <select id="templateSelector">
       <option value="">-- Select Template --</option>
     </select>
-    <button type="button" onclick="activateTemplate()">⚡ Activate</button>
+    <button type="button" onclick="useSelectedTemplate()">⚡ Activate</button>
   </div>
 
   <div class="form-builder-controls">
@@ -116,16 +96,23 @@
 
   <div class="form-buttons">
     <button type="button" onclick="saveTemplate()">💾 Save Template</button>
-    <button type="button" onclick="clearTemplate()">🧹 Clear</button>
+    <button type="button" onclick="clearEventForm()">🧹 Clear</button>
   </div>
 </section>
-<!--------------------List Events Section --------------------->
 
-<section id="listEvents" class="card hidden">
-	<div id="listEvents" style="display:none;">
-		<h2> Hello </h2>
-	</div>
+
+<section id="manageSection" class="card hidden">
+  <h2>Manage Events</h2>
+  <div class="search-fields">
+    <input type="text" id="manageSearchName" placeholder="Event Name">
+    <input type="date" id="manageSearchDate">
+    <input type="text" id="manageSearchID" placeholder="Event ID">
+    <button type="button" onclick="manageSearch()">🔍 Search</button>
+    <button type="button" onclick="loadAllEvents()">📋 List All</button>
+  </div>
+  <div id="manageResults"></div>
 </section>
+
   
   <!-- 📊 Dashboard Section -->
   <section id="dashboardSection" class="card hidden">

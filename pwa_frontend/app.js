@@ -6,7 +6,7 @@
 // formTemplate - Object to store Templates created by Design Event action
 // ---------------------------
 let activeEvent = null;
-let currentAction = "search";
+let currentAction = "manage";
 let events = [];
 let formTemplate = { templateName: "Custom Event Form", fields: [] };
 
@@ -25,21 +25,26 @@ function saveAppState() {
 
 function loadAppState() {
   const saved = localStorage.getItem("lemon_app_state");
-  if (!saved) return;
+  if (!saved) {
+    // default: show Manage Events
+    navigateTo("manageSection");
+    return;
+  }
   try {
     const state = JSON.parse(saved);
-    // ✅ Replaced old showSection() call with navigateTo()
-    if (state.activeAction) navigateTo(state.activeAction + "Section");
-    if (state.activeEvent) {
-      activeEvent = state.activeEvent;
-      loadEventIntoDashboard(activeEvent);
-      saveAppState();
+    const sectionId = (state.activeAction ? state.activeAction : "manage") + "Section";
+    if (document.getElementById(sectionId)) {
+      navigateTo(sectionId);
+    } else {
+      navigateTo("manageSection");
     }
-    if (state.editMode) toggleEditMode(true);
+    // ...rest unchanged
   } catch (err) {
     console.warn("⚠️ Failed to restore app state:", err);
+    navigateTo("manageSection");
   }
 }
+
 
 // Handle browser back/forward
 window.addEventListener("popstate", (event) => {
@@ -98,9 +103,10 @@ function navigateTo(sectionId) {
 // 🟡 LemonDrip Expandable Table Builder
 // modified 10-17-25 8:30 am.
 // ---------------------------
-function buildTableHTML(results) {
-  const container = document.getElementById('searchResults') || document.body;
+function buildTableHTML(results, containerId = "searchResults") {
+  const container = document.getElementById(containerId) || document.body;
   container.innerHTML = '';
+
   if (!results.length) {
     container.textContent = 'No matching events found.';
     return;
@@ -125,13 +131,18 @@ function buildTableHTML(results) {
       td.textContent = val ?? '';
     });
 
-    // ✅ NEW: fetch full event details (incl. sub-tables) from the DB on click
     tr.addEventListener('click', async () => {
-      try {
-        const res = await fetch(`http://localhost:3000/api/events/${event["Event ID"]}`);
+  try {
+    const eventId = event["Event ID"] || event.EventID;
+    if (!eventId) {
+      console.warn("⚠️ No EventID found for clicked row:", event);
+      alert("Event ID missing — cannot load details.");
+      return;
+    }
+
+        const res = await fetch(`http://localhost:3000/api/events/${eventId}`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const fullEvent = await res.json();
-        console.log("Here is the data", fullEvent);
         loadEventIntoDashboard(fullEvent);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
@@ -142,6 +153,7 @@ function buildTableHTML(results) {
 
   container.appendChild(table);
 }
+
 
 function clearEventForm() {
   const formEl = document.getElementById('eventForm');
@@ -160,6 +172,53 @@ function clearEventForm() {
     }
   });
 }
+
+			
+// List all
+async function loadAllEvents() {
+  const res = await fetch("http://localhost:3000/api/events");
+  const data = await res.json();
+  const events = data.Events || [];
+  const formatted = events.map(e => ({
+  "Event ID": e["Event ID"] ?? e.EventID,
+  "Event Name": e["Event Name"] ?? e.EventName,
+  "Event Date": e["Event Date"] ?? e.EventDate,
+  "Event Coordinator": e["Event Coordinator"] ?? e.EventCoordinator,
+  "Event Location": e["Event Location"] ?? e.Location,
+  "Status": e["Event Status"] ?? e.Status
+}));
+  buildTableHTML(formatted, "manageResults");
+}
+
+// Search
+async function manageSearch() {
+  const name = document.getElementById("manageSearchName").value.trim();
+  const date = document.getElementById("manageSearchDate").value.trim();
+  const id   = document.getElementById("manageSearchID").value.trim();
+
+  const qs = new URLSearchParams();
+  if (name) qs.set("name", name);
+  if (date) qs.set("date", date);
+  if (id)   qs.set("id", id);
+
+  const url = qs.toString()
+    ? `http://localhost:3000/api/events?${qs.toString()}`
+    : `http://localhost:3000/api/events`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+  const events = data.Events || [];
+  const formatted = events.map(e => ({
+  "Event ID": e["Event ID"] ?? e.EventID,
+  "Event Name": e["Event Name"] ?? e.EventName,
+  "Event Date": e["Event Date"] ?? e.EventDate,
+  "Event Coordinator": e["Event Coordinator"] ?? e.EventCoordinator,
+  "Event Location": e["Event Location"] ?? e.Location,
+  "Status": e["Event Status"] ?? e.Status
+}));
+  buildTableHTML(formatted, "manageResults");
+}
+
 
 //---------------
 // Add Company - get company information for potential SASS down the road.
@@ -377,37 +436,35 @@ async function editEvent(event) {
 // modified by: Steve Woodis 10-17-25
 // ---------------------------
 
+// ---------------------------
+// 🔍 Search Events (Safe for Manage Events)
+// ---------------------------
 async function searchEvents() {
-  const name = document.getElementById("searchName").value.trim().toLowerCase();
-  const date = document.getElementById("searchDate").value.trim();
-  const id = document.getElementById("searchID").value.trim();
+  const nameEl = document.getElementById("searchName");
+  const dateEl = document.getElementById("searchDate");
+  const idEl   = document.getElementById("searchID");
 
-  let results = [];
+  const name = nameEl ? nameEl.value.trim().toLowerCase() : "";
+  const date = dateEl ? dateEl.value.trim() : "";
+  const id   = idEl   ? idEl.value.trim() : "";
 
-  if (Array.isArray(window.events) && window.events.length > 0) {
-    results = window.events.filter(e => {
-      // handle both EventInfo and flat structures
-      const info = e.EventInfo || e;
-
-      const eventName = (info["Event Name"] || "").toLowerCase();
-      const eventDate = info["Event Date"] || "";
-      const eventID = e.EventID?.toString() || e.EventInfo?.["Event ID"]?.toString() || "";
-
-      return (
-        (!name || eventName.includes(name)) &&
-        (!date || eventDate === date) &&
-        (!id || eventID.includes(id))
-      );
-    });
+  // Load events if not already loaded
+  if (!Array.isArray(window.events) || !window.events.length) {
+    await loadEvents();
   }
 
-  const summaryText = document.getElementById("summaryText");
-  if (summaryText) {
-    summaryText.textContent = `${results.length} event${results.length !== 1 ? "s" : ""} found`;
-    document.getElementById("summaryCard").style.display = "block";
-  }
+  let results = window.events.filter(e => {
+    const info = e.EventInfo || e;
+    const eventName = (info["Event Name"] || "").toLowerCase();
+    const eventDate = info["Event Date"] || "";
+    const eventID = e.EventID?.toString() || info["Event ID"]?.toString() || "";
+    return (
+      (!name || eventName.includes(name)) &&
+      (!date || eventDate === date) &&
+      (!id || eventID.includes(id))
+    );
+  });
 
-  // Build the table-friendly object list
   const formatted = results.map(e => {
     const info = e.EventInfo || e;
     return {
@@ -416,12 +473,21 @@ async function searchEvents() {
       "Event Date": info["Event Date"] || "",
       "Event Coordinator": info["Event Coordinator"] || info["Coordinator"] || "",
       "Event Location": info["Event Location"] || info["Location"] || "",
-	  "Event Host": info["Event Host"] || info["Host"] || ""
+      "Event Host": info["Event Host"] || info["Host"] || ""
     };
   });
 
-  buildTableHTML(formatted);
-  console.log(`Rendered ${formatted.length} search result(s).`);
+  // 🔹 Decide where to render results
+  const targetContainer = document.getElementById("manageResults") 
+                       || document.getElementById("searchResults");
+
+  if (!targetContainer) {
+    console.warn("⚠️ No valid container (#manageResults or #searchResults) found for search results.");
+    return;
+  }
+
+  buildTableHTML(formatted, targetContainer.id);
+  console.log(`Rendered ${formatted.length} event(s) into ${targetContainer.id}.`);
 }
 
 
@@ -439,47 +505,52 @@ async function submitEvent() {
     newEvent[key] = input.value.trim();
   });
 
-  
-  const {EventName, EventDate} = newEvent;
-  
   if (!newEvent["Event Name"] || !newEvent["Event Date"]) {
     alert("Please provide at least an event name and date.");
     return;
   }
 
-	console.log("sending data to the backend.", JSON.stringify(newEvent, null, 2));
+  console.log("📤 Sending data to backend:", JSON.stringify(newEvent, null, 2));
+
   try {
-	  const response = await fetch("http://localhost:3000/api/events", {
+    const response = await fetch("http://localhost:3000/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newEvent)
     });
-	
-	console.log("Server response", response.status);
-	
+
+    console.log("Server response", response.status);
+
     if (!response.ok) throw new Error(`Server error ${response.status}`);
     const result = await response.json();
     console.log("✅ Saved:", result);
     alert("New event added successfully!");
-	
-	clearEventForm();
-	
-	await loadEvents();
-    navigateTo('searchSection');
-    searchEvents();
+
+    clearEventForm();
+    await loadEvents();
+
+    // ✅ Redirect user to Manage Events if available
+    if (document.getElementById("manageSection")) {
+      navigateTo("manageSection");
+      loadAllEvents();
+    } else {
+      // fallback for legacy mode
+      navigateTo("searchSection");
+      searchEvents();
+    }
+
   } catch (err) {
     console.error("❌ Error saving event:", err.message || err);
-	alert("Failed to save event. See console for details.");
-	}
-    
+    alert("Failed to save event. See console for details.");
   }
+}
 
 
 async function loadEvents() {
   try {
     const res = await fetch("http://localhost:3000/api/events");
-    const data = await res.json();
-    window.events = data.Events || [];
+    const newEvent = await res.json();
+    window.events = newEvent.Events || [];
     console.log(`✅ Loaded ${window.events.length} events from backend`);
   } catch (err) {
     console.error("❌ Failed to load events:", err);
@@ -771,7 +842,7 @@ function rebuildAddEventForm(template) {
   btnContainer.classList.add("form-buttons");
   btnContainer.innerHTML = `
     <button type="submit">💾 Save New Event</button>
-    <button type="button" onclick="clearSearch()">⬅️ Cancel</button>
+    <button type="button" onclick="clearEventForm()">⬅️ Cancel</button>
   `;
   formContainer.appendChild(btnContainer);
 }

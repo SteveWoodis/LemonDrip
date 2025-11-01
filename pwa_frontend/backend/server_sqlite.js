@@ -37,13 +37,6 @@ let db;
     )
   `);
 })();
-(async () => {
-  db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
-  console.log("✅ Connected to SQLite database", dbPath);
-})();
 
 let dbc;
 (async () => {
@@ -110,7 +103,7 @@ app.get("/api/events", async (req, res) => {
     const { name, date, id } = req.query;
     let sql = `
 	  SELECT 
-		EventID,
+		EventID 	  AS "Event ID",
 		EventName     AS "Event Name",
 		EventDate     AS "Event Date",
 		EventColor    AS "Event Color",
@@ -184,20 +177,20 @@ app.get("/api/events/:id", async (req, res) => {
       "Event Date": event.EventDate,
 	  "Application Date": event.ApplicationDate,
       "Event Color": event.EventColor,
-      "EventCoordinator": event.EventCoordinator,
+      "Event Coordinator": event.EventCoordinator,
 	  "Event Fee": event.EventFee,
 	  "Event Time": event.EventTime,
 	  "Event Permits": event.EventPermits,
 	  "Event Employees": event.EventEmployees,
 	  "Event Rating": event.EventRating,
 	  "Event Host": event.EventHost,
-      "Status": event.Status,
-      "Location": event.Location,
+      "Event Status": event.Status,
+      "Event Location": event.Location,
       "Event Notes": event.Notes
     };
 
     // 6️⃣ Return full event object
-    res.json({ EventInfo, ...subData });
+    res.json({ EventInfo, subData });
 
   } catch (err) {
     console.error("❌ Error fetching event details:", err.message);
