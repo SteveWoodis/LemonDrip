@@ -286,7 +286,8 @@ function loadEventIntoDashboard(event) {
     <h2>${info["Event Name"] || "Unnamed Event"}</h2>
     <p><strong>Date:</strong> ${info["Event Date"] || "N/A"}</p>
     <p><strong>Application Date:</strong> ${info["App Date"] || "N/A"}</p>
-<p><strong>Coordinator:</strong> ${info["Event Coordinator"] || "N/A"}</p>
+    <p><strong>Event Color:</strong> ${info["Event Color"] || "N/A"}</p>
+    <p><strong>Coordinator:</strong> ${info["Event Coordinator"] || "N/A"}</p>
     <p><strong>Event Fee:</strong> ${info["Event Fee"] || "N/A"}</p>
     <p><strong>Location:</strong> ${info["Event Location"] || "N/A"}</p>
     <p><strong>Time:</strong> ${info["Event Time(s)"] || "N/A"}</p>
@@ -390,7 +391,7 @@ async function editEvent(event) {
   }
 
   // 🔹 Rebuild the form from the template
-  rebuildAddEventForm(stripEventColorFromTemplate(template));
+  rebuildAddEventForm(template);
 
   // 🔹 Loop through all inputs and prefill with existing event data
   const formContainer = document.getElementById('eventForm');
@@ -735,13 +736,6 @@ async function populateTemplateDropdown() {
 
 
 // ⚡ When user picks a template
-// Helper to strip 'Event Color' field from templates defensively
-function stripEventColorFromTemplate(tpl){
-  if (!tpl || !Array.isArray(tpl.fields)) return tpl;
-  tpl.fields = tpl.fields.filter(f => !(f && typeof f.label === "string" && /^event\s*color$/i.test(f.label)));
-  return tpl;
-}
-
 function useSelectedTemplate() {
   const selected = document.getElementById("templateSelect").value;
   if (!selected) {
@@ -759,7 +753,7 @@ console.log('Template value', selected);
   
   
   console.log("📋 Loading template into Add Event form:", template);
-  rebuildAddEventForm(stripEventColorFromTemplate(template));
+  rebuildAddEventForm(template);
   alert(`✅ Loaded template: "${template.templateName}"`);
 }
 
@@ -781,7 +775,7 @@ function activateTemplate() {
 		return;
 	  }
   console.log("Activating template:", tpl.templateName);
-  rebuildAddEventForm(stripEventColorFromTemplate(tpl));
+  rebuildAddEventForm(tpl);
   alert(`✅ "${tpl.TemplateName}" activated!`);
 }
 
@@ -797,9 +791,7 @@ function rebuildAddEventForm(template) {
   }
 
   template.fields.forEach(field => {
-        // Skip deprecated "Event Color"
-    if (field && typeof field.label === "string" && /^event\s*color$/i.test(field.label)) { return; }
-// Create label
+    // Create label
     const labelEl = document.createElement("label");
     labelEl.textContent = field.label + (field.required ? " *" : "");
 

@@ -106,7 +106,8 @@ app.get("/api/events", async (req, res) => {
 		EventID 	  AS "Event ID",
 		EventName     AS "Event Name",
 		EventDate     AS "Event Date",
-EventCoordinator   AS "Event Coordinator",
+		EventColor    AS "Event Color",
+		EventCoordinator   AS "Event Coordinator",
 		Status        AS "Event Status",
 		Location      AS "Event Location",
 		Notes         AS "Event Notes"
@@ -175,7 +176,8 @@ app.get("/api/events/:id", async (req, res) => {
       "Event Name": event.EventName,
       "Event Date": event.EventDate,
 	  "Application Date": event.ApplicationDate,
-"Event Coordinator": event.EventCoordinator,
+      "Event Color": event.EventColor,
+      "Event Coordinator": event.EventCoordinator,
 	  "Event Fee": event.EventFee,
 	  "Event Time": event.EventTime,
 	  "Event Permits": event.EventPermits,
@@ -262,14 +264,15 @@ app.post("/api/events", async (req, res) => {
 	console.log("Received new Event payload:", req.body);
 	
     const sql = `
-      INSERT INTO EventInfo (EventName, EventDate, ApplicationDate, EventFee, EventCoordinator, EventTime, EventPermits, EventEmployees, EventRating, EventHost, Status, Location, Notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      INSERT INTO EventInfo (EventName, EventDate, ApplicationDate, EventColor, EventFee, EventCoordinator, EventTime, EventPermits, EventEmployees, EventRating, EventHost, Status, Location, Notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?)
     `;
     const params = [
       e["Event Name"], 
 	  e["Event Date"], 
 	  e["Application Date"] || null, 
-	  e["Event Coordinator"] || e["Coordinator"] || null, 
+	  e["Event Color"] || null,
+      e["Event Coordinator"] || e["Coordinator"] || null, 
 	  e["Event Fee"] || null, 
 	  e["Event Time"] || null, 
 	  e["Event Permits"] || null, 
