@@ -286,7 +286,7 @@ function loadEventIntoDashboard(event) {
     <h2>${info["Event Name"] || "Unnamed Event"}</h2>
     <p><strong>Date:</strong> ${info["Event Date"] || "N/A"}</p>
     <p><strong>Application Date:</strong> ${info["App Date"] || "N/A"}</p>
-<p><strong>Coordinator:</strong> ${info["Event Coordinator"] || "N/A"}</p>
+	<p><strong>Coordinator:</strong> ${info["Event Coordinator"] || "N/A"}</p>
     <p><strong>Event Fee:</strong> ${info["Event Fee"] || "N/A"}</p>
     <p><strong>Location:</strong> ${info["Event Location"] || "N/A"}</p>
     <p><strong>Time:</strong> ${info["Event Time(s)"] || "N/A"}</p>
@@ -368,6 +368,42 @@ function loadEventIntoDashboard(event) {
   editBtn.classList.add("edit-btn");
   editBtn.addEventListener("click", () => editEvent(event));
   summary.appendChild(editBtn);
+
+	const salesBtn = document.createElement("button");
+	salesBtn.textContent = "💳 Load Square Sales";
+	salesBtn.classList.add("edit-btn");
+	salesBtn.addEventListener("click", async () => {
+  const id = event.EventID || event.EventInfo?.["Event ID"];
+  if (!id) return alert("Missing EventID");
+
+  try {
+    const res = await fetch(`http://localhost:3000/api/square/sales/${id}`);
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const payload = await res.json();
+	
+	 console.log("📦 Square API payload:", JSON.stringify(payload, null, 2));
+	
+    let el = document.getElementById("dashSquareInfo");
+    if (!el) {
+      el = document.createElement("p");
+      el.id = "dashSquareInfo";
+      summary.appendChild(el);
+    }
+    const t = payload.totals || {};
+    el.innerHTML = `
+      <strong>Square Sales:</strong>
+      Gross $${(t.gross ?? 0).toFixed(2)} |
+      Tips $${(t.tips ?? 0).toFixed(2)} |
+      Refunds $${(t.refunds ?? 0).toFixed(2)} |
+      Net $${(t.netSales ?? 0).toFixed(2)} |
+      Collected $${(t.totalCollected ?? 0).toFixed(2)}
+    `;
+  } catch (err) {
+    console.error(err);
+    alert("Failed to pull Square sales. See console.");
+  }
+});
+summary.appendChild(salesBtn);
 
   dash.scrollIntoView({ behavior: "smooth" });
 }
@@ -497,6 +533,29 @@ async function submitEvent() {
     alert("Please provide at least an event name and date.");
     return;
   }
+  
+  // ⬇️ Add duplicate-location check here
+try {
+  const res = await fetch("http://localhost:3000/api/events");
+  const data = await res.json();
+  const events = data.Events || [];
+
+  const conflict = events.find(ev => {
+    const info = ev.EventInfo || ev;
+    const dateMatch = (info["Event Date"] || "").trim() === newEvent["Event Date"];
+    const locMatch  = (info["Event Location"] || info["Location"] || "").trim().toLowerCase()
+                      === (newEvent["Event Location"] || "").trim().toLowerCase();
+    return dateMatch && locMatch;
+  });
+
+  if (conflict) {
+    alert(`⚠️ Warning: You already have an event at "${newEvent["Event Location"]}" on ${newEvent["Event Date"]}.`);
+    return;
+  }
+} catch (err) {
+  console.warn("Could not check duplicates:", err);
+}
+// ⬆️ End of duplicate-location checkS
 
   console.log("📤 Sending data to backend:", JSON.stringify(newEvent, null, 2));
 

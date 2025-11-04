@@ -6,7 +6,14 @@ import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import path from "path";
 import cors from "cors";
+import dotenv from "dotenv";
 import { fileURLToPath } from "url";
+
+
+dotenv.config();
+
+console.log("🧩 Using Square token prefix:", process.env.SQUARE_ACCESS_TOKEN?.slice(0, 10));
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +27,9 @@ app.use(express.json());
 // -------------------------------
 const dbPath = path.join(__dirname, "./sandbox_events.db");
 let db;
-(async () => {
+
+
+async function initDB(){
   db = await open({
     filename: dbPath,
     driver: sqlite3.Database
@@ -36,34 +45,39 @@ let db;
       CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-})();
 
-let dbc;
-(async () => {
-  dbc = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
-  console.log("✅ Connected to SQLite database", dbPath);
+	await db.exec (`
+		CREATE TABLE IF NOT EXISTS SalesSummary (
+		SalesID	INTEGER PRIMARY KEY AUTOINCREMENT,
+		EventID	INTEGER NOT NULL UNIQUE,
+		SquareTxnID	TEXT,
+		GrossSales 	REAL,
+		NetSales	REAL,
+		Discounts 	REAL,
+		Refunds		REAL,
+		Tips		REAL,
+		TotalCollected	REAL,
+		DatePulledAt DATETIME DEAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
+		);
+	
+	`);
+	 console.log("✅ Tables ready");
+	}
 
-  // Create the FormTemplate table if it doesn't exist
-  await dbc.exec(`
-    CREATE TABLE IF NOT EXISTS FormTemplate (
-      TemplateID   INTEGER PRIMARY KEY AUTOINCREMENT,
-      TemplateName TEXT NOT NULL,
-      Fields       TEXT,
-      CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-})();
-(async () => {
-  dbc = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
-})();
+	// ✅ Wait until DB ready before listening
+	initDB()
+	  .then(() => {
+		const PORT = 3000;
+		app.listen(PORT, () => console.log(`🚀 SQLite backend running at http://localhost:${PORT}`));
+	  })
+	  .catch(err => {
+		console.error("❌ DB initialization failed:", err);
+		process.exit(1);
+	  });
 
-
+	// ✅ Export db for other routes in the same file
+	export { db };
 
 // -------------------------------
 // 🧭 Root test route
@@ -315,7 +329,88 @@ app.post('/api/formtemplates', async (req, res) => {
     res.status(500).json({ error: 'Database write failed.' });
   }
 });
+// 📦 Square REST pull without SDK
+app.get("/api/square/sales/:eventId", async (req, res) => {
+  const eventId = req.params.eventId;
 
+  try {
+    // 1) Find the event (we'll anchor by date)
+    const ev = await db.get("SELECT EventID, EventDate, Location FROM EventInfo WHERE EventID = ?", [eventId]);
+    if (!ev) return res.status(404).json({ error: "Event not found" });
+
+    // 2) Build date range (same-day window; adjust if your events span days)
+    const start = `${ev.EventDate}T00:00:00Z`;
+    const end   = `${ev.EventDate}T23:59:59Z`;
+
+    // 3) Call Square Payments API (Sandbox URL shown; swap to production when ready)
+    const url = new URL("https://connect.squareupsandbox.com/v2/payments");
+    url.searchParams.set("begin_time", start);
+    url.searchParams.set("end_time", end);
+    // You can also filter by location_id if you have it.
+
+    const resp = await fetch(url.toString(), {
+      headers: {
+        "Authorization": `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+        "Accept": "application/json"
+      }
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      console.error("Square API error:", resp.status, txt);
+      return res.status(resp.status).json({ error: "Square API error", detail: txt });
+    }
+
+    const data = await resp.json();
+    const payments = data.payments || [];
+	
+	console.log("Raw Square API data:", JSON.stringify(data, null, 2));
+
+    // 4) Aggregate money amounts (Square returns in cents)
+    const sum = (arr, pick) =>
+      arr.reduce((acc, p) => acc + (pick(p) || 0), 0);
+
+    const grossCents = sum(payments, p => p.amount_money?.amount);
+    const tipsCents  = sum(payments, p => p.tip_money?.amount);
+    const refundsCents = sum(payments, p => p.refunds?.reduce((rAcc, r) => rAcc + (r.amount_money?.amount || 0), 0));
+
+    // Discounts and net can be estimated depending on your Square flow.
+    // For many flows, Net ≈ Gross - Refunds; TotalCollected ≈ Gross + Tips - Refunds.
+    const gross = grossCents / 100;
+    const tips  = tipsCents / 100;
+    const refunds = refundsCents / 100;
+    const discounts = 0; // Fill if you later parse orders for discounts.
+    const netSales = gross - refunds - discounts;
+    const totalCollected = netSales + tips;
+
+    // 5) Upsert into SalesSummary (one row per EventID)
+    await db.run(
+      `
+      INSERT INTO SalesSummary (EventID, GrossSales, Tips, Refunds, Discounts, NetSales, TotalCollected)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(EventID) DO UPDATE SET
+        GrossSales = excluded.GrossSales,
+        Tips = excluded.Tips,
+        Refunds = excluded.Refunds,
+        Discounts = excluded.Discounts,
+        NetSales = excluded.NetSales,
+        TotalCollected = excluded.TotalCollected,
+        DataPulledAt = CURRENT_TIMESTAMP
+      `,
+      [ev.EventID, gross, tips, refunds, discounts, netSales, totalCollected]
+    );
+
+    res.json({
+      success: true,
+      EventID: ev.EventID,
+      date: ev.EventDate,
+      totals: { gross, tips, refunds, discounts, netSales, totalCollected }
+    });
+  } catch (err) {
+    console.error("❌ /api/square/sales error:", err);
+    res.status(500).json({ error: "Failed to pull Square sales" });
+  }
+});
 
 const PORT = 3000;
 app.listen(PORT, () => console.log(`🚀 SQLite backend running at http://localhost:${PORT}`));
