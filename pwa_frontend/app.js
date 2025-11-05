@@ -383,6 +383,7 @@ function loadEventIntoDashboard(event) {
 	
 	 console.log("📦 Square API payload:", JSON.stringify(payload, null, 2));
 	
+	
     let el = document.getElementById("dashSquareInfo");
     if (!el) {
       el = document.createElement("p");

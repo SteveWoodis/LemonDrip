@@ -6,12 +6,12 @@ import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import path from "path";
 import cors from "cors";
+import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
-
+import { fetchSquareLocations, getSquareLocationIdByName } from "./square_locations.js";
 
 dotenv.config();
-
 console.log("🧩 Using Square token prefix:", process.env.SQUARE_ACCESS_TOKEN?.slice(0, 10));
 
 
@@ -46,7 +46,23 @@ async function initDB(){
     )
   `);
 
-	await db.exec (`
+	
+	 console.log("✅ Tables ready");
+	}
+
+	// ✅ Wait until DB ready before listening
+await initDB().then(async () => {
+  // create SquareLocations table as part of startup (after DB exists)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS SquareLocations (
+      LocationID TEXT PRIMARY KEY,
+      Name TEXT NOT NULL,
+      Status TEXT,
+      Address TEXT,
+      CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    await db.exec (`
 		CREATE TABLE IF NOT EXISTS SalesSummary (
 		SalesID	INTEGER PRIMARY KEY AUTOINCREMENT,
 		EventID	INTEGER NOT NULL UNIQUE,
@@ -62,22 +78,21 @@ async function initDB(){
 		);
 	
 	`);
-	 console.log("✅ Tables ready");
-	}
+  // warm the cache once on boot
+  await fetchSquareLocations();
+  const PORT = 3000;
+  app.listen(PORT, () => console.log(`🚀 SQLite backend running at http://localhost:${PORT}`));
+}).catch(err => {
+  console.error("❌ DB initialization failed:", err);
+  process.exit(1);
+});
 
-	// ✅ Wait until DB ready before listening
-	initDB()
-	  .then(() => {
-		const PORT = 3000;
-		app.listen(PORT, () => console.log(`🚀 SQLite backend running at http://localhost:${PORT}`));
-	  })
-	  .catch(err => {
-		console.error("❌ DB initialization failed:", err);
-		process.exit(1);
-	  });
+// ✅ Export db for other routes in the same file
+export { db };
 
-	// ✅ Export db for other routes in the same file
-	export { db };
+// 🔁 Fetch from Square API
+
+
 
 // -------------------------------
 // 🧭 Root test route
@@ -343,10 +358,15 @@ app.get("/api/square/sales/:eventId", async (req, res) => {
     const end   = `${ev.EventDate}T23:59:59Z`;
 
     // 3) Call Square Payments API (Sandbox URL shown; swap to production when ready)
-    const url = new URL("https://connect.squareupsandbox.com/v2/payments");
+    const url = new URL("https://connect.squareup.com/v2/payments");
     url.searchParams.set("begin_time", start);
     url.searchParams.set("end_time", end);
     // You can also filter by location_id if you have it.
+	const locId = getSquareLocationIdByName(ev.Location);
+	if (locId) {
+	  url.searchParams.set("location_id", locId);
+	  console.log(`📍 Filtering by location: ${ev.Location} (${locId})`);
+	}
 
     const resp = await fetch(url.toString(), {
       headers: {
@@ -412,5 +432,13 @@ app.get("/api/square/sales/:eventId", async (req, res) => {
   }
 });
 
-const PORT = 3000;
-app.listen(PORT, () => console.log(`🚀 SQLite backend running at http://localhost:${PORT}`));
+app.get("/api/square/locations", async (req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM SquareLocations ORDER BY Name ASC");
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error reading SquareLocations:", err);
+    res.status(500).json({ error: "Failed to read Square locations" });
+  }
+});
+
