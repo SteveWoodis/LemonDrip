@@ -6,10 +6,14 @@ import dotenv from "dotenv";
 import { db } from "./server_sqlite.js"; // ✅ reuse main DB connection
 dotenv.config();
 
+
+const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN;
+const SQUARE_API_BASE = "https://connect.squareup.com/v2";
+
 let locationCache = {};
 let lastFetchedAt = null;
 
-export async function fetchSquareLocations(force = false) {
+export async function fetchSquareLocations(force =  false) {
   const now = Date.now();
   const oneDay = 24 * 60 * 60 * 1000;
 
@@ -40,34 +44,32 @@ export async function fetchSquareLocations(force = false) {
     console.log(`✅ Loaded ${locations.length} Square location(s):`);
     locationCache = {};
 
-    for (const loc of locations) {
-      const id = loc.id;
-      const name = loc.name;
-      const status = loc.status || "UNKNOWN";
-      const address = loc.address
-        ? `${loc.address.address_line_1 || ""}, ${loc.address.locality || ""}`
-        : "";
-
-      console.log(`   • ${name} → ${id}`);
-      locationCache[name.toLowerCase()] = id;
-
-      try {
-        await db.run(
-          `
+    const upsert = db.prepare(`	
           INSERT INTO SquareLocations (LocationID, Name, Status, Address)
           VALUES (?, ?, ?, ?)
           ON CONFLICT(LocationID) DO UPDATE SET
             Name = excluded.Name,
             Status = excluded.Status,
             Address = excluded.Address
-          `,
-          [id, name, status, address]
-        );
+          `);
+		  for (const loc of locations) {
+			  const id = loc.id;
+      const name = loc.name;
+      const status = loc.status || "UNKNOWN";
+      const address = loc.address
+        ? `${loc.address.address_line_1 || ""}, ${loc.address.locality || ""}`
+        : "";
+		
+		 console.log(`   • ${name} → ${id}`);
+      locationCache[name.toLowerCase()] = id;
+
+      try {
+        upsert.run(id, name, status, address);  // ✅ run (no await)
       } catch (dbErr) {
         console.error("DB write failed for location:", name, dbErr);
       }
     }
-
+	
     lastFetchedAt = now;
     console.log("💾 Square locations synced to SQLite.");
     return locationCache;

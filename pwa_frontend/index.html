@@ -40,13 +40,11 @@
 <section id="companySection" class="card hidden">
 <h2>Register Your Company</h2>
     <div class="company-fields">
-      <input type="text" id="companyName" placeholder="Company Name">
-      <input type="text" id="address" placeholder="Street Address">
-      <input type="text" id="city" placeholder="City">
-	  <input type="text" id="state" placeholder="State">
-	  <input type="text" id="postalCode" placeholder="Postal Code">
-	  <input type="text" id="phone" placeholder="Phone">
+      <input type="text" id="companyName" placeholder="CompanyName">
+      <input type="text" id="phone" placeholder="Phone">
+	  <input type="text" id="contact Name" placeholder="ContactName">
 	  <input type="text" id="vendorCategory" placeholder="Vendor Category">
+	  <input type="text" id="email" placeholder="email">
       <button type="button" onclick="addCompany()">Submit</button>
 	  <button type="button" onclick="clearEventForm()">Clear</button>
     </div>
@@ -104,9 +102,9 @@
 <section id="manageSection" class="card hidden">
   <h2>Manage Events</h2>
   <div class="search-fields">
-    <input type="text" id="manageSearchName" placeholder="Event Name">
+    <input type="text" id="manageSearchName" placeholder="eventName">
     <input type="date" id="manageSearchDate">
-    <input type="text" id="manageSearchID" placeholder="Event ID">
+    <input type="text" id="manageSearchID" placeholder="eventID">
     <button type="button" onclick="manageSearch()">🔍 Search</button>
     <button type="button" onclick="loadAllEvents()">📋 List All</button>
   </div>

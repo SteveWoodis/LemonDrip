@@ -1,7 +1,9 @@
 // ---------------------------
+// App created by Steve Woodis
+//
 // 🧭 Simple Client Router (cleaned)
 // activeEvent -placeholder for the current event being acted upon
-// currentAction - whatever the current action is. The default is the Search action
+// currentAction - whatever the current action is. The default is the Manage action
 // events - array to store objects
 // formTemplate - Object to store Templates created by Design Event action
 // ---------------------------
@@ -22,9 +24,11 @@ function saveAppState() {
   };
   localStorage.setItem("lemon_app_state", JSON.stringify(state));
 }
-
-function loadAppState() {
+// Load the current App State
+async function loadAppState() {
   const saved = localStorage.getItem("lemon_app_state");
+  
+  
   if (!saved) {
     // default: show Manage Events
     navigateTo("manageSection");
@@ -84,13 +88,18 @@ function navigateTo(sectionId) {
     section.scrollIntoView({ behavior: "smooth" });
 	if (sectionId === "addSection") {
       /*populateTemplateDropdown(); // 🔹 Populate templates when Add Event opens
-	  setTimeout(() => {
+	  settimeout(() => {
     const dropdown = document.getElementById("templateSelect");
     if (dropdown) {
       populateTemplateDropdown();
     } else {
       console.warn("⚠️ Template dropdown not found yet, retrying...");*/
-      setTimeout(populateTemplateDropdown, 300); // retry once after 300ms
+      setTimeout(() => {
+		const dropdown = document.getElementById("templateSelect");
+		if (dropdown && dropdown.options.length > 1 && !dropdown.value) {
+			dropdown.value = dropdown.options[1].value; // pick first real template
+			}
+		}, 500);
     }
   } else {
     console.warn(`⚠️ Section "${sectionId}" not found`);
@@ -133,17 +142,26 @@ function buildTableHTML(results, containerId = "searchResults") {
 
     tr.addEventListener('click', async () => {
   try {
-    const eventId = event["Event ID"] || event.EventID;
-    if (!eventId) {
-      console.warn("⚠️ No EventID found for clicked row:", event);
-      alert("Event ID missing — cannot load details.");
+    const eventID = event["eventID"] || event.eventID;
+		
+    if (!eventID) {
+      console.warn("⚠️ No eventID found for clicked row:", event);
+      alert("eventID missing — cannot load details.");
       return;
     }
 
-        const res = await fetch(`http://localhost:3000/api/events/${eventId}`);
+        const res = await fetch(`http://localhost:3000/api/events/${eventID}`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+		
+		
         const fullEvent = await res.json();
-        loadEventIntoDashboard(fullEvent);
+		const empRes = await fetch(`http://localhost:3000/api/events/${eventID}/employees`);
+		const empData = await empRes.json();
+		
+		fullEvent.eventEmployees = empData;
+		
+		console.log("Fullevent is :",fullEvent);
+		loadEventIntoDashboard(fullEvent);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
         alert("Could not load event details.");
@@ -179,16 +197,19 @@ async function loadAllEvents() {
   const res = await fetch("http://localhost:3000/api/events");
   const data = await res.json();
   const events = data.Events || [];
+
   const formatted = events.map(e => ({
-  "Event ID": e["Event ID"] ?? e.EventID,
-  "Event Name": e["Event Name"] ?? e.EventName,
-  "Event Date": e["Event Date"] ?? e.EventDate,
-  "Event Coordinator": e["Event Coordinator"] ?? e.EventCoordinator,
-  "Event Location": e["Event Location"] ?? e.Location,
-  "Status": e["Event Status"] ?? e.Status
-}));
+    eventID: e.eventID ?? e.EventID ?? e["Event ID"],
+    eventName: e.eventName ?? e["Event Name"],
+    eventDate: e.eventDate ?? e["Event Date"],
+    coordinator: e.coordinator ?? e.EventCoordinator ?? e["Event coordinator"],
+    location: e.location ?? e.EventLocation ?? e["Event location"],
+    status: e.status ?? e.Status ?? e["Event status"]
+  }));
+
   buildTableHTML(formatted, "manageResults");
 }
+
 
 // Search
 async function manageSearch() {
@@ -209,12 +230,12 @@ async function manageSearch() {
   const data = await res.json();
   const events = data.Events || [];
   const formatted = events.map(e => ({
-  "Event ID": e["Event ID"] ?? e.EventID,
-  "Event Name": e["Event Name"] ?? e.EventName,
-  "Event Date": e["Event Date"] ?? e.EventDate,
-  "Event Coordinator": e["Event Coordinator"] ?? e.EventCoordinator,
-  "Event Location": e["Event Location"] ?? e.Location,
-  "Status": e["Event Status"] ?? e.Status
+  "Event ID": e["Event ID"] ?? e.eventID,
+  "eventName": e["eventName"] ?? e.eventName,
+  "eventDate": e["eventDate"] ?? e.eventDate,
+  "Event coordinator": e["Event coordinator"] ?? e.Eventcoordinator,
+  "Event location": e["Event location"] ?? e.location,
+  "status": e["Event status"] ?? e.status
 }));
   buildTableHTML(formatted, "manageResults");
 }
@@ -268,39 +289,52 @@ async function buildExpandedDetails(event) {
 // ---------------------------
 // ✅ Safe Dashboard Loader
 // ---------------------------
-function loadEventIntoDashboard(event) {
-  const dashSection = document.getElementById("dashboardSection");
-  const dash = document.getElementById("dashboard");
-  if (!dashSection || !dash) return;
+function loadEventIntoDashboard(row) {
+  // when GET /api/events/:id returns the EventInfo row directly:
+  const info = row.EventInfo || row; // keep backward compat with your legacy payload
 
+  const dash = document.getElementById("dashboard");
+  const dashSection = document.getElementById("dashboardSection");
   dashSection.classList.remove("hidden");
   dash.style.display = "block";
-  dash.innerHTML = ""; // Clear old content
+  dash.innerHTML = "";
 
-  const info = event.EventInfo || event;
-
-  // 🌟 Main event summary card
   const summary = document.createElement("div");
   summary.classList.add("event-card");
+
+  const yesNo = v => (v ? "Yes" : "No");
+
   summary.innerHTML = `
-    <h2>${info["Event Name"] || "Unnamed Event"}</h2>
-    <p><strong>Date:</strong> ${info["Event Date"] || "N/A"}</p>
-    <p><strong>Application Date:</strong> ${info["App Date"] || "N/A"}</p>
-	<p><strong>Coordinator:</strong> ${info["Event Coordinator"] || "N/A"}</p>
-    <p><strong>Event Fee:</strong> ${info["Event Fee"] || "N/A"}</p>
-    <p><strong>Location:</strong> ${info["Event Location"] || "N/A"}</p>
-    <p><strong>Time:</strong> ${info["Event Time(s)"] || "N/A"}</p>
-    <p><strong>Permits:</strong> ${info["Event Docs"] || "N/A"}</p>
-    <p><strong>Employees:</strong> ${info["Event Employees"] || "N/A"}</p>
-    <p><strong>Event Rating:</strong> ${info["Event Rating"] || "N/A"}</p>
-    <p><strong>Event Host:</strong> ${info["Event Host"] || "N/A"}</p>
-    <p><strong>Notes:</strong> ${info["Event Notes"] || "N/A"}</p>
-    <p><strong>Status:</strong> ${info["Event Status"] || "N/A"}</p>
+    <h2>${info["eventName"] || "Unnamed Event"}</h2>
+    <p><strong>Date:</strong> ${info["eventDate"] || "N/A"}</p>
+    <p><strong>applicationDate:</strong> ${info["applicationDate"] || "N/A"}</p>
+    <p><strong>Finalized Date:</strong> ${info["finalizedDate"] || "N/A"}</p>
+    <p><strong>coordinator:</strong> ${info["coordinator"] || "N/A"}</p>
+    <p><strong>eventFee:</strong> ${info["eventFee"] ?? "N/A"}</p>
+    <p><strong>location:</strong> ${info["location"] || "N/A"}</p>
+    <p><strong>time:</strong> ${info["time"] || "N/A"}</p>
+    <p><strong>permits:</strong> ${info["permits"] || "N/A"}</p>
+    <p><strong>employees:</strong> ${info["employees"] || "N/A"}</p>
+    <p><strong>eventRating:</strong> ${info["eventRating"] || "N/A"}</p>
+    <p><strong>eventHost:</strong> ${info["eventHost"] || "N/A"}</p>
+    <p><strong>notes:</strong> ${info["notes"] || "N/A"}</p>
+    <p><strong>status:</strong> ${info["status"] || "N/A"}</p>
+    <p><strong>Event Type:</strong> ${info["eventType"] || "N/A"}</p>
+    <p><strong>numDays:</strong> ${info["numDays"] ?? "N/A"}</p>
+    <p><strong>grossSales:</strong> ${info["grossSales"] ?? 0}</p>
+    <p><strong>tips:</strong> ${info["tips"] ?? 0}</p>
+    <p><strong>netSales:</strong> ${info["netSales"] ?? 0}</p>
+    <p><strong>totalSales:</strong> ${info["totalSales"] ?? 0}</p>
+    <p><strong>Finalized?</strong> ${yesNo(info["isFinalized"])}</p>
   `;
   dash.appendChild(summary);
 
+  // keep your Edit button + Square button as you have them now
+
+
+
   // 🪄 Helper: create collapsible card
-  function createCollapsibleCard(title, dataArray) {
+  function createCollapsiblecard(title, dataArray) {
     if (!dataArray || !Array.isArray(dataArray) || dataArray.length === 0) return null;
     const card = document.createElement("div");
     card.classList.add("collapsible-card");
@@ -349,17 +383,17 @@ function loadEventIntoDashboard(event) {
 
   // 🎯 Add collapsible cards for each major dataset
   const subSections = [
-    ["Employees", event.Employees || event.EmployeeTracker?.Data],
+    ["Employee Tracking", event.eventEmployees],
     ["Drink Sales", event.DrinksSold || event.DrinkSales?.Data],
     ["Additional Fees", event.AdditionalFees || event.AdditionalFees?.Data],
-    ["Discounts", event.Discounts || event.Discounts?.Data],
+    ["discounts", event.discounts || event.discounts?.Data],
     ["Supply Cost", event.SupplyCost || event.SupplyCost?.Data],
     ["Tip Tracker", event.TipTracker || event.TipTracker?.Data],
     ["Event Runner Fees", event.EventRunnerFees || event.EventRunnerFees?.Data]
   ];
 
   subSections.forEach(([title, data]) => {
-    const card = createCollapsibleCard(title, data);
+    const card = createCollapsiblecard(title, data);
     if (card) dash.appendChild(card);
   });
 
@@ -373,11 +407,14 @@ function loadEventIntoDashboard(event) {
 	salesBtn.textContent = "💳 Load Square Sales";
 	salesBtn.classList.add("edit-btn");
 	salesBtn.addEventListener("click", async () => {
-  const id = event.EventID || event.EventInfo?.["Event ID"];
-  if (!id) return alert("Missing EventID");
+  const id = event.eventID || event.EventInfo?.["Event ID"];
+  if (!id) return alert("Missing eventID");
 
   try {
-    const res = await fetch(`http://localhost:3000/api/square/sales/${id}`);
+    const res = await fetch(`http://localhost:3000/api/square/sales/${id}`, {
+		method: "PUT",
+		headers: {"Content-Type": "application/json" }
+	});
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     const payload = await res.json();
 	
@@ -394,7 +431,7 @@ function loadEventIntoDashboard(event) {
     el.innerHTML = `
       <strong>Square Sales:</strong>
       Gross $${(t.gross ?? 0).toFixed(2)} |
-      Tips $${(t.tips ?? 0).toFixed(2)} |
+      tips $${(t.tips ?? 0).toFixed(2)} |
       Refunds $${(t.refunds ?? 0).toFixed(2)} |
       Net $${(t.netSales ?? 0).toFixed(2)} |
       Collected $${(t.totalCollected ?? 0).toFixed(2)}
@@ -411,21 +448,35 @@ summary.appendChild(salesBtn);
 
 
 
-async function editEvent(event) {
-  const info = event.EventInfo || event;
+async function editEvent(eventData) {
+  const info = eventData.EventInfo || eventData;
+
+if (!eventData) {
+	alert("No Event Data to load.");
+	return;
+}
+console.log("Editing Event.", eventData);
+window.activeEvent = eventData;
+window.activeeventID = eventData.eventID || eventData["Event ID"];
+window.isEditing = true;
 
   // 🔹 Show Add/Edit form
   navigateTo('addSection');
 
   // 🔹 Determine which template is active (Default Template or otherwise)
   const activeTemplateName = document.getElementById('templateSelect')?.value || "Default Template";
+  console.log("Current template is:", activeTemplateName);
+  
   const template = window.availableTemplates?.find(t => t.templateName === activeTemplateName);
 
   if (!template) {
     alert("⚠️ Template not found. Please load a template first.");
     return;
   }
-
+	window.isListing = true;
+	window.editingeventID = event.eventID;
+	window.activeEvent = eventData;
+	
   // 🔹 Rebuild the form from the template
   rebuildAddEventForm(stripEventColorFromTemplate(template));
 
@@ -433,6 +484,8 @@ async function editEvent(event) {
   const formContainer = document.getElementById('eventForm');
   const inputs = formContainer.querySelectorAll('input, select, textarea');
 
+	console.log("Newly Edited Form:", inputs);
+	
   inputs.forEach(input => {
     const label = input.id.replace(/^form_/, '').replace(/_/g, ' ');
     const match = Object.keys(info).find(k => k.toLowerCase() === label.toLowerCase());
@@ -450,8 +503,7 @@ async function editEvent(event) {
   });
 
   // 🔹 Remember which event is being edited
-  window.editingEventID = event.EventID;
-  console.log("Editing event:", window.editingEventID);
+ 
 }
 
 
@@ -480,9 +532,9 @@ async function searchEvents() {
 
   let results = window.events.filter(e => {
     const info = e.EventInfo || e;
-    const eventName = (info["Event Name"] || "").toLowerCase();
-    const eventDate = info["Event Date"] || "";
-    const eventID = e.EventID?.toString() || info["Event ID"]?.toString() || "";
+    const eventName = (info["eventName"] || "").toLowerCase();
+    const eventDate = info["eventDate"] || "";
+    const eventID = e.eventID?.toString() || info["Event ID"]?.toString() || "";
     return (
       (!name || eventName.includes(name)) &&
       (!date || eventDate === date) &&
@@ -493,12 +545,12 @@ async function searchEvents() {
   const formatted = results.map(e => {
     const info = e.EventInfo || e;
     return {
-      "Event ID": e.EventID,
-      "Event Name": info["Event Name"] || "",
-      "Event Date": info["Event Date"] || "",
-      "Event Coordinator": info["Event Coordinator"] || info["Coordinator"] || "",
-      "Event Location": info["Event Location"] || info["Location"] || "",
-      "Event Host": info["Event Host"] || info["Host"] || ""
+      "Event ID": e.eventID,
+      "eventName": info["eventName"] || "",
+      "eventDate": info["eventDate"] || "",
+      "Event coordinator": info["Event coordinator"] || info["coordinator"] || "",
+      "Event location": info["Event location"] || info["location"] || "",
+      "eventHost": info["eventHost"] || info["Host"] || ""
     };
   });
 
@@ -520,85 +572,100 @@ async function searchEvents() {
 // 📝 Add / Submit New Event (Auto-Navigate Back to Search)
 // modified by: Steve Woodis 10-17-25
 // ---------------------------
-async function submitEvent() {
+/*async function submitEvent() {
   const formEl = document.getElementById('eventForm');
   const inputs = formEl.querySelectorAll('input, select, textarea');
-  
-  const newEvent = {};
+
+  const newInfo = {};
   inputs.forEach(input => {
-    const key = input.id.replace(/^form_/, '').replace(/_/g, ' ');
-    newEvent[key] = input.value.trim();
+    const label = input.id.replace(/^form_/, '').replace(/_/g, ' ');
+    newInfo[label] = input.value.trim();
   });
+console.log("newInfo Object data is: ", newInfo);
 
-  if (!newEvent["Event Name"] || !newEvent["Event Date"]) {
-    alert("Please provide at least an event name and date.");
+  // Validate minimal info
+  if (!newInfo["eventName"] || !newInfo["eventDate"]) {
+    alert("Please provide at least an eventName and date.");
     return;
   }
-  
-  // ⬇️ Add duplicate-location check here
-try {
-  const res = await fetch("http://localhost:3000/api/events");
-  const data = await res.json();
-  const events = data.Events || [];
-
-  const conflict = events.find(ev => {
-    const info = ev.EventInfo || ev;
-    const dateMatch = (info["Event Date"] || "").trim() === newEvent["Event Date"];
-    const locMatch  = (info["Event Location"] || info["Location"] || "").trim().toLowerCase()
-                      === (newEvent["Event Location"] || "").trim().toLowerCase();
-    return dateMatch && locMatch;
-  });
-
-  if (conflict) {
-    alert(`⚠️ Warning: You already have an event at "${newEvent["Event Location"]}" on ${newEvent["Event Date"]}.`);
-    return;
-  }
-} catch (err) {
-  console.warn("Could not check duplicates:", err);
-}
-// ⬆️ End of duplicate-location checkS
-
-  console.log("📤 Sending data to backend:", JSON.stringify(newEvent, null, 2));
 
   try {
-    const response = await fetch("http://localhost:3000/api/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newEvent)
-    });
+    // 🚀 Branch logic: Insert or Update
+    if (window.isEditing && window.activeeventID) {
+      console.log("🛠️ Editing existing event:", window.activeeventID);
+	  
+	  // Collect employees + hours worked
+	const employeeSelects = [...formEl.querySelectorAll("select[id*='employees']")];
+	const selectedEmployees = [];
 
-    console.log("Server response", response.status);
+	employeeSelects.forEach(sel => {
+	  // hours input associated with this employee select
+	  const hoursInput = formEl.querySelector(`input[data-employee-hours='${sel.id}']`);
+	  const hoursWorked = hoursInput ? hoursInput.value || null : null;
 
-    if (!response.ok) throw new Error(`Server error ${response.status}`);
-    const result = await response.json();
-    console.log("✅ Saved:", result);
-    alert("New event added successfully!");
+	  if (sel.multiple) {
+		[...sel.selectedOptions].forEach(opt => {
+		  selectedEmployees.push({
+			EmployeeID: opt.value,
+			hoursWorked
+		  });
+		});
+	  } else if (sel.value) {
+		selectedEmployees.push({
+		  EmployeeID: sel.value,
+		  hoursWorked
+		});
+	  }
+	});
 
-    clearEventForm();
-    await loadEvents();
 
-    // ✅ Redirect user to Manage Events if available
-    if (document.getElementById("manageSection")) {
-      navigateTo("manageSection");
-      loadAllEvents();
+      const res = await fetch(`http://localhost:3000/api/events/${window.activeeventID}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newInfo),
+      });
+      const data = await res.json();
+      alert(data.message || "Event updated successfully!");
     } else {
-      // fallback for legacy mode
-      navigateTo("searchSection");
-      searchEvents();
+      console.log("🆕 Creating new event...");
+      const res = await fetch("http://localhost:3000/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newInfo),
+      });
+      const data = await res.json();
+      alert(data.message || "Event saved successfully!");
     }
+	 if (selectedEmployees.length) {
+	  const eventID = method === "POST"
+		? data.eventID
+		: window.activeeventID;
+
+	  await fetch(`http://localhost:3000/api/events/${eventID}/employees`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(selectedEmployees)
+	  });
+	}
+
+
+    // ✅ Reset flags and reload
+    window.isEditing = false;
+    window.activeeventID = null;
+    loadEvents();
 
   } catch (err) {
-    console.error("❌ Error saving event:", err.message || err);
-    alert("Failed to save event. See console for details.");
+    console.error("❌ Error saving event:", err);
+    alert("Error saving event: " + err.message);
   }
 }
-
+*/
 
 async function loadEvents() {
   try {
     const res = await fetch("http://localhost:3000/api/events");
     const newEvent = await res.json();
-    window.events = newEvent.Events || [];
+    window.events = Array.isArray(newEvent) ? newEvent : newEvent.Events || [];
     console.log(`✅ Loaded ${window.events.length} events from backend`);
   } catch (err) {
     console.error("❌ Failed to load events:", err);
@@ -620,6 +687,90 @@ function renderTableArray(elId, arr) {
 
   buildTableHTML(arr);
 }
+function coerceForApi(obj) {
+  const num = k => (obj[k] === "" || obj[k] == null) ? null : Number(obj[k]);
+  const int = k => (obj[k] === "" || obj[k] == null) ? null : parseInt(obj[k], 10);
+  const str = k => (obj[k] == null || obj[k] === "") ? null : String(obj[k]);
+  const bool = k => (obj[k] === true || obj[k] === "true" || obj[k] === "1") ? true : false;
+
+  // normalize every canonical field
+  obj["eventFee"]    = int("eventFee");
+  obj["numDays"]      = int("numDays");
+  obj["grossSales"]  = num("grossSales");
+  obj["tips"]         = num("tips");
+  obj["netSales"]    = num("netSales");
+  obj["totalSales"]  = num("totalSales");
+  obj["isFinalized"]  = bool("isFinalized");
+  return obj;
+}
+
+async function submitEvent() {
+  const formEl = document.getElementById("eventForm");
+  if (!formEl) {
+    alert("Form not found!");
+    return;
+  }
+
+  const inputs = formEl.querySelectorAll("input, select, textarea");
+  const newInfo = {};
+
+  inputs.forEach(input => {
+    const rawId = input.id || "";
+    const label = rawId.startsWith("form_")
+  ? rawId.replace(/^form_/, "")
+        .split("_")
+        .map((w, i) => i === 0 ? w : w[0].toUpperCase() + w.slice(1))
+        .join("")
+  : rawId;
+
+    if (!label) return; // skip unlabelled fields
+
+    if (input.type === "checkbox") {
+      newInfo[label] = input.checked ? 1 : 0;
+    } else {
+      newInfo[label] = input.value?.trim() || null;
+    }
+  });
+	console.log("NewInfo Object: ", newInfo);
+  // Basic validation
+  if (!newInfo.eventName || !newInfo.eventDate) {
+    alert("Please provide at least an eventName and date.");
+    return;
+  }
+
+  const url = window.isEditing && window.activeeventID
+    ? `http://localhost:3000/api/events/${window.activeeventID}`
+    : `http://localhost:3000/api/events`;
+  const method = window.isEditing ? "PUT" : "POST";
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newInfo)
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("🚨 Backend error:", data);
+      throw new Error(data.error || "Server error saving event.");
+    }
+
+    alert(method === "PUT"
+      ? (data.message || "Event updated successfully!")
+      : "Event saved successfully! New ID: " + data["eventID"]);
+
+    // Reset state
+    window.isEditing = false;
+    window.activeeventID = null;
+
+    await loadEvents();
+    navigateTo("manageSection");
+  } catch (err) {
+    console.error("❌ Error saving event:", err);
+    alert("Error saving event: " + err.message);
+  }
+}
 
 // ---------------------------
 // 🔄 Clear Search
@@ -635,13 +786,30 @@ function clearSearch() {
   const container = document.getElementById("searchResults");
   if (container) container.innerHTML = "";
 
-  const summaryCard = document.getElementById("summaryCard");
-  if (summaryCard) summaryCard.style.display = "none";
+  const summarycard = document.getElementById("summarycard");
+  if (summarycard) summarycard.style.display = "none";
 
   const dashboard = document.getElementById("dashboard");
   if (dashboard) dashboard.style.display = "none";
 
   console.log("🔄 Search fields and results cleared.");
+}
+async function populateEmployeeDropdown(selectEl) {
+  try {
+    const res = await fetch("http://localhost:3000/api/employees");
+    const employees = await res.json();
+
+    selectEl.innerHTML = '<option value=""> -- Select Employee -- </option>';
+
+    employees.forEach(emp => {
+      const opt = document.createElement("option");
+      opt.value = emp.EmployeeID;
+      opt.textContent = emp.EmployeeName;
+      selectEl.appendChild(opt);
+    });
+  } catch (err) {
+    console.error("Error listing employees", err);
+  }
 }
 
 
@@ -848,7 +1016,17 @@ function activateTemplate() {
 
 function rebuildAddEventForm(template) {
   const formContainer = document.getElementById("eventForm");
-  formContainer.innerHTML = ""; // clear old fields
+
+  // 🧠 Keep existing event data if present
+  const existing = window.activeEvent || {};
+
+  // Only clear the form if we’re not editing an event
+  if (!window.activeEvent) {
+    formContainer.innerHTML = ""; // clear old fields
+  } else {
+    // If editing, just rebuild structure but preserve data
+    formContainer.innerHTML = "";
+  }
 
   if (!template || !template.fields || !Array.isArray(template.fields)) {
     console.error("❌ Invalid template structure:", template);
@@ -856,10 +1034,13 @@ function rebuildAddEventForm(template) {
     return;
   }
 
-  template.fields.forEach(field => {
-        // Skip deprecated "Event Color"
-    if (field && typeof field.label === "string" && /^event\s*color$/i.test(field.label)) { return; }
-// Create label
+  (template.fields[0]?.fields || template.fields).forEach(field => {
+    // Skip deprecated "Event Color"
+    if (field && typeof field.label === "string" && /^event\s*color$/i.test(field.label)) {
+      return;
+    }
+	
+    // Create label
     const labelEl = document.createElement("label");
     labelEl.textContent = field.label + (field.required ? " *" : "");
 
@@ -884,11 +1065,55 @@ function rebuildAddEventForm(template) {
         input = document.createElement("input");
         input.type = field.type || "text";
     }
-
+	
     if (field.required) input.required = true;
 
     // ✅ Consistent ID pattern (no hardcoded fields)
-    input.id = "form_" + field.label.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+	const safeLabel = String(field.label).replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+    input.id = "form_" + safeLabel;
+
+    
+	if (/^employees$/i.test(field.label) && field.type === "select") {
+			// dynamically populate from EmployeeTracker
+			populateEmployeeDropdown(input);
+			// Add Hours Worked field linked to this employee dropdown
+		if (/^employees$/i.test(field.label)) {
+			const hoursInput = document.createElement("input");
+			hoursInput.type = "number";
+			hoursInput.min = "0";
+			hoursInput.step = "0.25";
+			hoursInput.placeholder = "Hours Worked";
+			hoursInput.classList.add("hours-worked");
+			hoursInput.setAttribute("data-employee-hours", input.id);
+
+			formContainer.appendChild(hoursInput);
+		}
+
+	}
+		const lbl = typeof field.label === "string" ? field.label : "";
+		
+	// ✅ Pre-fill input with existing data if available
+    const savedVal =
+      existing[lbl] ||
+      existing[lbl.replaceAll(" ", "_")] ||
+      existing[lbl.toLowerCase()] ||
+      null;
+
+    if (savedVal !== null && savedVal !== undefined) {
+      if (input.tagName === "SELECT" && input.multiple) {
+        // Handle multiselect arrays or comma-delimited strings
+        const values = Array.isArray(savedVal)
+          ? savedVal
+          : savedVal.toString().split(",").map(v => v.trim());
+        for (const opt of input.options) {
+          if (values.includes(opt.value)) opt.selected = true;
+        }
+      } else if (input.tagName === "SELECT") {
+        input.value = savedVal;
+      } else if (input.tagName === "TEXTAREA" || input.tagName === "INPUT") {
+        input.value = savedVal;
+      }
+    }
 
     labelEl.appendChild(input);
     formContainer.appendChild(labelEl);
@@ -905,8 +1130,9 @@ function rebuildAddEventForm(template) {
 }
 
 
+
 window.addEventListener("DOMContentLoaded", () => {
-  loadTemplates(); // populate dropdown on startup
+  populateTemplateDropdown(); // populate dropdown on startup
   loadEvents();
 });
 

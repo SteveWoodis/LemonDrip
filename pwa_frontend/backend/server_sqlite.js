@@ -2,8 +2,7 @@
 // ✅ SQLite + Express Server for LemonDrip
 // -------------------------------
 import express from "express";
-import sqlite3 from "sqlite3";
-import { open } from "sqlite";
+import Database from "better-sqlite3";
 import path from "path";
 import cors from "cors";
 import fetch from "node-fetch";
@@ -12,232 +11,242 @@ import { fileURLToPath } from "url";
 import { fetchSquareLocations, getSquareLocationIdByName } from "./square_locations.js";
 
 dotenv.config();
-console.log("🧩 Using Square token prefix:", process.env.SQUARE_ACCESS_TOKEN?.slice(0, 10));
-
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const DB_PATH =
+  process.env.LEMONDRIP_DB_PATH || path.join(__dirname, "lemonDrip.db");
+
+let db = new Database(DB_PATH);
+db.pragma("foreign_keys = ON");
+
+console.log(`Connected to SQLite database: ${DB_PATH}`);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // -------------------------------
-// 📂 Database connection
+// 📂 Initialize Tables
 // -------------------------------
-const dbPath = path.join(__dirname, "./sandbox_events.db");
-let db;
+db.exec(`
+  CREATE TABLE IF NOT EXISTS FormTemplate (
+    TemplateID   INTEGER PRIMARY KEY AUTOINCREMENT,
+    TemplateName TEXT NOT NULL,
+    Fields       TEXT,
+    CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS SquareLocations (
+    LocationID TEXT PRIMARY KEY,
+    Name TEXT NOT NULL,
+    Status TEXT,
+    Address TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS SalesSummary (
+    SalesID        INTEGER PRIMARY KEY AUTOINCREMENT,
+    EventID        INTEGER NOT NULL UNIQUE,
+    SquareTxnID    TEXT,
+    grossSales     REAL,
+    netSales       REAL,
+    discounts      REAL,
+    refunds        REAL,
+    tips           REAL,
+    totalCollected REAL,
+    DatePulledAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
+  );
+  
+  CREATE TABLE IF NOT EXISTS EventEmployees (
+    eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
+    eventID INTEGER NOT NULL,
+    employeeID INTEGER NOT NULL,
+	employeeName	TEXT,
+	role	TEXT,
+	hourlyRate	REAL,
+	totalPay	REAL,
+	tipsEarned	REAL,
+	metadata	JSON,
+    hoursWorked REAL,
+    FOREIGN KEY(eventID) REFERENCES EventInfo(eventID),
+    FOREIGN KEY(employeeID) REFERENCES EmployeeTracker(employeeID)
+  );
 
 
-async function initDB(){
-  db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
-  console.log("✅ Connected to SQLite database", dbPath);
+`);
 
-  // Create the FormTemplate table if it doesn't exist
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS FormTemplate (
-      TemplateID   INTEGER PRIMARY KEY AUTOINCREMENT,
-      TemplateName TEXT NOT NULL,
-      Fields       TEXT,
-      CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+// -------------------------------
+// 🚀 Server Startup + warm Square cache
+// -------------------------------
+(async () => {
+  try {
+    await fetchSquareLocations();
+    const PORT = 3000;
+    app.listen(PORT, () => {
+      console.log(`🚀 SQLite backend running at http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ Failed to start server:", err);
+  }
+})();
 
-	
-	 console.log("✅ Tables ready");
-	}
-
-	// ✅ Wait until DB ready before listening
-await initDB().then(async () => {
-  // create SquareLocations table as part of startup (after DB exists)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS SquareLocations (
-      LocationID TEXT PRIMARY KEY,
-      Name TEXT NOT NULL,
-      Status TEXT,
-      Address TEXT,
-      CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-    await db.exec (`
-		CREATE TABLE IF NOT EXISTS SalesSummary (
-		SalesID	INTEGER PRIMARY KEY AUTOINCREMENT,
-		EventID	INTEGER NOT NULL UNIQUE,
-		SquareTxnID	TEXT,
-		GrossSales 	REAL,
-		NetSales	REAL,
-		Discounts 	REAL,
-		Refunds		REAL,
-		Tips		REAL,
-		TotalCollected	REAL,
-		DatePulledAt DATETIME DEAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
-		);
-	
-	`);
-  // warm the cache once on boot
-  await fetchSquareLocations();
-  const PORT = 3000;
-  app.listen(PORT, () => console.log(`🚀 SQLite backend running at http://localhost:${PORT}`));
-}).catch(err => {
-  console.error("❌ DB initialization failed:", err);
-  process.exit(1);
-});
-
-// ✅ Export db for other routes in the same file
 export { db };
 
-// 🔁 Fetch from Square API
-
-
-
 // -------------------------------
-// 🧭 Root test route
+// 🧭 Root (health check)
 // -------------------------------
 app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
 
-
-// ---------------------------------
-//GET for company
-// ---------------------------------
-app.get("/api/company", async(req,res) => {
-	try{
-		const { id } = req.query;
-		
-		 let sql = "SELECT * FROM Company";
+// -------------------------------
+// GET /api/events
+// -------------------------------
+app.get("/api/events", (req, res) => {
+  try {
+    const { name, date, id } = req.query;
+    let sql = `SELECT * FROM EventInfo WHERE 1=1`;
     const params = [];
 
+    if (name) {
+      sql += ` AND eventName LIKE ?`;
+      params.push(`%${name}%`);
+    }
+    if (date) {
+      sql += ` AND eventDate = ?`;
+      params.push(date);
+    }
     if (id) {
-      sql += " WHERE CompanyID = ?";
+      sql += ` AND eventID = ?`;
       params.push(id);
     }
 
-    const rows = await db.all(sql, params);
+    sql += ` ORDER BY eventDate DESC`;
+
+    const rows = db.prepare(sql).all(...params);
+    res.json({ Events: rows });
+  } catch (err) {
+    console.error("❌ Error reading events:", err);
+    res.status(500).json({ error: "Error reading events." });
+  }
+});
+
+// -------------------------------
+// GET /api/events/:id
+// -------------------------------
+app.get("/api/events/:id", (req, res) => {
+  try {
+    const row = db
+      .prepare(`SELECT * FROM EventInfo WHERE eventID = ?`)
+      .get(req.params.id);
+    if (!row) return res.status(404).json({ error: "Event not found." });
+    res.json(row);
+  } catch (err) {
+    console.error("❌ Error reading event:", err);
+    res.status(500).json({ error: "Error reading event." });
+  }
+});
+
+// -------------------------------
+// GET /api/company
+// -------------------------------
+app.get("/api/company", (req, res) => {
+  try {
+    const { id } = req.query;
+
+    let sql = "SELECT * FROM Companies";
+    const params = [];
+
+    if (id) {
+      sql += " WHERE companyID = ?";
+      params.push(id);
+    }
+
+    const rows = db.prepare(sql).all(...params);
     res.json({ Companies: rows });
   } catch (err) {
     console.error("❌ Error fetching company data:", err);
     res.status(500).json({ error: "Failed to read company data" });
   }
 });
-		
 
 // -------------------------------
-// 🔍 GET: All events (EventInfo only)
+// GET /api/employees
 // -------------------------------
-app.get("/api/events", async (req, res) => {
+app.get("/api/employees", (req, res) => {
   try {
-    const { name, date, id } = req.query;
-    let sql = `
-	  SELECT 
-		EventID 	  AS "Event ID",
-		EventName     AS "Event Name",
-		EventDate     AS "Event Date",
-EventCoordinator   AS "Event Coordinator",
-		Status        AS "Event Status",
-		Location      AS "Event Location",
-		Notes         AS "Event Notes"
-	  FROM EventInfo
-	  WHERE 1=1
-	`;
-
-    const params = [];
-
-    if (name) {
-      sql += " AND EventName LIKE ?";
-      params.push(`%${name}%`);
-    }
-    if (date) {
-      sql += " AND EventDate = ?";
-      params.push(date);
-    }
-    if (id) {
-      sql += " AND EventID = ?";
-      params.push(id);
-    }
-
-    const events = await db.all(sql, params);
-    res.json({ Events: events });
+    const rows = db
+      .prepare(
+        `SELECT EmployeeID, EmployeeName, Role
+         FROM EmployeeTracker
+		 ORDER BY EmployeeName ASC`
+      )
+      .all();
+    res.json(rows);
   } catch (err) {
-    console.error("❌ Error fetching events:", err);
-    res.status(500).json({ error: "Failed to read events" });
+    console.error("❌ Error fetching employees:", err);
+    res.status(500).json({ error: "Failed to load employees" });
+  }
+});
+
+// GET employees for a specific event
+/*app.get("/api/events/:id/employees", (req, res) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT ee.EventEmployeeID, ee.EmployeeID, e.EmployeeName, e.Role, ee.HoursWorked
+      FROM EventEmployees ee
+      JOIN EmployeeTracker e ON e.EmployeeID = ee.EmployeeID
+      WHERE ee.EventID = ?
+      ORDER BY e.EmployeeName ASC
+    `);
+    const rows = stmt.all(req.params.id);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error loading event employees:", err);
+    res.status(500).json({ error: "Failed to load event employees" });
+  }
+});*/
+
+// Save employees for an event
+app.post("/api/events/:id/employees", (req, res) => {
+  try {
+    const eventID = req.params.id;
+    const employees = req.body || [];
+
+    // Remove old assignments
+    db.prepare(`DELETE FROM EventEmployees WHERE eventID = ?`).run(eventID);
+
+    const insert = db.prepare(`
+      INSERT INTO EventEmployees (eventID, employeeID, hoursWorked)
+      VALUES (?, ?, ?)
+    `);
+
+    employees.forEach(emp => {
+      insert.run(eventID, emp.EmployeeID, emp.HoursWorked ?? null);
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Error saving event employees:", err);
+    res.status(500).json({ error: "Failed to save event employees" });
   }
 });
 
 // -------------------------------
-// 📄 GET: Single event + sub-tables
+// GET /api/formtemplates
 // -------------------------------
-app.get("/api/events/:id", async (req, res) => {
-  const eventId = req.params.id;
-
+app.get("/api/formtemplates", (req, res) => {
   try {
-    // 1️⃣ Fetch main event
-    const event = await db.get("SELECT * FROM EventInfo WHERE EventID = ?", [eventId]);
-    if (!event) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const rows = db
+      .prepare("SELECT * FROM FormTemplate ORDER BY CreatedAt DESC")
+      .all();
 
-    // 2️⃣ Prepare subData before use
-    const subData = {};
-
-    // 3️⃣ Define expected tables
-    const tables = [
-      "DrinkSales", "EmployeeTracker", "AdditionalFees",
-      "Discounts", "SupplyCosts", "TipTracker", "EventRunnerFees"
-    ];
-
-    // 4️⃣ Loop through and try each table
-    for (const table of tables) {
-      try {
-        subData[table] = await db.all(`SELECT * FROM ${table} WHERE EventID = ?`, [eventId]);
-      } catch (innerErr) {
-        console.warn(`⚠️ Table ${table} missing or unreadable, skipping.`);
-        subData[table] = [];
-      }
-    }
-
-    // 5️⃣ Normalize column names for frontend
-    const EventInfo = {
-      "Event ID": event.EventID,
-      "Event Name": event.EventName,
-      "Event Date": event.EventDate,
-	  "Application Date": event.ApplicationDate,
-"Event Coordinator": event.EventCoordinator,
-	  "Event Fee": event.EventFee,
-	  "Event Time": event.EventTime,
-	  "Event Permits": event.EventPermits,
-	  "Event Employees": event.EventEmployees,
-	  "Event Rating": event.EventRating,
-	  "Event Host": event.EventHost,
-      "Event Status": event.Status,
-      "Event Location": event.Location,
-      "Event Notes": event.Notes
-    };
-
-    // 6️⃣ Return full event object
-    res.json({ EventInfo, subData });
-
-  } catch (err) {
-    console.error("❌ Error fetching event details:", err.message);
-    res.status(500).json({ error: "Failed to load event details" });
-  }
-});
-
-// -------------------------------
-// 🧱 GET: All Form Templates (from SQLite)
-// -------------------------------
-app.get("/api/formtemplates", async (req, res) => {
-  try {
-    const rows = await db.all("SELECT * FROM FormTemplate ORDER BY CreatedAt DESC");
-
-    // Parse JSON for each record’s Fields column
-    const templates = rows.map(row => ({
+    const templates = rows.map((row) => ({
       TemplateID: row.TemplateID,
       TemplateName: row.TemplateName,
       Fields: row.Fields ? JSON.parse(row.Fields) : [],
-      CreatedAt: row.CreatedAt
+      CreatedAt: row.CreatedAt,
     }));
 
     res.json(templates);
@@ -246,195 +255,45 @@ app.get("/api/formtemplates", async (req, res) => {
     res.status(500).json({ error: "Failed to load templates" });
   }
 });
-
-
-//---------------------------------------------------------------POST SECTION ------------------------------------------------------------------------
-//
-//----------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 // -------------------------------
-// ➕ POST: Add new event
+// POST /api/formtemplates  (SAVE NEW TEMPLATE)
 // -------------------------------
-
-app.post("/api/company", async(req,res) => {
-	try {
-		const c = req.body;
-		const sql = `
-		INSERT INTO Company
-		(companyName, address, city, state, postalCode, phone, country, vendorCategory)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`;
-		const params = [
-			c.companyName,
-			c.address || null,
-			c.city || null,
-			c.state || null,
-			c.postalCode || null,
-			c.phone || null,
-			c.country || null,
-			c.vendorCategory
-		]
-		
-		const result = await db.run(sql,params);
-		res.json({success: true, companyID: result.lastID });
-	} catch (err) {
-		console.error("Error inserting Company", err);
-		res.status(500).json({ error: "Failed to save company." });
-	}
-	
-});
-
-app.post("/api/events", async (req, res) => {
-  try {
-    const e = req.body;
-	console.log("Received new Event payload:", req.body);
-	
-    const sql = `
-      INSERT INTO EventInfo (EventName, EventDate, ApplicationDate, EventFee, EventCoordinator, EventTime, EventPermits, EventEmployees, EventRating, EventHost, Status, Location, Notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `;
-    const params = [
-      e["Event Name"], 
-	  e["Event Date"], 
-	  e["Application Date"] || null, 
-	  e["Event Coordinator"] || e["Coordinator"] || null, 
-	  e["Event Fee"] || null, 
-	  e["Event Time"] || null, 
-	  e["Event Permits"] || null, 
-	  e["Event Employees"] || null, 
-	  e["Event Rating"] || null, 
-	  e["Event Host"] || e["Host"] || null, 
-	  e["Event Status"] || e["Status"] || null, 
-	  e["Event Location"] || e["Location"] || null, 
-	  e["Event Notes"] || e["Notes"] || null
-    ];
-
-
-
-    const result = await db.run(sql, params);
-    res.json({ success: true, EventID: result.lastID });
-  } catch (err) {
-    console.error("❌ Error inserting event:", err);
-    res.status(500).json({ error: "Failed to save event" });
-  }
-});
-
-//Sends data to the backend Database
-//
-app.post('/api/formtemplates', async (req, res) => {
+app.post("/api/formtemplates", (req, res) => {
   try {
     const { TemplateName, Fields } = req.body;
 
-    if (!TemplateName) {
-      return res.status(400).json({ error: 'TemplateName is required' });
-    }
+    if (!TemplateName)
+      return res.status(400).json({ error: "TemplateName is required." });
 
-    const jsonFields = JSON.stringify(Fields || []);
-    const result = await db.run(
-      `INSERT INTO FormTemplate (TemplateName, Fields)
-       VALUES (?, ?)`,
-      [TemplateName, jsonFields]
+    const stmt = db.prepare(`
+      INSERT INTO FormTemplate (TemplateName, Fields)
+      VALUES (?, ?)
+    `);
+
+    const result = stmt.run(
+      TemplateName,
+      JSON.stringify(Fields || [])
     );
 
-    console.log('Inserted Template:', result.lastID);
-    res.status(201).json({ success: true, TemplateID: result.lastID });
-  } catch (err) {
-    console.error('Error inserting template:', err);
-    res.status(500).json({ error: 'Database write failed.' });
-  }
-});
-// 📦 Square REST pull without SDK
-app.get("/api/square/sales/:eventId", async (req, res) => {
-  const eventId = req.params.eventId;
-
-  try {
-    // 1) Find the event (we'll anchor by date)
-    const ev = await db.get("SELECT EventID, EventDate, Location FROM EventInfo WHERE EventID = ?", [eventId]);
-    if (!ev) return res.status(404).json({ error: "Event not found" });
-
-    // 2) Build date range (same-day window; adjust if your events span days)
-    const start = `${ev.EventDate}T00:00:00Z`;
-    const end   = `${ev.EventDate}T23:59:59Z`;
-
-    // 3) Call Square Payments API (Sandbox URL shown; swap to production when ready)
-    const url = new URL("https://connect.squareup.com/v2/payments");
-    url.searchParams.set("begin_time", start);
-    url.searchParams.set("end_time", end);
-    // You can also filter by location_id if you have it.
-	const locId = getSquareLocationIdByName(ev.Location);
-	if (locId) {
-	  url.searchParams.set("location_id", locId);
-	  console.log(`📍 Filtering by location: ${ev.Location} (${locId})`);
-	}
-
-    const resp = await fetch(url.toString(), {
-      headers: {
-        "Authorization": `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-        "Accept": "application/json"
-      }
-    });
-
-    if (!resp.ok) {
-      const txt = await resp.text();
-      console.error("Square API error:", resp.status, txt);
-      return res.status(resp.status).json({ error: "Square API error", detail: txt });
-    }
-
-    const data = await resp.json();
-    const payments = data.payments || [];
-	
-	console.log("Raw Square API data:", JSON.stringify(data, null, 2));
-
-    // 4) Aggregate money amounts (Square returns in cents)
-    const sum = (arr, pick) =>
-      arr.reduce((acc, p) => acc + (pick(p) || 0), 0);
-
-    const grossCents = sum(payments, p => p.amount_money?.amount);
-    const tipsCents  = sum(payments, p => p.tip_money?.amount);
-    const refundsCents = sum(payments, p => p.refunds?.reduce((rAcc, r) => rAcc + (r.amount_money?.amount || 0), 0));
-
-    // Discounts and net can be estimated depending on your Square flow.
-    // For many flows, Net ≈ Gross - Refunds; TotalCollected ≈ Gross + Tips - Refunds.
-    const gross = grossCents / 100;
-    const tips  = tipsCents / 100;
-    const refunds = refundsCents / 100;
-    const discounts = 0; // Fill if you later parse orders for discounts.
-    const netSales = gross - refunds - discounts;
-    const totalCollected = netSales + tips;
-
-    // 5) Upsert into SalesSummary (one row per EventID)
-    await db.run(
-      `
-      INSERT INTO SalesSummary (EventID, GrossSales, Tips, Refunds, Discounts, NetSales, TotalCollected)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(EventID) DO UPDATE SET
-        GrossSales = excluded.GrossSales,
-        Tips = excluded.Tips,
-        Refunds = excluded.Refunds,
-        Discounts = excluded.Discounts,
-        NetSales = excluded.NetSales,
-        TotalCollected = excluded.TotalCollected,
-        DataPulledAt = CURRENT_TIMESTAMP
-      `,
-      [ev.EventID, gross, tips, refunds, discounts, netSales, totalCollected]
-    );
-
-    res.json({
-      success: true,
-      EventID: ev.EventID,
-      date: ev.EventDate,
-      totals: { gross, tips, refunds, discounts, netSales, totalCollected }
+    res.json({ 
+      success: true, 
+      TemplateID: result.lastInsertRowid,
+      message: "Template saved successfully." 
     });
   } catch (err) {
-    console.error("❌ /api/square/sales error:", err);
-    res.status(500).json({ error: "Failed to pull Square sales" });
+    console.error("❌ Error saving template:", err);
+    res.status(500).json({ error: "Failed to save template." });
   }
 });
 
-app.get("/api/square/locations", async (req, res) => {
+// -------------------------------
+// GET Square Location Cache
+// -------------------------------
+app.get("/api/square/locations", (req, res) => {
   try {
-    const rows = await db.all("SELECT * FROM SquareLocations ORDER BY Name ASC");
+    const rows = db
+      .prepare("SELECT * FROM SquareLocations ORDER BY Name ASC")
+      .all();
     res.json(rows);
   } catch (err) {
     console.error("❌ Error reading SquareLocations:", err);
@@ -442,3 +301,220 @@ app.get("/api/square/locations", async (req, res) => {
   }
 });
 
+// -------------------------------
+// POST /api/company
+// -------------------------------
+app.post("/api/company", (req, res) => {
+  try {
+    const c = req.body;
+    const stmt = db.prepare(`
+      INSERT INTO Companies
+      (companyName, address, city, state, postalCode, phone, country, vendorCategory)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      c.companyName,
+      c.address || null,
+      c.city || null,
+      c.state || null,
+      c.postalCode || null,
+      c.phone || null,
+      c.country || null,
+      c.vendorCategory || null
+    );
+
+    res.json({ success: true, companyID: result.lastInsertRowid });
+  } catch (err) {
+    console.error("❌ Error inserting Company", err);
+    res.status(500).json({ error: "Failed to save company." });
+  }
+});
+
+// -------------------------------
+// POST /api/employees
+// -------------------------------
+app.post("/api/employees", (req, res) => {
+  try {
+    const { EmployeeName, Role, Phone, HourlyRate } = req.body;
+    if (!EmployeeName)
+      return res.status(400).json({ error: "Employee name required." });
+
+    const stmt = db.prepare(`
+      INSERT INTO EmployeeTracker (EmployeeName, Role, Phone, HourlyRate)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      EmployeeName,
+      Role || null,
+      Phone || null,
+      HourlyRate || null
+    );
+
+    res.json({ success: true, EmployeeID: result.lastInsertRowid });
+  } catch (err) {
+    console.error("❌ Error adding employee:", err);
+    res.status(500).json({ error: "Failed to add employee." });
+  }
+});
+
+// -------------------------------
+// POST /api/events  (CREATE NEW EVENT)
+// -------------------------------
+app.post("/api/events", (req, res) => {
+  try {
+    const e = coerceEvent(req.body);
+    if (!e.eventName)
+      return res.status(400).json({ error: "Missing eventName." });
+
+    const stmt = db.prepare(`
+      INSERT INTO EventInfo (
+        eventName, eventDate, applicationDate, finalizedDate,
+        eventFee, location, time, permits, employees,
+        eventRating, eventHost, notes, status, eventType,
+        numDays, coordinator, grossSales, tips, netSales,
+        totalSales, isFinalized
+      )
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `);
+
+    const result = stmt.run(
+      e.eventName,
+      e.eventDate,
+      e.applicationDate,
+      e.finalizedDate,
+      e.eventFee,
+      e.location,
+      e.time,
+      e.permits,
+      e.employees,
+      e.eventRating,
+      e.eventHost,
+      e.notes,
+      e.status,
+      e.eventType,
+      e.numDays,
+      e.coordinator,
+      e.grossSales,
+      e.tips,
+      e.netSales,
+      e.totalSales,
+      e.isFinalized
+    );
+
+    res.json({ success: true, eventID: result.lastInsertRowid });
+  } catch (err) {
+    console.error("❌ Error inserting event:", err);
+    res.status(500).json({ error: "Error inserting event." });
+  }
+});
+
+// -------------------------------
+// PUT /api/events/:id  (UPDATE EVENT)
+// -------------------------------
+app.put("/api/events/:id", (req, res) => {
+  try {
+    const id = req.params.id;
+    const e = coerceEvent(req.body);
+
+    const stmt = db.prepare(`
+      UPDATE EventInfo SET
+        eventName=?, eventDate=?, applicationDate=?, finalizedDate=?,
+        eventFee=?, location=?, time=?, permits=?, employees=?,
+        eventRating=?, eventHost=?, notes=?, status=?, eventType=?,
+        numDays=?, coordinator=?, grossSales=?, tips=?, netSales=?,
+        totalSales=?, isFinalized=?
+      WHERE eventID=?
+    `);
+
+    const result = stmt.run(
+      e.eventName,
+      e.eventDate,
+      e.applicationDate,
+      e.finalizedDate,
+      e.eventFee,
+      e.location,
+      e.time,
+      e.permits,
+      e.employees,
+      e.eventRating,
+      e.eventHost,
+      e.notes,
+      e.status,
+      e.eventType,
+      e.numDays,
+      e.coordinator,
+      e.grossSales,
+      e.tips,
+      e.netSales,
+      e.totalSales,
+      e.isFinalized,
+      id
+    );
+
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Event not found." });
+
+    res.json({ message: "Event updated successfully." });
+  } catch (err) {
+    console.error("❌ Error updating event:", err);
+    res.status(500).json({ error: "Error updating event." });
+  }
+});
+
+// -------------------------------
+// DELETE /api/events/:id
+// -------------------------------
+app.delete("/api/events/:id", (req, res) => {
+  try {
+    const result = db
+      .prepare(`DELETE FROM EventInfo WHERE eventID = ?`)
+      .run(req.params.id);
+
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Event not found." });
+
+    res.json({ message: "Event deleted successfully." });
+  } catch (err) {
+    console.error("❌ Error deleting event:", err);
+    res.status(500).json({ error: "Error deleting event." });
+  }
+});
+
+// -------------------------------
+// Helper: Coerce event values safely
+// -------------------------------
+function coerceEvent(body) {
+  const toInt = (v) =>
+    v === "" || v == null ? null : parseInt(v, 10);
+  const toNum = (v) =>
+    v === "" || v == null ? null : Number(v);
+  const toBoolI = (v) =>
+    v === true || v === "true" || v === 1 || v === "1" ? 1 : 0;
+  const toStr = (v) => (v == null || v === "" ? null : String(v));
+
+  return {
+    eventName: toStr(body.eventName),
+    eventDate: toStr(body.eventDate),
+    applicationDate: toStr(body.applicationDate),
+    finalizedDate: toStr(body.finalizedDate),
+    eventFee: toInt(body.eventFee),
+    location: toStr(body.location),
+    time: toStr(body.time),
+    permits: toStr(body.permits),
+    employees: toStr(body.employees),
+    eventRating: toStr(body.eventRating),
+    eventHost: toStr(body.eventHost),
+    notes: toStr(body.notes),
+    status: toStr(body.status),
+    eventType: toStr(body.eventType),
+    numDays: toInt(body.numDays),
+    coordinator: toStr(body.coordinator),
+    grossSales: toNum(body.grossSales),
+    tips: toNum(body.tips),
+    netSales: toNum(body.netSales),
+    totalSales: toNum(body.totalSales),
+    isFinalized: toBoolI(body.isFinalized),
+  };
+}
