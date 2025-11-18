@@ -1251,6 +1251,40 @@ function renderPostEventReport(report) {
     </table>
   `;
 }
+
+async function downloadPostEventPDF() {
+  try {
+    const reportEl = document.getElementById("postEventReportContainer");
+    if (!reportEl) return alert("Report content not found.");
+
+    // Extract visible HTML
+    const html = reportEl.innerHTML;
+
+    // Get event name for filename
+    const titleEl = reportEl.querySelector("h3");
+    const eventName = titleEl ? titleEl.textContent.trim().replace(/\s+/g, "_") : "Report";
+
+    // Load jsPDF
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF("p", "pt", "letter");
+
+    // Convert HTML → PDF
+    await doc.html(html, {
+      callback: () => {
+        doc.save(`PostEventReport_${eventName}.pdf`);
+      },
+      margin: [20, 20, 20, 20],
+      autoPaging: "text",
+      width: 560
+    });
+
+  } catch (err) {
+    console.error("❌ PDF export failed:", err);
+    alert("PDF export failed. Check console.");
+  }
+}
+
+
 function createCollapsiblecard(title, data) {
   if (!data || (Array.isArray(data) && data.length === 0)) return null;
 

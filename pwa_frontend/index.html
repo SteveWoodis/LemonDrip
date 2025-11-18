@@ -130,11 +130,17 @@
     <h2>📊 Post-Event Report</h2>
     <div id="postEventReportContainer"></div>
     <div class="form-buttons">
+	  <button type="button" onclick="downloadPostEventPDF()">📄 Download PDF</button>
       <button type="button" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
     </div>
   </section>
 
 
   <script src="app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.3/purify.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 </body>
 </html>
