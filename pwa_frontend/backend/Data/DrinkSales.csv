@@ -1,170 +1,170 @@
-category,,,,
-,drinkName,costPerDrink,quantitySold,rowCost
-Lemonade,,,,
-1,Regular Lemonade,$0.96,0,$0.00
-2,Blue Raspberry Lemonade,$1.14,0,$0.00
-3,Candied Orange Lemonade,$1.14,0,$0.00
-4,Coconut Lemonade,$1.14,0,$0.00
-5,Cucumber Lemonade,$1.14,0,$0.00
-6,Lavender Lemonade,$1.15,0,$0.00
-7,Peach Lemonade,$1.14,0,$0.00
-8,Pineapple Lemonade,$1.14,0,$0.00
-9,Raspberry Lemonade,$1.14,0,$0.00
-10,Strawberry Lemonade,$1.14,0,$0.00
-11,Watermelon Lemonade,$1.14,0,$0.00
-12,French Vanilla Lemonade,$1.14,0,$0.00
-13,Cherry Lemonade,$1.14,0,$0.00
-14,Regular Sugar Free Lemonade,$1.61,0,$0.00
-15,Sugar Free Coconut Lemonade,$1.65,0,$0.00
-16,Sugar Free Peach Lemonade,$1.65,0,$0.00
-17,Sugar Free Raspberry Lemonade,$1.65,0,$0.00
-18,Sugar Free Strawberry Lemonade,$1.65,0,$0.00
-19,Sugar Free Cherry Lemonade,$1.65,0,$0.00
-Limeade,,,,
-20,Regular Limeade,$0.89,0,$0.00
-21,Blue Raspberry Limeade,$1.08,0,$0.00
-22,Candied Orange Limeade,$1.08,0,$0.00
-23,Coconut Limeade,$1.08,0,$0.00
-24,Cucumber Limeade,$1.08,0,$0.00
-25,Lavender Limeade,$1.08,0,$0.00
-26,Peach Limeade,$1.08,0,$0.00
-27,Pineapple Limeade,$1.08,0,$0.00
-28,Raspberry Limeade,$1.08,0,$0.00
-29,Strawberry Limeade,$1.08,0,$0.00
-30,Watermelon Limeade,$1.08,0,$0.00
-31,French Vanilla Limeade,$1.08,0,$0.00
-32,Cherry Limeade,$1.15,0,$0.00
-33,Sugar Free Limeade,$1.55,0,$0.00
-34,Sugar Free Coconut Limeade,$1.59,0,$0.00
-35,Sugar Free Peach Limeade,$1.59,0,$0.00
-36,Sugar Free Raspberry Limeade,$1.59,0,$0.00
-37,Sugar Free Strawberry Limeade,$1.59,0,$0.00
-38,Sugar Free Cherry Limeade,$1.59,0,$0.00
-Lemon Limeade,,,,
-39,Regular Lemon Limeade,$1.17,0,$0.00
-40,Blue Raspberry Lemon Limeade,$1.36,0,$0.00
-41,Candied Orange Lemon Limeade,$1.36,0,$0.00
-42,Coconut Lemon Limeade,$1.36,0,$0.00
-43,Cucumber Lemon Limeade,$1.36,0,$0.00
-44,Lavender Lemon Limeade,$1.36,0,$0.00
-45,Peach Lemon Limeade,$1.36,0,$0.00
-46,Pineapple Lemon Limeade,$1.36,0,$0.00
-47,Raspberry Lemon Limeade,$1.36,0,$0.00
-48,Strawberry Lemon Limeade,$1.36,0,$0.00
-49,Watermelon Lemon Limeade,$1.36,0,$0.00
-50,French Vanilla Lemon Limeade,$1.36,0,$0.00
-51,Cherry Lemon Limeade,$1.36,0,$0.00
-52,Sugar Free Lemon Limeade,$1.86,0,$0.00
-53,Sugar Free Coconut Lemon Limeade,$1.86,0,$0.00
-54,Sugar Free Peach Lemon Limeade,$1.87,0,$0.00
-55,Sugar Free Raspberry Lemon Limeade,$1.86,0,$0.00
-56,Sugar Free Strawberry Lemon Limeade,$1.86,0,$0.00
-57,Sugar Free Cherry Lemon Limeade,$1.86,0,$0.00
-Brazilian Limeade,,,,
-58,Brazilian Limeade,$1.36,0,$0.00
-59,Blue Raspberry Brazilian Limeade,$1.43,0,$0.00
-60,Candied Orange Brazilian Limeade,$1.43,0,$0.00
-61,Coconut Brazilian Limeade,$1.43,0,$0.00
-62,Cucumber Brazilian Limeade,$1.43,0,$0.00
-63,Lavender Brazilian Limeade,$1.43,0,$0.00
-64,Peach Brazilian Limeade,$1.43,0,$0.00
-65,Pineapple Brazilian Limeade,$1.43,0,$0.00
-66,Raspberry Brazilian Limeade,$1.43,0,$0.00
-67,Strawberry Brazilian Limeade,$1.43,0,$0.00
-68,Watermelon Brazilian Limeade,$1.43,0,$0.00
-69,French Vanilla Brazilian Limeade,$1.43,0,$0.00
-70,Cherry Brazilian Limeade,$1.43,0,$0.00
-Arnold Palmer,,,,
-71,Arnold Palmer,$1.08,0,$0.00
-72,Blue Raspberry Arnold Palmer,$1.27,0,$0.00
-73,Candied Orange Arnold Palmer,$1.27,0,$0.00
-74,Coconut Arnold Palmer,$1.27,0,$0.00
-75,Cucumber Arnold Palmer,$1.27,0,$0.00
-76,Lavender Arnold Palmer,$1.27,0,$0.00
-77,Peach Arnold Palmer,$1.27,0,$0.00
-78,Pineapple Arnold Palmer,$1.27,0,$0.00
-79,Raspberry Arnold Palmer,$1.27,0,$0.00
-80,Strawberry Arnold Palmer,$1.27,0,$0.00
-81,Watermelon Arnold Palmer,$1.27,0,$0.00
-82,French Vanilla Arnold Palmer,$1.27,0,$0.00
-83,Cherry Arnold Palmer,$1.27,0,$0.00
-84,Sugar Free Arnold Palmer,$1.73,0,$0.00
-85,Sugar Free Coconut Arnold Palmer,$1.78,0,$0.00
-86,Sugar Free Peach Arnold Palmer,$1.78,0,$0.00
-87,Sugar Free Raspberry Arnold Palmer,$1.78,0,$0.00
-88,Sugar Free Strawberry Arnold Palmer,$1.78,0,$0.00
-89,Sugar Free Cherry Arnold Palmer,$1.78,0,$0.00
-Specialty Drinks,,,,
-90,Blue Lagoon,$1.15,0,$0.00
-91,Princess Peach,$1.22,0,$0.00
-92,Sugar Free Princess Peach,$1.53,0,$0.00
-93,Sweet Dream,$1.22,0,$0.00
-94,Orange Cream,$1.22,0,$0.00
-95,Pina Colada,$1.28,0,$0.00
-96,Miami vice,$1.25,0,$0.00
-97,Hawaii Blue,$1.21,0,$0.00
-N Cream Limeade,,,,
-98,Regular Limeade N Cream,$1.07,0,$0.00
-99,Blue Raspberry N Cream Limeade,$1.22,0,$0.00
-100,Coconut N Cream Limeade,$1.20,0,$0.00
-101,Cucumber N Cream Limeade,$1.20,0,$0.00
-102,Lavender N Cream Limeade,$1.20,0,$0.00
-103,Peach N Cream Limeade,$1.20,0,$0.00
-104,Pineapple N Cream Limeade,$1.20,0,$0.00
-105,Raspberry N Cream Limeade,$1.20,0,$0.00
-106,Strawberry N Cream Limeade,$1.20,0,$0.00
-107,Watermelon N Cream Limeade,$1.20,0,$0.00
-108,French Vanilla N Cream Limeade,$1.20,0,$0.00
-109,Cherry N Cream Limeade,$1.20,0,$0.00
-N Cream Lemonade,,,,
-110,Regular Lemonade N Cream,$1.13,0,$0.00
-111,Blue Raspberry N Cream Lemonade,$1.26,0,$0.00
-112,Coconut N Cream Lemonade,$1.26,0,$0.00
-113,Cucumber N Cream Lemonade,$1.27,0,$0.00
-114,Lavender N Cream Lemonade,$1.26,0,$0.00
-115,Peach N Cream Lemonade,$1.26,0,$0.00
-116,Pineapple N Cream Lemonade,$1.26,0,$0.00
-117,Raspberry N Cream Lemonade,$1.26,0,$0.00
-118,Strawberry N Cream Lemonade,$1.26,0,$0.00
-119,Watermelon N Cream Lemonade,$1.26,0,$0.00
-120,French Vanilla N Cream Lemonade,$1.26,0,$0.00
-121,Cherry N Cream Lemonade,$1.26,0,$0.00
-N Cream Lemon Limeade,,,,
-122,Regular Lemon Limeade N Cream,$1.35,0,$0.00
-123,Blue Raspberry N Cream Lemon Limeade,$1.40,0,$0.00
-124,Coconut N Cream Lemon Limeade,$1.48,0,$0.00
-125,Cucumber N Cream Lemon Limeade,$1.48,0,$0.00
-126,Lavender N Cream Lemon Limeade,$1.48,0,$0.00
-127,Peach N Cream Lemon Limeade,$1.48,0,$0.00
-128,Pineapple N Cream Lemon Limeade,$1.48,0,$0.00
-129,Raspberry N Cream Lemon Limeade,$1.48,0,$0.00
-130,Strawberry N Cream Lemon Limeade,$1.48,0,$0.00
-131,Watermelon N Cream Lemon Limeade,$1.48,0,$0.00
-132,French Vanilla N Cream Lemon Limeade,$1.48,0,$0.00
-133,Cherry N Cream Lemon Limeade,$1.48,0,$0.00
-Flavor Add On,,,,
-134,Flavor Add On Blue Raspberry,$0.15,0,$0.00
-135,Flavor Add On Candied Orange,$0.15,0,$0.00
-136,Flavor Add On Coconut,$0.15,0,$0.00
-137,Flavor Add On  Cucumber,$0.15,0,$0.00
-138,Flavor Add On  Lavender,$0.15,0,$0.00
-139,Flavor Add On Peach,$0.15,0,$0.00
-140,Flavor Add On Pineapple,$0.15,0,$0.00
-141,Flavor Add On Raspberry,$0.15,0,$0.00
-142,Flavor Add On Strawberry,$0.15,0,$0.00
-143,Flavor Add On Watermelon,$0.15,0,$0.00
-144,Flavor Add On French Vanilla,$0.15,0,$0.00
-145,Flavor Add On Cherry,$0.15,0,$0.00
-,Flavor Add on Blood Orange,$0.15,0,$0.00
-146,Flavor Add On Sugar Free Coconut,$0.15,0,$0.00
-147,Flavor Add On Sugar Free Peach,$0.15,0,$0.00
-148,Flavor Add On Sugar Free Raspberry,$0.15,0,$0.00
-149,Flavor Add On Sugar Free Strawberry,$0.15,0,$0.00
-150,Flavor Add On Sugar Free Cherry,$0.15,0,$0.00
-Extras,,,,
-151,Water,$0.58,0,$0.00
-152,Ice Cup,$0.52,0,$0.00
-153,Glowing Ice Cube,$0.27,0,$0.00
-154,Lemon,$0.28,0,$0.00
-155,Lime,$0.22,0,$0.00
-,,Total,0,$0.00
+category,,,,,
+,drinkName,costPerDrink,quantitySold,rowCost,totalCost
+Lemonade,,,,,
+1,Regular Lemonade,$0.96,0,$0.00,
+2,Blue Raspberry Lemonade,$1.14,0,$0.00,
+3,Candied Orange Lemonade,$1.14,0,$0.00,
+4,Coconut Lemonade,$1.14,0,$0.00,
+5,Cucumber Lemonade,$1.14,0,$0.00,
+6,Lavender Lemonade,$1.15,0,$0.00,
+7,Peach Lemonade,$1.14,0,$0.00,
+8,Pineapple Lemonade,$1.14,0,$0.00,
+9,Raspberry Lemonade,$1.14,0,$0.00,
+10,Strawberry Lemonade,$1.14,0,$0.00,
+11,Watermelon Lemonade,$1.14,0,$0.00,
+12,French Vanilla Lemonade,$1.14,0,$0.00,
+13,Cherry Lemonade,$1.14,0,$0.00,
+14,Regular Sugar Free Lemonade,$1.61,0,$0.00,
+15,Sugar Free Coconut Lemonade,$1.65,0,$0.00,
+16,Sugar Free Peach Lemonade,$1.65,0,$0.00,
+17,Sugar Free Raspberry Lemonade,$1.65,0,$0.00,
+18,Sugar Free Strawberry Lemonade,$1.65,0,$0.00,
+19,Sugar Free Cherry Lemonade,$1.65,0,$0.00,
+Limeade,,,,,
+20,Regular Limeade,$0.89,0,$0.00,
+21,Blue Raspberry Limeade,$1.08,0,$0.00,
+22,Candied Orange Limeade,$1.08,0,$0.00,
+23,Coconut Limeade,$1.08,0,$0.00,
+24,Cucumber Limeade,$1.08,0,$0.00,
+25,Lavender Limeade,$1.08,0,$0.00,
+26,Peach Limeade,$1.08,0,$0.00,
+27,Pineapple Limeade,$1.08,0,$0.00,
+28,Raspberry Limeade,$1.08,0,$0.00,
+29,Strawberry Limeade,$1.08,0,$0.00,
+30,Watermelon Limeade,$1.08,0,$0.00,
+31,French Vanilla Limeade,$1.08,0,$0.00,
+32,Cherry Limeade,$1.15,0,$0.00,
+33,Sugar Free Limeade,$1.55,0,$0.00,
+34,Sugar Free Coconut Limeade,$1.59,0,$0.00,
+35,Sugar Free Peach Limeade,$1.59,0,$0.00,
+36,Sugar Free Raspberry Limeade,$1.59,0,$0.00,
+37,Sugar Free Strawberry Limeade,$1.59,0,$0.00,
+38,Sugar Free Cherry Limeade,$1.59,0,$0.00,
+Lemon Limeade,,,,,
+39,Regular Lemon Limeade,$1.17,0,$0.00,
+40,Blue Raspberry Lemon Limeade,$1.36,0,$0.00,
+41,Candied Orange Lemon Limeade,$1.36,0,$0.00,
+42,Coconut Lemon Limeade,$1.36,0,$0.00,
+43,Cucumber Lemon Limeade,$1.36,0,$0.00,
+44,Lavender Lemon Limeade,$1.36,0,$0.00,
+45,Peach Lemon Limeade,$1.36,0,$0.00,
+46,Pineapple Lemon Limeade,$1.36,0,$0.00,
+47,Raspberry Lemon Limeade,$1.36,0,$0.00,
+48,Strawberry Lemon Limeade,$1.36,0,$0.00,
+49,Watermelon Lemon Limeade,$1.36,0,$0.00,
+50,French Vanilla Lemon Limeade,$1.36,0,$0.00,
+51,Cherry Lemon Limeade,$1.36,0,$0.00,
+52,Sugar Free Lemon Limeade,$1.86,0,$0.00,
+53,Sugar Free Coconut Lemon Limeade,$1.86,0,$0.00,
+54,Sugar Free Peach Lemon Limeade,$1.87,0,$0.00,
+55,Sugar Free Raspberry Lemon Limeade,$1.86,0,$0.00,
+56,Sugar Free Strawberry Lemon Limeade,$1.86,0,$0.00,
+57,Sugar Free Cherry Lemon Limeade,$1.86,0,$0.00,
+Brazilian Limeade,,,,,
+58,Brazilian Limeade,$1.36,0,$0.00,
+59,Blue Raspberry Brazilian Limeade,$1.43,0,$0.00,
+60,Candied Orange Brazilian Limeade,$1.43,0,$0.00,
+61,Coconut Brazilian Limeade,$1.43,0,$0.00,
+62,Cucumber Brazilian Limeade,$1.43,0,$0.00,
+63,Lavender Brazilian Limeade,$1.43,0,$0.00,
+64,Peach Brazilian Limeade,$1.43,0,$0.00,
+65,Pineapple Brazilian Limeade,$1.43,0,$0.00,
+66,Raspberry Brazilian Limeade,$1.43,0,$0.00,
+67,Strawberry Brazilian Limeade,$1.43,0,$0.00,
+68,Watermelon Brazilian Limeade,$1.43,0,$0.00,
+69,French Vanilla Brazilian Limeade,$1.43,0,$0.00,
+70,Cherry Brazilian Limeade,$1.43,0,$0.00,
+Arnold Palmer,,,,,
+71,Arnold Palmer,$1.08,0,$0.00,
+72,Blue Raspberry Arnold Palmer,$1.27,0,$0.00,
+73,Candied Orange Arnold Palmer,$1.27,0,$0.00,
+74,Coconut Arnold Palmer,$1.27,0,$0.00,
+75,Cucumber Arnold Palmer,$1.27,0,$0.00,
+76,Lavender Arnold Palmer,$1.27,0,$0.00,
+77,Peach Arnold Palmer,$1.27,0,$0.00,
+78,Pineapple Arnold Palmer,$1.27,0,$0.00,
+79,Raspberry Arnold Palmer,$1.27,0,$0.00,
+80,Strawberry Arnold Palmer,$1.27,0,$0.00,
+81,Watermelon Arnold Palmer,$1.27,0,$0.00,
+82,French Vanilla Arnold Palmer,$1.27,0,$0.00,
+83,Cherry Arnold Palmer,$1.27,0,$0.00,
+84,Sugar Free Arnold Palmer,$1.73,0,$0.00,
+85,Sugar Free Coconut Arnold Palmer,$1.78,0,$0.00,
+86,Sugar Free Peach Arnold Palmer,$1.78,0,$0.00,
+87,Sugar Free Raspberry Arnold Palmer,$1.78,0,$0.00,
+88,Sugar Free Strawberry Arnold Palmer,$1.78,0,$0.00,
+89,Sugar Free Cherry Arnold Palmer,$1.78,0,$0.00,
+Specialty Drinks,,,,,
+90,Blue Lagoon,$1.15,0,$0.00,
+91,Princess Peach,$1.22,0,$0.00,
+92,Sugar Free Princess Peach,$1.53,0,$0.00,
+93,Sweet Dream,$1.22,0,$0.00,
+94,Orange Cream,$1.22,0,$0.00,
+95,Pina Colada,$1.28,0,$0.00,
+96,Miami vice,$1.25,0,$0.00,
+97,Hawaii Blue,$1.21,0,$0.00,
+N Cream Limeade,,,,,
+98,Regular Limeade N Cream,$1.07,0,$0.00,
+99,Blue Raspberry N Cream Limeade,$1.22,0,$0.00,
+100,Coconut N Cream Limeade,$1.20,0,$0.00,
+101,Cucumber N Cream Limeade,$1.20,0,$0.00,
+102,Lavender N Cream Limeade,$1.20,0,$0.00,
+103,Peach N Cream Limeade,$1.20,0,$0.00,
+104,Pineapple N Cream Limeade,$1.20,0,$0.00,
+105,Raspberry N Cream Limeade,$1.20,0,$0.00,
+106,Strawberry N Cream Limeade,$1.20,0,$0.00,
+107,Watermelon N Cream Limeade,$1.20,0,$0.00,
+108,French Vanilla N Cream Limeade,$1.20,0,$0.00,
+109,Cherry N Cream Limeade,$1.20,0,$0.00,
+N Cream Lemonade,,,,,
+110,Regular Lemonade N Cream,$1.13,0,$0.00,
+111,Blue Raspberry N Cream Lemonade,$1.26,0,$0.00,
+112,Coconut N Cream Lemonade,$1.26,0,$0.00,
+113,Cucumber N Cream Lemonade,$1.27,0,$0.00,
+114,Lavender N Cream Lemonade,$1.26,0,$0.00,
+115,Peach N Cream Lemonade,$1.26,0,$0.00,
+116,Pineapple N Cream Lemonade,$1.26,0,$0.00,
+117,Raspberry N Cream Lemonade,$1.26,0,$0.00,
+118,Strawberry N Cream Lemonade,$1.26,0,$0.00,
+119,Watermelon N Cream Lemonade,$1.26,0,$0.00,
+120,French Vanilla N Cream Lemonade,$1.26,0,$0.00,
+121,Cherry N Cream Lemonade,$1.26,0,$0.00,
+N Cream Lemon Limeade,,,,,
+122,Regular Lemon Limeade N Cream,$1.35,0,$0.00,
+123,Blue Raspberry N Cream Lemon Limeade,$1.40,0,$0.00,
+124,Coconut N Cream Lemon Limeade,$1.48,0,$0.00,
+125,Cucumber N Cream Lemon Limeade,$1.48,0,$0.00,
+126,Lavender N Cream Lemon Limeade,$1.48,0,$0.00,
+127,Peach N Cream Lemon Limeade,$1.48,0,$0.00,
+128,Pineapple N Cream Lemon Limeade,$1.48,0,$0.00,
+129,Raspberry N Cream Lemon Limeade,$1.48,0,$0.00,
+130,Strawberry N Cream Lemon Limeade,$1.48,0,$0.00,
+131,Watermelon N Cream Lemon Limeade,$1.48,0,$0.00,
+132,French Vanilla N Cream Lemon Limeade,$1.48,0,$0.00,
+133,Cherry N Cream Lemon Limeade,$1.48,0,$0.00,
+Flavor Add On,,,,,
+134,Flavor Add On Blue Raspberry,$0.15,0,$0.00,
+135,Flavor Add On Candied Orange,$0.15,0,$0.00,
+136,Flavor Add On Coconut,$0.15,0,$0.00,
+137,Flavor Add On  Cucumber,$0.15,0,$0.00,
+138,Flavor Add On  Lavender,$0.15,0,$0.00,
+139,Flavor Add On Peach,$0.15,0,$0.00,
+140,Flavor Add On Pineapple,$0.15,0,$0.00,
+141,Flavor Add On Raspberry,$0.15,0,$0.00,
+142,Flavor Add On Strawberry,$0.15,0,$0.00,
+143,Flavor Add On Watermelon,$0.15,0,$0.00,
+144,Flavor Add On French Vanilla,$0.15,0,$0.00,
+145,Flavor Add On Cherry,$0.15,0,$0.00,
+,Flavor Add on Blood Orange,$0.15,0,$0.00,
+146,Flavor Add On Sugar Free Coconut,$0.15,0,$0.00,
+147,Flavor Add On Sugar Free Peach,$0.15,0,$0.00,
+148,Flavor Add On Sugar Free Raspberry,$0.15,0,$0.00,
+149,Flavor Add On Sugar Free Strawberry,$0.15,0,$0.00,
+150,Flavor Add On Sugar Free Cherry,$0.15,0,$0.00,
+Extras,,,,,
+151,Water,$0.58,0,$0.00,
+152,Ice Cup,$0.52,0,$0.00,
+153,Glowing Ice Cube,$0.27,0,$0.00,
+154,Lemon,$0.28,0,$0.00,
+155,Lime,$0.22,0,$0.00,
+,,Total,0,$0.00,

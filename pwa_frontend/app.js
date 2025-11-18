@@ -105,6 +105,109 @@ function navigateTo(sectionId) {
     console.warn(`⚠️ Section "${sectionId}" not found`);
   }
 }
+function buildPostEventReport(eventID) {
+  // 1. Pull main event fields
+  const event = db.prepare(`
+    SELECT * FROM EventInfo WHERE EventID = ?
+  `).get(eventID);
+
+  if (!event) throw new Error(`Event not found: id=${eventID}`);
+
+  // 2. Pull Square SalesSummary record for this event
+  const summary = db.prepare(`
+    SELECT * FROM SalesSummary WHERE EventID = ?
+  `).get(eventID) || {};
+
+  // Normalize summary amounts (default to 0 if null)
+  const grossSales = summary.grossSales || 0;
+  const refunds = summary.refunds || 0;
+  const discounts = summary.discounts || 0;
+  const tips = summary.tips || 0;
+  const netSales = summary.netSales || (grossSales - refunds - discounts);
+  const totalCollected = summary.totalCollected || netSales + tips;
+
+  // 3. Pull employee/labor rows for this event
+  const laborRows = db.prepare(`
+    SELECT employeeName, role, hoursWorked, hourlyRate, totalPay, tipsEarned
+    FROM EventEmployees WHERE eventID = ?
+  `).all(eventID);
+
+  const laborTotal = laborRows.reduce((acc, r) => acc + (r.totalPay || 0), 0);
+  const laborTipTotal = laborRows.reduce((acc, r) => acc + (r.tipsEarned || 0), 0);
+
+  // 4. Pull additional fees (optional table)
+  const feeRows = db.prepare(`
+    SELECT feeName, feeAmount
+    FROM AdditionalFees WHERE eventID = ?
+  `).all(eventID);
+
+  const additionalFeesTotal = feeRows.reduce((acc, r) => acc + (r.feeAmount || 0), 0);
+
+  // 5. Compute total expenses
+  const totalExpenses =
+    (event.eventFee || 0) +
+    (event.supplyFees || 0) +
+    additionalFeesTotal +
+    laborTotal +
+    (event.eventRunnerFee || 0);
+
+  // 6. Revenue calculations
+  const foodTax = event.foodTax || 0;
+  const squareEventCharge = event.squareEventCharge || 0;
+  const totalNetRevenue = totalCollected - foodTax - squareEventCharge;
+
+  // 7. Final profit
+  const profitBeforeTaxes = totalNetRevenue - totalExpenses;
+  const utahTax = event.utahTax || 0;
+  const federalTax = event.federalTax || 0;
+  const finalProfit = profitBeforeTaxes - utahTax - federalTax;
+
+  // 8. Build final report object
+  return {
+    meta: {
+      eventID,
+      generatedAt: new Date().toISOString(),
+    },
+    eventInfo: {
+      eventName: event.eventName,
+      eventDate: event.eventDate,
+      applicationDate: event.applicationDate,
+      eventType: event.eventType,
+      location: event.location,
+      coordinator: event.coordinator,
+      numDays: event.numDays,
+    },
+    revenue: {
+      grossSales,
+      refunds,
+      discounts,
+      netSales,
+      tips,
+      totalCollected,
+      foodTax,
+      squareEventCharge,
+      totalNetRevenue,
+    },
+    labor: {
+      laborRows,
+      laborTotal,
+      laborTipTotal,
+    },
+    expenses: {
+      eventFee: event.eventFee || 0,
+      supplyFees: event.supplyFees || 0,
+      additionalFeesTotal,
+      eventRunnerFee: event.eventRunnerFee || 0,
+      totalExpenses,
+    },
+    profit: {
+      profitBeforeTaxes,
+      utahTax,
+      federalTax,
+      finalProfit,
+    },
+  };
+}
 
 // ✅ Removed old showSection() entirely
 
@@ -203,7 +306,7 @@ async function loadAllEvents() {
     eventName: e.eventName ?? e["Event Name"],
     eventDate: e.eventDate ?? e["Event Date"],
     coordinator: e.coordinator ?? e.EventCoordinator ?? e["Event coordinator"],
-    location: e.location ?? e.EventLocation ?? e["Event location"],
+    location: e.squareLocationId ?? e.EventsquareLocationId ?? e["Event squareLocationId"],
     status: e.status ?? e.Status ?? e["Event status"]
   }));
 
@@ -234,7 +337,7 @@ async function manageSearch() {
   "eventName": e["eventName"] ?? e.eventName,
   "eventDate": e["eventDate"] ?? e.eventDate,
   "Event coordinator": e["Event coordinator"] ?? e.Eventcoordinator,
-  "Event location": e["Event location"] ?? e.location,
+  "location": e["Event squareLocationId"] ?? e.squareLocationId,
   "status": e["Event status"] ?? e.status
 }));
   buildTableHTML(formatted, "manageResults");
@@ -289,9 +392,12 @@ async function buildExpandedDetails(event) {
 // ---------------------------
 // ✅ Safe Dashboard Loader
 // ---------------------------
-function loadEventIntoDashboard(row) {
-  // when GET /api/events/:id returns the EventInfo row directly:
-  const info = row.EventInfo || row; // keep backward compat with your legacy payload
+async function loadEventIntoDashboard(row) {
+  console.log("Loading event into dashboard:", row);
+
+  // Normalize row so both legacy & new formats work
+  const info = row.EventInfo || row;
+  const event = row;
 
   const dash = document.getElementById("dashboard");
   const dashSection = document.getElementById("dashboardSection");
@@ -307,145 +413,121 @@ function loadEventIntoDashboard(row) {
   summary.innerHTML = `
     <h2>${info["eventName"] || "Unnamed Event"}</h2>
     <p><strong>Date:</strong> ${info["eventDate"] || "N/A"}</p>
-    <p><strong>applicationDate:</strong> ${info["applicationDate"] || "N/A"}</p>
+    <p><strong>Application Date:</strong> ${info["applicationDate"] || "N/A"}</p>
     <p><strong>Finalized Date:</strong> ${info["finalizedDate"] || "N/A"}</p>
-    <p><strong>coordinator:</strong> ${info["coordinator"] || "N/A"}</p>
-    <p><strong>eventFee:</strong> ${info["eventFee"] ?? "N/A"}</p>
-    <p><strong>location:</strong> ${info["location"] || "N/A"}</p>
-    <p><strong>time:</strong> ${info["time"] || "N/A"}</p>
-    <p><strong>permits:</strong> ${info["permits"] || "N/A"}</p>
-    <p><strong>employees:</strong> ${info["employees"] || "N/A"}</p>
-    <p><strong>eventRating:</strong> ${info["eventRating"] || "N/A"}</p>
-    <p><strong>eventHost:</strong> ${info["eventHost"] || "N/A"}</p>
-    <p><strong>notes:</strong> ${info["notes"] || "N/A"}</p>
-    <p><strong>status:</strong> ${info["status"] || "N/A"}</p>
+    <p><strong>Coordinator:</strong> ${info["coordinator"] || "N/A"}</p>
+    <p><strong>Event Fee:</strong> ${info["eventFee"] ?? "N/A"}</p>
+    <p><strong>Location:</strong> ${info["squareLocationId"] || "N/A"}</p>
+    <p><strong>Time:</strong> ${info["time"] || "N/A"}</p>
+    <p><strong>Permits:</strong> ${info["permits"] || "N/A"}</p>
+    <p><strong>Employees:</strong> ${info["employees"] || "N/A"}</p>
+    <p><strong>Event Rating:</strong> ${info["eventRating"] || "N/A"}</p>
+    <p><strong>Event Host:</strong> ${info["eventHost"] || "N/A"}</p>
+    <p><strong>Status:</strong> ${info["status"] || "N/A"}</p>
     <p><strong>Event Type:</strong> ${info["eventType"] || "N/A"}</p>
-    <p><strong>numDays:</strong> ${info["numDays"] ?? "N/A"}</p>
-    <p><strong>grossSales:</strong> ${info["grossSales"] ?? 0}</p>
-    <p><strong>tips:</strong> ${info["tips"] ?? 0}</p>
-    <p><strong>netSales:</strong> ${info["netSales"] ?? 0}</p>
-    <p><strong>totalSales:</strong> ${info["totalSales"] ?? 0}</p>
+    <p><strong># Days:</strong> ${info["numDays"] ?? "N/A"}</p>
+    <p><strong>Gross Sales:</strong> ${info["grossSales"] ?? 0}</p>
+    <p><strong>Tips:</strong> ${info["tips"] ?? 0}</p>
+    <p><strong>Net Sales:</strong> ${info["netSales"] ?? 0}</p>
+    <p><strong>Total Sales:</strong> ${info["totalSales"] ?? 0}</p>
     <p><strong>Finalized?</strong> ${yesNo(info["isFinalized"])}</p>
   `;
+
   dash.appendChild(summary);
 
-  // keep your Edit button + Square button as you have them now
-
-
-
-  // 🪄 Helper: create collapsible card
-  function createCollapsiblecard(title, dataArray) {
-    if (!dataArray || !Array.isArray(dataArray) || dataArray.length === 0) return null;
-    const card = document.createElement("div");
-    card.classList.add("collapsible-card");
-
-    const header = document.createElement("div");
-    header.classList.add("collapsible-header");
-    header.innerHTML = `<strong>${title}</strong> <span>▼</span>`;
-
-    const content = document.createElement("div");
-    content.classList.add("collapsible-content");
-
-    const table = document.createElement("table");
-    table.classList.add("sub-table");
-
-    const keys = Object.keys(dataArray[0]);
-    const thead = table.createTHead();
-    const headRow = thead.insertRow();
-    keys.forEach(k => {
-      const th = document.createElement("th");
-      th.textContent = k;
-      headRow.appendChild(th);
-    });
-
-    const tbody = table.createTBody();
-    dataArray.forEach(row => {
-      const tr = tbody.insertRow();
-      keys.forEach(k => {
-        const td = tr.insertCell();
-        td.textContent = row[k] ?? "";
-      });
-    });
-
-    content.appendChild(table);
-    content.style.display = "none";
-
-    header.addEventListener("click", () => {
-      const isOpen = content.style.display === "block";
-      content.style.display = isOpen ? "none" : "block";
-      header.querySelector("span").textContent = isOpen ? "▼" : "▲";
-    });
-
-    card.appendChild(header);
-    card.appendChild(content);
-    return card;
-  }
-
-  // 🎯 Add collapsible cards for each major dataset
-  const subSections = [
+  // ---------------------------------------------
+  //   🟣 Collapsible Sub-Section Cards
+  // ---------------------------------------------
+  const subItems = [
     ["Employee Tracking", event.eventEmployees],
     ["Drink Sales", event.DrinksSold || event.DrinkSales?.Data],
     ["Additional Fees", event.AdditionalFees || event.AdditionalFees?.Data],
-    ["discounts", event.discounts || event.discounts?.Data],
+    ["Discounts", event.discounts || event.discounts?.Data],
     ["Supply Cost", event.SupplyCost || event.SupplyCost?.Data],
     ["Tip Tracker", event.TipTracker || event.TipTracker?.Data],
     ["Event Runner Fees", event.EventRunnerFees || event.EventRunnerFees?.Data]
   ];
 
-  subSections.forEach(([title, data]) => {
+  subItems.forEach(([title, data]) => {
     const card = createCollapsiblecard(title, data);
     if (card) dash.appendChild(card);
   });
 
+  // ---------------------------------------------
+  //   ✏️ EDIT BUTTON
+  // ---------------------------------------------
   const editBtn = document.createElement("button");
   editBtn.textContent = "✏️ Edit This Event";
   editBtn.classList.add("edit-btn");
   editBtn.addEventListener("click", () => editEvent(event));
   summary.appendChild(editBtn);
 
-	const salesBtn = document.createElement("button");
-	salesBtn.textContent = "💳 Load Square Sales";
-	salesBtn.classList.add("edit-btn");
-	salesBtn.addEventListener("click", async () => {
-  const id = event.eventID || event.EventInfo?.["Event ID"];
-  if (!id) return alert("Missing eventID");
+  // ---------------------------------------------
+  // 💳 LOAD SQUARE SALES BUTTON
+  // ---------------------------------------------
+  const salesBtn = document.createElement("button");
+  salesBtn.textContent = "💳 Load Square Sales";
+  salesBtn.classList.add("edit-btn");
 
-  try {
-    const res = await fetch(`http://localhost:3000/api/square/sales/${id}`, {
-		method: "PUT",
-		headers: {"Content-Type": "application/json" }
-	});
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
-    const payload = await res.json();
-	
-	 console.log("📦 Square API payload:", JSON.stringify(payload, null, 2));
-	
-	
-    let el = document.getElementById("dashSquareInfo");
-    if (!el) {
-      el = document.createElement("p");
-      el.id = "dashSquareInfo";
-      summary.appendChild(el);
+  salesBtn.addEventListener("click", async () => {
+    const id =
+      event.eventID ||
+      event.EventID ||
+      event.EventInfo?.["Event ID"];
+
+    if (!id) return alert("Missing EventID");
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/square/sales/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+      const payload = await res.json();
+      console.log("📦 Square API payload:", payload);
+
+      let el = document.getElementById("dashSquareInfo");
+      if (!el) {
+        el = document.createElement("p");
+        el.id = "dashSquareInfo";
+        summary.appendChild(el);
+      }
+
+      const t = payload.totals || {};
+      el.innerHTML = `
+        <strong>Square Sales:</strong>
+        Gross $${(t.gross ?? 0).toFixed(2)} |
+        Tips $${(t.tips ?? 0).toFixed(2)} |
+        Refunds $${(t.refunds ?? 0).toFixed(2)} |
+        Net $${(t.netSales ?? 0).toFixed(2)} |
+        Collected $${(t.totalCollected ?? 0).toFixed(2)}
+      `;
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to pull Square sales. Check console.");
     }
-    const t = payload.totals || {};
-    el.innerHTML = `
-      <strong>Square Sales:</strong>
-      Gross $${(t.gross ?? 0).toFixed(2)} |
-      tips $${(t.tips ?? 0).toFixed(2)} |
-      Refunds $${(t.refunds ?? 0).toFixed(2)} |
-      Net $${(t.netSales ?? 0).toFixed(2)} |
-      Collected $${(t.totalCollected ?? 0).toFixed(2)}
-    `;
-  } catch (err) {
-    console.error(err);
-    alert("Failed to pull Square sales. See console.");
-  }
-});
-summary.appendChild(salesBtn);
+  });
 
+  summary.appendChild(salesBtn);
+
+  // ---------------------------------------------
+  // 📊 POST-EVENT REPORT BUTTON
+  // ---------------------------------------------
+  const reportBtn = document.createElement("button");
+  reportBtn.textContent = "📊 View Post-Event Report";
+  reportBtn.classList.add("edit-btn");
+  reportBtn.addEventListener("click", () => openPostEventReport(event));
+  summary.appendChild(reportBtn);
+
+  // ---------------------------------------------
   dash.scrollIntoView({ behavior: "smooth" });
 }
 
+	
+  
 
 
 async function editEvent(eventData) {
@@ -549,7 +631,7 @@ async function searchEvents() {
       "eventName": info["eventName"] || "",
       "eventDate": info["eventDate"] || "",
       "Event coordinator": info["Event coordinator"] || info["coordinator"] || "",
-      "Event location": info["Event location"] || info["location"] || "",
+      "location": info["Event squareLocationId"] || info["squareLocationId"] || "",
       "eventHost": info["eventHost"] || info["Host"] || ""
     };
   });
@@ -566,100 +648,6 @@ async function searchEvents() {
   buildTableHTML(formatted, targetContainer.id);
   console.log(`Rendered ${formatted.length} event(s) into ${targetContainer.id}.`);
 }
-
-
-// ---------------------------
-// 📝 Add / Submit New Event (Auto-Navigate Back to Search)
-// modified by: Steve Woodis 10-17-25
-// ---------------------------
-/*async function submitEvent() {
-  const formEl = document.getElementById('eventForm');
-  const inputs = formEl.querySelectorAll('input, select, textarea');
-
-  const newInfo = {};
-  inputs.forEach(input => {
-    const label = input.id.replace(/^form_/, '').replace(/_/g, ' ');
-    newInfo[label] = input.value.trim();
-  });
-console.log("newInfo Object data is: ", newInfo);
-
-  // Validate minimal info
-  if (!newInfo["eventName"] || !newInfo["eventDate"]) {
-    alert("Please provide at least an eventName and date.");
-    return;
-  }
-
-  try {
-    // 🚀 Branch logic: Insert or Update
-    if (window.isEditing && window.activeeventID) {
-      console.log("🛠️ Editing existing event:", window.activeeventID);
-	  
-	  // Collect employees + hours worked
-	const employeeSelects = [...formEl.querySelectorAll("select[id*='employees']")];
-	const selectedEmployees = [];
-
-	employeeSelects.forEach(sel => {
-	  // hours input associated with this employee select
-	  const hoursInput = formEl.querySelector(`input[data-employee-hours='${sel.id}']`);
-	  const hoursWorked = hoursInput ? hoursInput.value || null : null;
-
-	  if (sel.multiple) {
-		[...sel.selectedOptions].forEach(opt => {
-		  selectedEmployees.push({
-			EmployeeID: opt.value,
-			hoursWorked
-		  });
-		});
-	  } else if (sel.value) {
-		selectedEmployees.push({
-		  EmployeeID: sel.value,
-		  hoursWorked
-		});
-	  }
-	});
-
-
-      const res = await fetch(`http://localhost:3000/api/events/${window.activeeventID}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newInfo),
-      });
-      const data = await res.json();
-      alert(data.message || "Event updated successfully!");
-    } else {
-      console.log("🆕 Creating new event...");
-      const res = await fetch("http://localhost:3000/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newInfo),
-      });
-      const data = await res.json();
-      alert(data.message || "Event saved successfully!");
-    }
-	 if (selectedEmployees.length) {
-	  const eventID = method === "POST"
-		? data.eventID
-		: window.activeeventID;
-
-	  await fetch(`http://localhost:3000/api/events/${eventID}/employees`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(selectedEmployees)
-	  });
-	}
-
-
-    // ✅ Reset flags and reload
-    window.isEditing = false;
-    window.activeeventID = null;
-    loadEvents();
-
-  } catch (err) {
-    console.error("❌ Error saving event:", err);
-    alert("Error saving event: " + err.message);
-  }
-}
-*/
 
 async function loadEvents() {
   try {
@@ -1129,6 +1117,183 @@ function rebuildAddEventForm(template) {
   formContainer.appendChild(btnContainer);
 }
 
+// ---------------------------
+// 📊 Post-Event Report Viewer
+// ---------------------------
+async function openPostEventReport(eventData) {
+  const eventID =
+    eventData.eventID ||
+    eventData.EventID ||
+    eventData.EventInfo?.["Event ID"];
+
+  if (!eventID) {
+    alert("Cannot determine eventID for report.");
+    console.warn("No eventID in eventData:", eventData);
+    return;
+  }
+
+  try {
+    const res = await fetch(`http://localhost:3000/api/events/${eventID}/report`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server error ${res.status}`);
+    }
+
+    const report = await res.json();
+    renderPostEventReport(report);
+    navigateTo("postEventReportSection");
+  } catch (err) {
+    console.error("❌ Error loading post-event report:", err);
+    alert("Failed to load post-event report. Check console for details.");
+  }
+}
+
+function formatMoney(v) {
+  const n = Number(v || 0);
+  return `$${n.toFixed(2)}`;
+}
+
+function renderPostEventReport(report) {
+  const container = document.getElementById("postEventReportContainer");
+  if (!container) return;
+
+  const ev = report.eventInfo || {};
+  const rev = report.revenue || {};
+  const lab = report.labor || {};
+  const exp = report.expenses || {};
+  const prof = report.profit || {};
+
+  const laborRows = lab.laborRows || [];
+
+  container.innerHTML = `
+    <div class="event-card">
+      <h3>${ev.eventName || "Unnamed Event"}</h3>
+      <p><strong>Date:</strong> ${ev.eventDate || "N/A"}</p>
+      <p><strong>Application Date:</strong> ${ev.applicationDate || "N/A"}</p>
+      <p><strong>Type:</strong> ${ev.eventType || "N/A"}</p>
+      <p><strong>Location:</strong> ${ev.location || "N/A"}</p>
+      <p><strong>Coordinator:</strong> ${ev.coordinator || "N/A"}</p>
+      <p><strong>Number of Days:</strong> ${ev.numDays ?? "N/A"}</p>
+    </div>
+
+    <h3>Revenue Summary</h3>
+    <table class="lemondrip-table">
+      <tbody>
+        <tr><td>Gross Sales (Square)</td><td>${formatMoney(rev.grossSales)}</td></tr>
+        <tr><td>Returns</td><td>${formatMoney(rev.refunds)}</td></tr>
+        <tr><td>Discounts</td><td>${formatMoney(rev.discounts)}</td></tr>
+        <tr><td><strong>Net Sales</strong></td><td><strong>${formatMoney(rev.netSales)}</strong></td></tr>
+        <tr><td>Tips</td><td>${formatMoney(rev.tips)}</td></tr>
+        <tr><td><strong>Total Collected</strong></td><td><strong>${formatMoney(rev.totalCollected)}</strong></td></tr>
+        <tr><td>Food Tax</td><td>${formatMoney(rev.foodTax)}</td></tr>
+        <tr><td>Square Event Charge</td><td>${formatMoney(rev.squareEventCharge)}</td></tr>
+        <tr><td><strong>Total Net Revenue</strong></td><td><strong>${formatMoney(rev.totalNetRevenue)}</strong></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Labor</h3>
+    ${
+      laborRows.length
+        ? `
+      <table class="lemondrip-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Role</th>
+            <th>Hours Worked</th>
+            <th>Hourly Rate</th>
+            <th>Total Pay</th>
+            <th>Tips Earned</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${laborRows
+            .map(
+              r => `
+            <tr>
+              <td>${r.employeeName || ""}</td>
+              <td>${r.role || ""}</td>
+              <td>${r.hoursWorked ?? ""}</td>
+              <td>${r.hourlyRate != null ? formatMoney(r.hourlyRate) : ""}</td>
+              <td>${r.totalPay != null ? formatMoney(r.totalPay) : ""}</td>
+              <td>${r.tipsEarned != null ? formatMoney(r.tipsEarned) : ""}</td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+      <p><strong>Total Labor:</strong> ${formatMoney(lab.laborTotal)}</p>
+      <p><strong>Total Labor Tips:</strong> ${formatMoney(lab.laborTipTotal)}</p>
+    `
+        : `<p>No labor records for this event.</p>`
+    }
+
+    <h3>Expenses</h3>
+    <table class="lemondrip-table">
+      <tbody>
+        <tr><td>Event Fee</td><td>${formatMoney(exp.eventFee)}</td></tr>
+        <tr><td>Supply Fees</td><td>${formatMoney(exp.supplyFees)}</td></tr>
+        <tr><td>Additional Fees</td><td>${formatMoney(exp.additionalFeesTotal)}</td></tr>
+        <tr><td>Event Runner Fee</td><td>${formatMoney(exp.eventRunnerFee)}</td></tr>
+        <tr><td><strong>Total Expenses</strong></td><td><strong>${formatMoney(exp.totalExpenses)}</strong></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Profit</h3>
+    <table class="lemondrip-table">
+      <tbody>
+        <tr><td><strong>Net Profit before Taxes</strong></td><td><strong>${formatMoney(prof.profitBeforeTaxes)}</strong></td></tr>
+        <tr><td>Utah State Tax</td><td>${formatMoney(prof.utahTax)}</td></tr>
+        <tr><td>Federal Tax</td><td>${formatMoney(prof.federalTax)}</td></tr>
+        <tr><td><strong>Event Profit</strong></td><td><strong>${formatMoney(prof.finalProfit)}</strong></td></tr>
+      </tbody>
+    </table>
+  `;
+}
+function createCollapsiblecard(title, data) {
+  if (!data || (Array.isArray(data) && data.length === 0)) return null;
+
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("collapsible-card");
+
+  const btn = document.createElement("button");
+  btn.classList.add("collapsible-header");
+  btn.textContent = title;
+
+  const content = document.createElement("div");
+  content.classList.add("collapsible-content");
+  content.style.display = "none";
+
+  // Render object or array values
+  if (Array.isArray(data)) {
+    content.innerHTML = `
+      <table class="lemondrip-table">
+        <thead>
+          <tr>${Object.keys(data[0] || {}).map(k => `<th>${k}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${data
+            .map(row => `
+              <tr>${Object.values(row).map(v => `<td>${v ?? ""}</td>`).join("")}</tr>
+            `)
+            .join("")}
+        </tbody>
+      </table>
+    `;
+  } else {
+    content.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+  }
+
+  btn.addEventListener("click", () => {
+    content.style.display = content.style.display === "none" ? "block" : "none";
+  });
+
+  wrapper.appendChild(btn);
+  wrapper.appendChild(content);
+
+  return wrapper;
+}
 
 
 window.addEventListener("DOMContentLoaded", () => {

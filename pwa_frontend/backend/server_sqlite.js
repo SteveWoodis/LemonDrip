@@ -190,46 +190,28 @@ app.get("/api/employees", (req, res) => {
   }
 });
 
-// GET employees for a specific event
-/*app.get("/api/events/:id/employees", (req, res) => {
-  try {
-    const stmt = db.prepare(`
-      SELECT ee.EventEmployeeID, ee.EmployeeID, e.EmployeeName, e.Role, ee.HoursWorked
-      FROM EventEmployees ee
-      JOIN EmployeeTracker e ON e.EmployeeID = ee.EmployeeID
-      WHERE ee.EventID = ?
-      ORDER BY e.EmployeeName ASC
-    `);
-    const rows = stmt.all(req.params.id);
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Error loading event employees:", err);
-    res.status(500).json({ error: "Failed to load event employees" });
-  }
-});*/
 
 // Save employees for an event
-app.post("/api/events/:id/employees", (req, res) => {
+app.get("/api/events/:eventID/employees", (req, res) => {
   try {
-    const eventID = req.params.id;
-    const employees = req.body || [];
+    const rows = db.prepare(`
+      SELECT * FROM EventEmployees WHERE eventID = ?
+    `).all(req.params.eventID);
 
-    // Remove old assignments
-    db.prepare(`DELETE FROM EventEmployees WHERE eventID = ?`).run(eventID);
-
-    const insert = db.prepare(`
-      INSERT INTO EventEmployees (eventID, employeeID, hoursWorked)
-      VALUES (?, ?, ?)
-    `);
-
-    employees.forEach(emp => {
-      insert.run(eventID, emp.EmployeeID, emp.HoursWorked ?? null);
-    });
-
-    res.json({ success: true });
+    res.json(rows);
   } catch (err) {
-    console.error("❌ Error saving event employees:", err);
-    res.status(500).json({ error: "Failed to save event employees" });
+    console.error("Employee fetch error:", err);
+    res.status(500).json({ error: "DB failure" });
+  }
+});
+
+app.get("/api/events/:id/report", (req, res) => {
+  try {
+    const report = buildPostEventReport(req.params.id);
+    return res.json(report);
+  } catch (error) {
+    console.error("❌ Report generation error:", error.message);
+    return res.status(500).json({ error: error.message });
   }
 });
 
@@ -371,7 +353,7 @@ app.post("/api/events", (req, res) => {
     const stmt = db.prepare(`
       INSERT INTO EventInfo (
         eventName, eventDate, applicationDate, finalizedDate,
-        eventFee, location, time, permits, employees,
+        eventFee, squareLocationId, time, permits, employees,
         eventRating, eventHost, notes, status, eventType,
         numDays, coordinator, grossSales, tips, netSales,
         totalSales, isFinalized
@@ -385,7 +367,7 @@ app.post("/api/events", (req, res) => {
       e.applicationDate,
       e.finalizedDate,
       e.eventFee,
-      e.location,
+      e.squareLocationId,
       e.time,
       e.permits,
       e.employees,
@@ -421,7 +403,7 @@ app.put("/api/events/:id", (req, res) => {
     const stmt = db.prepare(`
       UPDATE EventInfo SET
         eventName=?, eventDate=?, applicationDate=?, finalizedDate=?,
-        eventFee=?, location=?, time=?, permits=?, employees=?,
+        eventFee=?, squareLocationId=?, time=?, permits=?, employees=?,
         eventRating=?, eventHost=?, notes=?, status=?, eventType=?,
         numDays=?, coordinator=?, grossSales=?, tips=?, netSales=?,
         totalSales=?, isFinalized=?
@@ -434,7 +416,7 @@ app.put("/api/events/:id", (req, res) => {
       e.applicationDate,
       e.finalizedDate,
       e.eventFee,
-      e.location,
+      e.squareLocationId,
       e.time,
       e.permits,
       e.employees,
@@ -500,7 +482,7 @@ function coerceEvent(body) {
     applicationDate: toStr(body.applicationDate),
     finalizedDate: toStr(body.finalizedDate),
     eventFee: toInt(body.eventFee),
-    location: toStr(body.location),
+    squareLocationId: toStr(body.squareLocationId),
     time: toStr(body.time),
     permits: toStr(body.permits),
     employees: toStr(body.employees),
@@ -518,3 +500,119 @@ function coerceEvent(body) {
     isFinalized: toBoolI(body.isFinalized),
   };
 }
+function buildPostEventReport(eventID) {
+  // 1️⃣ Load EventInfo
+  const event = db.prepare(`
+    SELECT * FROM EventInfo WHERE eventID = ?
+  `).get(eventID);
+
+  if (!event) throw new Error(`Event not found: id=${eventID}`);
+
+  // 2️⃣ Load SalesSummary
+  const summary = db.prepare(`
+    SELECT * FROM SalesSummary WHERE eventID = ?
+  `).get(eventID) || {};
+
+  const grossSales = summary.grossSales || 0;
+  const refunds = summary.refunds || 0;
+  const discounts = summary.discounts || 0;
+  const tips = summary.tips || 0;
+  const netSales = summary.netSales || (grossSales - refunds - discounts);
+  const totalCollected = summary.totalCollected || netSales + tips;
+
+  // 3️⃣ Load Labor rows
+  const laborRows = db.prepare(`
+    SELECT employeeName, role, hoursWorked, hourlyRate, totalPay, tipsEarned
+    FROM EventEmployees WHERE eventID = ?
+  `).all(eventID);
+
+  const laborTotal = laborRows.reduce((tot, r) => tot + (r.totalPay || 0), 0);
+  const laborTipTotal = laborRows.reduce((tot, r) => tot + (r.tipsEarned || 0), 0);
+
+  // 4️⃣ Load Additional Fees (optional)
+  const fees = db.prepare(`
+    SELECT feeName, feeAmount
+    FROM AdditionalFees WHERE eventID = ?
+  `).all(eventID);
+
+  const additionalFeesTotal = fees.reduce((t, f) => t + (f.feeAmount || 0), 0);
+
+  // 5️⃣ Compute total expenses
+  const totalExpenses =
+    (event.eventFee || 0) +
+    (event.supplyFees || 0) +
+    additionalFeesTotal +
+    (event.eventRunnerFee || 0) +
+    laborTotal;
+
+  // 6️⃣ Compute revenue
+  const foodTax = event.foodTax || 0;
+  const squareEventCharge = event.squareEventCharge || 0;
+  const totalNetRevenue = totalCollected - foodTax - squareEventCharge;
+
+  // 7️⃣ Compute final profit
+  const profitBeforeTaxes = totalNetRevenue - totalExpenses;
+  const utahTax = event.utahTax || 0;
+  const federalTax = event.federalTax || 0;
+  const finalProfit = profitBeforeTaxes - utahTax - federalTax;
+
+  // 8️⃣ Final structured report
+  return {
+    meta: {
+      eventID,
+      generatedAt: new Date().toISOString()
+    },
+
+    eventInfo: {
+      eventName: event.eventName,
+      eventDate: event.eventDate,
+      applicationDate: event.applicationDate,
+      eventType: event.eventType,
+      numDays: event.numDays,
+      location: event.location,
+      coordinator: event.coordinator
+    },
+
+    revenue: {
+      grossSales,
+      refunds,
+      discounts,
+      netSales,
+      tips,
+      totalCollected,
+      foodTax,
+      squareEventCharge,
+      totalNetRevenue
+    },
+
+    labor: {
+      laborRows,
+      laborTotal,
+      laborTipTotal
+    },
+
+    expenses: {
+      eventFee: event.eventFee || 0,
+      supplyFees: event.supplyFees || 0,
+      additionalFeesTotal,
+      eventRunnerFee: event.eventRunnerFee || 0,
+      totalExpenses
+    },
+
+    profit: {
+      profitBeforeTaxes,
+      utahTax,
+      federalTax,
+      finalProfit
+    }
+  };
+}
+app.get("/api/events/:id/report", (req, res) => {
+  try {
+    const report = buildPostEventReport(req.params.id);
+    res.json(report);
+  } catch (err) {
+    console.error("❌ Report error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
