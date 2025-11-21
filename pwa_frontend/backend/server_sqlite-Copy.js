@@ -478,6 +478,10 @@ console.log("🔍 Fetching Square Payments:", {
   }
 });
 
+// -----------------------------------------------
+// PUT /api/square/sales/:eventId
+// Pull Square Payments for this event + save summary
+// -----------------------------------------------
 
 //Modify / Change event info
 app.put('/api/events/:id', (req, res) => {

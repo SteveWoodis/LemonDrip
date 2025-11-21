@@ -32,10 +32,6 @@
   </div>
 	<label for="permitFiles">Permit Documents:</label>
 	<input type="file" id="permitFiles" multiple>
-	<label>Square Location</label>
-<select id="form_squareLocationId">
-  <option value="">Select Square Location…</option>
-</select>
 
   <!-- 🧩 Dynamic Form Area -->
   <form id="eventForm" onsubmit="submitEvent(event); return false;" class="event-form">
@@ -132,25 +128,12 @@
   </section> -->
   
   <!-- 📊 Event Dashboard Section -->
-<!-- 📊 Event Dashboard Section -->
-<section id="eventDashboardSection" class="card hidden dashboard-page">
+<section id="eventDashboardSection" class="card hidden">
+  <h2>Event Dashboard</h2>
 
-  <!-- Header area -->
-  <div class="event-header">
-    <h2 id="dashEventName">Event Dashboard</h2>
-    <p id="dashEventDate"></p>
-  </div>
-
-  <!-- Cards container -->
-  <div id="eventDashboardContainer" class="dashboard-grid"></div>
-
-  <!-- Footer buttons -->
-  <div class="dashboard-buttons">
-    <button onclick="navigateTo('manageSection')" class="btn-secondary">⬅ Back to Manage Events</button>
-  </div>
-
+  <!-- REQUIRED container for dashboard cards -->
+  <div id="eventDashboardContainer"></div>
 </section>
-
 
 
 

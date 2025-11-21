@@ -14,7 +14,7 @@ let formTemplate = { templateName: "Custom Event Form", fields: [] };
 
 // ---------------------------
 // 💾 Persistent State (localStorage)
-// 
+//
 // ---------------------------
 function saveAppState() {
   const state = {
@@ -24,11 +24,11 @@ function saveAppState() {
   };
   localStorage.setItem("lemon_app_state", JSON.stringify(state));
 }
+
 // Load the current App State
 async function loadAppState() {
   const saved = localStorage.getItem("lemon_app_state");
-  
-  
+
   if (!saved) {
     // default: show Manage Events
     navigateTo("manageSection");
@@ -36,7 +36,8 @@ async function loadAppState() {
   }
   try {
     const state = JSON.parse(saved);
-    const sectionId = (state.activeAction ? state.activeAction : "manage") + "Section";
+    const sectionId =
+      (state.activeAction ? state.activeAction : "manage") + "Section";
     if (document.getElementById(sectionId)) {
       navigateTo(sectionId);
     } else {
@@ -49,10 +50,9 @@ async function loadAppState() {
   }
 }
 
-
 // Handle browser back/forward
 window.addEventListener("popstate", (event) => {
-  const action = event.state?.action || location.hash.replace("#/", "");
+  const action = event.state?.action || eventLocation.hash.replace("#/", "");
   if (action) navigateTo(action + "Section"); // ✅ replaced showSection
 });
 
@@ -67,7 +67,7 @@ window.addEventListener("DOMContentLoaded", () => {
 function toCamelCaseKeys(obj) {
   if (Array.isArray(obj)) {
     return obj.map(toCamelCaseKeys);
-  } else if (obj !== null && typeof obj === 'object') {
+  } else if (obj !== null && typeof obj === "object") {
     return Object.entries(obj).reduce((acc, [key, value]) => {
       const camelKey = key.charAt(0).toLowerCase() + key.slice(1);
       acc[camelKey] = toCamelCaseKeys(value);
@@ -81,132 +81,53 @@ function toCamelCaseKeys(obj) {
 // 🧭 Clean Universal Navigator
 // ---------------------------
 function navigateTo(sectionId) {
-  document.querySelectorAll("section").forEach(sec => sec.classList.add("hidden"));
+  document.querySelectorAll("section").forEach((sec) =>
+    sec.classList.add("hidden")
+  );
   const section = document.getElementById(sectionId);
   if (section) {
     section.classList.remove("hidden");
     section.scrollIntoView({ behavior: "smooth" });
-	if (sectionId === "addSection") {
-      /*populateTemplateDropdown(); // 🔹 Populate templates when Add Event opens
-	  settimeout(() => {
-    const dropdown = document.getElementById("templateSelect");
-    if (dropdown) {
-      populateTemplateDropdown();
-    } else {
-      console.warn("⚠️ Template dropdown not found yet, retrying...");*/
-      setTimeout(() => {
-		const dropdown = document.getElementById("templateSelect");
-		if (dropdown && dropdown.options.length > 1 && !dropdown.value) {
-			dropdown.value = dropdown.options[1].value; // pick first real template
-			}
-		}, 500);
-    }
   } else {
     console.warn(`⚠️ Section "${sectionId}" not found`);
   }
 }
-function buildPostEventReport(eventID) {
-  // 1. Pull main event fields
-  const event = db.prepare(`
-    SELECT * FROM EventInfo WHERE EventID = ?
-  `).get(eventID);
+window.navigateTo = navigateTo; // <-- FIX
 
-  if (!event) throw new Error(`Event not found: id=${eventID}`);
+// -------------------------------------
+// END IF UTILITIES
+// -------------------------------------
+function createStarRating(name, currentValue = 0, editable = true) {
+  const container = document.createElement("div");
+  container.classList.add("star-container");
 
-  // 2. Pull Square SalesSummary record for this event
-  const summary = db.prepare(`
-    SELECT * FROM SalesSummary WHERE EventID = ?
-  `).get(eventID) || {};
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement("span");
+    star.classList.add("star");
+    star.textContent = "★";
+    star.dataset.value = i;
 
-  // Normalize summary amounts (default to 0 if null)
-  const grossSales = summary.grossSales || 0;
-  const refunds = summary.refunds || 0;
-  const discounts = summary.discounts || 0;
-  const tips = summary.tips || 0;
-  const netSales = summary.netSales || (grossSales - refunds - discounts);
-  const totalCollected = summary.totalCollected || netSales + tips;
+    if (i <= currentValue) star.classList.add("filled");
 
-  // 3. Pull employee/labor rows for this event
-  const laborRows = db.prepare(`
-    SELECT employeeName, role, hoursWorked, hourlyRate, totalPay, tipsEarned
-    FROM EventEmployees WHERE eventID = ?
-  `).all(eventID);
+    if (editable) {
+      star.addEventListener("click", () => {
+        container.querySelectorAll(".star").forEach((s) => {
+          s.classList.toggle(
+            "filled",
+            Number(s.dataset.value) <= i
+          );
+        });
+        container.dataset.value = i;
+      });
+    }
 
-  const laborTotal = laborRows.reduce((acc, r) => acc + (r.totalPay || 0), 0);
-  const laborTipTotal = laborRows.reduce((acc, r) => acc + (r.tipsEarned || 0), 0);
+    container.appendChild(star);
+  }
 
-  // 4. Pull additional fees (optional table)
-  const feeRows = db.prepare(`
-    SELECT feeName, feeAmount
-    FROM AdditionalFees WHERE eventID = ?
-  `).all(eventID);
+  container.dataset.value = currentValue;
+  container.dataset.field = name;
 
-  const additionalFeesTotal = feeRows.reduce((acc, r) => acc + (r.feeAmount || 0), 0);
-
-  // 5. Compute total expenses
-  const totalExpenses =
-    (event.eventFee || 0) +
-    (event.supplyFees || 0) +
-    additionalFeesTotal +
-    laborTotal +
-    (event.eventRunnerFee || 0);
-
-  // 6. Revenue calculations
-  const foodTax = event.foodTax || 0;
-  const squareEventCharge = event.squareEventCharge || 0;
-  const totalNetRevenue = totalCollected - foodTax - squareEventCharge;
-
-  // 7. Final profit
-  const profitBeforeTaxes = totalNetRevenue - totalExpenses;
-  const utahTax = event.utahTax || 0;
-  const federalTax = event.federalTax || 0;
-  const finalProfit = profitBeforeTaxes - utahTax - federalTax;
-
-  // 8. Build final report object
-  return {
-    meta: {
-      eventID,
-      generatedAt: new Date().toISOString(),
-    },
-    eventInfo: {
-      eventName: event.eventName,
-      eventDate: event.eventDate,
-      applicationDate: event.applicationDate,
-      eventType: event.eventType,
-      location: event.location,
-      coordinator: event.coordinator,
-      numDays: event.numDays,
-    },
-    revenue: {
-      grossSales,
-      refunds,
-      discounts,
-      netSales,
-      tips,
-      totalCollected,
-      foodTax,
-      squareEventCharge,
-      totalNetRevenue,
-    },
-    labor: {
-      laborRows,
-      laborTotal,
-      laborTipTotal,
-    },
-    expenses: {
-      eventFee: event.eventFee || 0,
-      supplyFees: event.supplyFees || 0,
-      additionalFeesTotal,
-      eventRunnerFee: event.eventRunnerFee || 0,
-      totalExpenses,
-    },
-    profit: {
-      profitBeforeTaxes,
-      utahTax,
-      federalTax,
-      finalProfit,
-    },
-  };
+  return container;
 }
 
 // ✅ Removed old showSection() entirely
@@ -217,54 +138,59 @@ function buildPostEventReport(eventID) {
 // ---------------------------
 function buildTableHTML(results, containerId = "searchResults") {
   const container = document.getElementById(containerId) || document.body;
-  container.innerHTML = '';
+  container.innerHTML = "";
 
   if (!results.length) {
-    container.textContent = 'No matching events found.';
+    container.textContent = "No matching events found.";
     return;
   }
 
-  const table = document.createElement('table');
-  table.classList.add('results-table', 'lemondrip-table');
+  const table = document.createElement("table");
+  table.classList.add("results-table", "lemondrip-table");
 
   const header = table.createTHead();
   const headerRow = header.insertRow();
-  Object.keys(results[0]).forEach(key => {
-    const th = document.createElement('th');
+  Object.keys(results[0]).forEach((key) => {
+    const th = document.createElement("th");
     th.textContent = key;
     headerRow.appendChild(th);
   });
 
   const body = table.createTBody();
-  results.forEach(event => {
+  results.forEach((event) => {
     const tr = body.insertRow();
-    Object.values(event).forEach(val => {
+    Object.values(event).forEach((val) => {
       const td = tr.insertCell();
-      td.textContent = val ?? '';
+      td.textContent = val ?? "";
     });
 
-    tr.addEventListener('click', async () => {
-  try {
-    const eventID = event["eventID"] || event.eventID;
-		
-    if (!eventID) {
-      console.warn("⚠️ No eventID found for clicked row:", event);
-      alert("eventID missing — cannot load details.");
-      return;
-    }
+    tr.addEventListener("click", async () => {
+      try {
+        const eventID = event["eventID"] || event.eventID;
 
-        const res = await fetch(`http://localhost:3000/api/events/${eventID}`);
-        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-		
-		
+        if (!eventID) {
+          console.warn("⚠️ No eventID found for clicked row:", event);
+          alert("eventID missing — cannot load details.");
+          return;
+        }
+
+        const res = await fetch(
+          `http://localhost:3000/api/events/${eventID}`
+        );
+        if (!res.ok)
+          throw new Error(`Server responded with ${res.status}`);
+
         const fullEvent = await res.json();
-		const empRes = await fetch(`http://localhost:3000/api/events/${eventID}/employees`);
-		const empData = await empRes.json();
-		
-		fullEvent.eventEmployees = empData;
-		
-		console.log("Fullevent is :",fullEvent);
-		loadEventIntoDashboard(fullEvent);
+
+        const empRes = await fetch(
+          `http://localhost:3000/api/events/${eventID}/employees`
+        );
+        const empData = await empRes.json();
+
+        fullEvent.eventEmployees = empData;
+
+        console.log("FullEvent is:", fullEvent);
+        loadEventIntoDashboard(fullEvent);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
         alert("Could not load event details.");
@@ -275,17 +201,16 @@ function buildTableHTML(results, containerId = "searchResults") {
   container.appendChild(table);
 }
 
-
 function clearEventForm() {
-  const formEl = document.getElementById('eventForm');
+  const formEl = document.getElementById("eventForm");
   if (!formEl) return;
 
   // Reset all input, select, and textarea elements
-  const inputs = formEl.querySelectorAll('input, select, textarea');
-  inputs.forEach(input => {
+  const inputs = formEl.querySelectorAll("input, select, textarea");
+  inputs.forEach((input) => {
     // For text, date, number, etc.
-    if (input.type !== 'checkbox' && input.type !== 'radio') {
-      input.value = '';
+    if (input.type !== "checkbox" && input.type !== "radio") {
+      input.value = "";
     }
     // For checkboxes and radios
     else {
@@ -294,36 +219,39 @@ function clearEventForm() {
   });
 }
 
-			
 // List all
 async function loadAllEvents() {
   const res = await fetch("http://localhost:3000/api/events");
   const data = await res.json();
   const events = data.Events || [];
 
-  const formatted = events.map(e => ({
+  const formatted = events.map((e) => ({
     eventID: e.eventID ?? e.EventID ?? e["Event ID"],
     eventName: e.eventName ?? e["Event Name"],
     eventDate: e.eventDate ?? e["Event Date"],
     coordinator: e.coordinator ?? e.EventCoordinator ?? e["Event coordinator"],
-    location: e.squareLocationId ?? e.EventsquareLocationId ?? e["Event squareLocationId"],
+    eventLocation: e.eventLocation ??  e["Event Location"],
+    squareLocationId: e.EventsquareLocationId ?? e["Event squareLocationId"],
     status: e.status ?? e.Status ?? e["Event status"]
   }));
 
   buildTableHTML(formatted, "manageResults");
 }
 
-
 // Search
 async function manageSearch() {
-  const name = document.getElementById("manageSearchName").value.trim();
-  const date = document.getElementById("manageSearchDate").value.trim();
-  const id   = document.getElementById("manageSearchID").value.trim();
+  const name = document
+    .getElementById("manageSearchName")
+    .value.trim();
+  const date = document
+    .getElementById("manageSearchDate")
+    .value.trim();
+  const id = document.getElementById("manageSearchID").value.trim();
 
   const qs = new URLSearchParams();
   if (name) qs.set("name", name);
   if (date) qs.set("date", date);
-  if (id)   qs.set("id", id);
+  if (id) qs.set("id", id);
 
   const url = qs.toString()
     ? `http://localhost:3000/api/events?${qs.toString()}`
@@ -332,31 +260,36 @@ async function manageSearch() {
   const res = await fetch(url);
   const data = await res.json();
   const events = data.Events || [];
-  const formatted = events.map(e => ({
-  "Event ID": e["Event ID"] ?? e.eventID,
-  "eventName": e["eventName"] ?? e.eventName,
-  "eventDate": e["eventDate"] ?? e.eventDate,
-  "Event coordinator": e["Event coordinator"] ?? e.Eventcoordinator,
-  "location": e["Event squareLocationId"] ?? e.squareLocationId,
-  "status": e["Event status"] ?? e.status
-}));
+  const formatted = events.map((e) => ({
+    "Event ID": e["Event ID"] ?? e.eventID,
+    eventName: e["eventName"] ?? e.eventName,
+    eventDate: e["eventDate"] ?? e.eventDate,
+    "Event coordinator":
+      e["Event coordinator"] ?? e.Eventcoordinator,
+    eventLocation: e["Event Location"] ?? e.eventLocation,
+    status: e["Event status"] ?? e.status
+  }));
   buildTableHTML(formatted, "manageResults");
 }
-
 
 //---------------
 // Add Company - get company information for potential SASS down the road.
 //----------------
 async function addCompany(event) {
- const data = {
-    companyName: document.getElementById("companyName").value.trim(),
-    address: document.getElementById("address").value.trim(),
-    city: document.getElementById("city").value.trim(),
-    state: document.getElementById("state").value.trim(),
-    postalCode: document.getElementById("postalCode").value.trim(),
+  const data = {
+    companyName: document
+      .getElementById("companyName")
+      .value.trim(),
     phone: document.getElementById("phone").value.trim(),
-    vendorCategory: document.getElementById("vendorCategory").value.trim()
+    contactName: document
+      .getElementById("contactName")
+      .value.trim(),
+    vendorCategory: document
+      .getElementById("vendorCategory")
+      .value.trim(),
+    email: document.getElementById("email").value.trim()
   };
+  console.log("Company event information: ", data);
 
   if (!data.companyName) {
     alert("Company name is required.");
@@ -378,222 +311,112 @@ async function addCompany(event) {
     console.error("❌ Error adding company:", err);
     alert("Failed to add company. Check console for details.");
   }
-
 }
 
 // ---------------------------
 // ✅ Build Expanded Event Details + Dashboard Button
+// (hook is there—logic handled by loadEventIntoDashboard)
 // ---------------------------
 async function buildExpandedDetails(event) {
   const sections = [];
-  // (Unchanged from your logic)
+  // You can extend this if you want richer dashboard sections later.
 }
 
-// ---------------------------
-// ✅ Safe Dashboard Loader
-// ---------------------------
-async function loadEventIntoDashboard(row) {
-  console.log("Loading event into dashboard:", row);
+// Load Square locations into the Add Event form
+async function loadSquareLocationsIntoForm() {
+  try {
+    const res = await fetch(
+      "http://localhost:3000/api/square/locations"
+    );
+    const locations = await res.json();
 
-  // Normalize row so both legacy & new formats work
-  const info = row.EventInfo || row;
-  const event = row;
-
-  const dash = document.getElementById("dashboard");
-  const dashSection = document.getElementById("dashboardSection");
-  dashSection.classList.remove("hidden");
-  dash.style.display = "block";
-  dash.innerHTML = "";
-
-  const summary = document.createElement("div");
-  summary.classList.add("event-card");
-
-  const yesNo = v => (v ? "Yes" : "No");
-
-  summary.innerHTML = `
-    <h2>${info["eventName"] || "Unnamed Event"}</h2>
-    <p><strong>Date:</strong> ${info["eventDate"] || "N/A"}</p>
-    <p><strong>Application Date:</strong> ${info["applicationDate"] || "N/A"}</p>
-    <p><strong>Finalized Date:</strong> ${info["finalizedDate"] || "N/A"}</p>
-    <p><strong>Coordinator:</strong> ${info["coordinator"] || "N/A"}</p>
-    <p><strong>Event Fee:</strong> ${info["eventFee"] ?? "N/A"}</p>
-    <p><strong>Location:</strong> ${info["squareLocationId"] || "N/A"}</p>
-    <p><strong>Time:</strong> ${info["time"] || "N/A"}</p>
-    <p><strong>Permits:</strong> ${info["permits"] || "N/A"}</p>
-    <p><strong>Employees:</strong> ${info["employees"] || "N/A"}</p>
-    <p><strong>Event Rating:</strong> ${info["eventRating"] || "N/A"}</p>
-    <p><strong>Event Host:</strong> ${info["eventHost"] || "N/A"}</p>
-    <p><strong>Status:</strong> ${info["status"] || "N/A"}</p>
-    <p><strong>Event Type:</strong> ${info["eventType"] || "N/A"}</p>
-    <p><strong># Days:</strong> ${info["numDays"] ?? "N/A"}</p>
-    <p><strong>Gross Sales:</strong> ${info["grossSales"] ?? 0}</p>
-    <p><strong>Tips:</strong> ${info["tips"] ?? 0}</p>
-    <p><strong>Net Sales:</strong> ${info["netSales"] ?? 0}</p>
-    <p><strong>Total Sales:</strong> ${info["totalSales"] ?? 0}</p>
-    <p><strong>Finalized?</strong> ${yesNo(info["isFinalized"])}</p>
-  `;
-
-  dash.appendChild(summary);
-
-  // ---------------------------------------------
-  //   🟣 Collapsible Sub-Section Cards
-  // ---------------------------------------------
-  const subItems = [
-    ["Employee Tracking", event.eventEmployees],
-    ["Drink Sales", event.DrinksSold || event.DrinkSales?.Data],
-    ["Additional Fees", event.AdditionalFees || event.AdditionalFees?.Data],
-    ["Discounts", event.discounts || event.discounts?.Data],
-    ["Supply Cost", event.SupplyCost || event.SupplyCost?.Data],
-    ["Tip Tracker", event.TipTracker || event.TipTracker?.Data],
-    ["Event Runner Fees", event.EventRunnerFees || event.EventRunnerFees?.Data]
-  ];
-
-  subItems.forEach(([title, data]) => {
-    const card = createCollapsiblecard(title, data);
-    if (card) dash.appendChild(card);
-  });
-
-  // ---------------------------------------------
-  //   ✏️ EDIT BUTTON
-  // ---------------------------------------------
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "✏️ Edit This Event";
-  editBtn.classList.add("edit-btn");
-  editBtn.addEventListener("click", () => editEvent(event));
-  summary.appendChild(editBtn);
-
-  // ---------------------------------------------
-  // 💳 LOAD SQUARE SALES BUTTON
-  // ---------------------------------------------
-  const salesBtn = document.createElement("button");
-  salesBtn.textContent = "💳 Load Square Sales";
-  salesBtn.classList.add("edit-btn");
-
-  salesBtn.addEventListener("click", async () => {
-    const id =
-      event.eventID ||
-      event.EventID ||
-      event.EventInfo?.["Event ID"];
-
-    if (!id) return alert("Missing EventID");
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/square/sales/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" }
-      });
-
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-
-      const payload = await res.json();
-      console.log("📦 Square API payload:", payload);
-
-      let el = document.getElementById("dashSquareInfo");
-      if (!el) {
-        el = document.createElement("p");
-        el.id = "dashSquareInfo";
-        summary.appendChild(el);
-      }
-
-      const t = payload.totals || {};
-      el.innerHTML = `
-        <strong>Square Sales:</strong>
-        Gross $${(t.gross ?? 0).toFixed(2)} |
-        Tips $${(t.tips ?? 0).toFixed(2)} |
-        Refunds $${(t.refunds ?? 0).toFixed(2)} |
-        Net $${(t.netSales ?? 0).toFixed(2)} |
-        Collected $${(t.totalCollected ?? 0).toFixed(2)}
-      `;
-
-    } catch (err) {
-      console.error(err);
-      alert("Failed to pull Square sales. Check console.");
+    const dropdown = document.getElementById("form_squareLocationId");
+    if (!dropdown) {
+      console.warn("Square Location dropdown not found.");
+      return;
     }
-  });
 
-  summary.appendChild(salesBtn);
+    dropdown.innerHTML =
+      `<option value="">Select Square Location…</option>`;
 
-  // ---------------------------------------------
-  // 📊 POST-EVENT REPORT BUTTON
-  // ---------------------------------------------
-  const reportBtn = document.createElement("button");
-  reportBtn.textContent = "📊 View Post-Event Report";
-  reportBtn.classList.add("edit-btn");
-  reportBtn.addEventListener("click", () => openPostEventReport(event));
-  summary.appendChild(reportBtn);
-
-  // ---------------------------------------------
-  dash.scrollIntoView({ behavior: "smooth" });
+    locations.forEach((loc) => {
+      const opt = document.createElement("option");
+      opt.value = loc.id;
+      opt.textContent = loc.name;
+      dropdown.appendChild(opt);
+    });
+  } catch (err) {
+    console.error("❌ Failed loading Square locations:", err);
+  }
 }
-
-	
-  
-
 
 async function editEvent(eventData) {
   const info = eventData.EventInfo || eventData;
 
-if (!eventData) {
-	alert("No Event Data to load.");
-	return;
-}
-console.log("Editing Event.", eventData);
-window.activeEvent = eventData;
-window.activeeventID = eventData.eventID || eventData["Event ID"];
-window.isEditing = true;
+  if (!eventData) {
+    alert("No Event Data to load.");
+    return;
+  }
+  console.log("Editing Event.", eventData);
 
-  // 🔹 Show Add/Edit form
-  navigateTo('addSection');
+  window.activeEvent = eventData;
+  window.activeeventID = eventData.eventID || eventData["Event ID"];
+  window.isEditing = true;
 
-  // 🔹 Determine which template is active (Default Template or otherwise)
-  const activeTemplateName = document.getElementById('templateSelect')?.value || "Default Template";
+  // Show Add/Edit form
+  navigateTo("addSection");
+
+  // Determine active template
+  const activeTemplateName =
+    document.getElementById("templateSelect")?.value ||
+    "Default Template";
   console.log("Current template is:", activeTemplateName);
-  
-  const template = window.availableTemplates?.find(t => t.templateName === activeTemplateName);
 
+  const template = window.availableTemplates?.find(
+    (t) => t.templateName === activeTemplateName
+  );
   if (!template) {
     alert("⚠️ Template not found. Please load a template first.");
     return;
   }
-	window.isListing = true;
-	window.editingeventID = event.eventID;
-	window.activeEvent = eventData;
-	
-  // 🔹 Rebuild the form from the template
+
+  // Rebuild form from template
   rebuildAddEventForm(stripEventColorFromTemplate(template));
 
-  // 🔹 Loop through all inputs and prefill with existing event data
-  const formContainer = document.getElementById('eventForm');
-  const inputs = formContainer.querySelectorAll('input, select, textarea');
+  // Load Square locations, then select this event's location
+  await loadSquareLocationsIntoForm();
+  const sqSelect = document.getElementById("form_squareLocationId");
+  if (sqSelect && info.squareLocationId) {
+    sqSelect.value = info.squareLocationId;
+  }
 
-	console.log("Newly Edited Form:", inputs);
-	
-  inputs.forEach(input => {
-    const label = input.id.replace(/^form_/, '').replace(/_/g, ' ');
-    const match = Object.keys(info).find(k => k.toLowerCase() === label.toLowerCase());
-    if (match) {
-      const val = info[match];
-      if (input.multiple && Array.isArray(val)) {
-        // For multiselects, mark selected options
-        Array.from(input.options).forEach(opt => {
-          opt.selected = val.includes(opt.value);
-        });
-      } else {
-        input.value = val ?? "";
-      }
+  // Prefill dynamic fields based on label
+  const formContainer = document.getElementById("eventForm");
+  const inputs = formContainer.querySelectorAll(
+    "input, select, textarea"
+  );
+
+  console.log("Newly Edited Form:", inputs);
+
+  inputs.forEach((input) => {
+    const labelKey = input.id
+      .replace(/^form_/, "")
+      .replace(/_/g, " ");
+    const match = Object.keys(info).find(
+      (k) => k.toLowerCase() === labelKey.toLowerCase()
+    );
+    if (!match) return;
+
+    const val = info[match];
+    if (input.multiple && Array.isArray(val)) {
+      Array.from(input.options).forEach((opt) => {
+        opt.selected = val.includes(opt.value);
+      });
+    } else {
+      input.value = val ?? "";
     }
   });
-
-  // 🔹 Remember which event is being edited
- 
 }
-
-
-
-// ---------------------------
-// 🔍 Search Events Function (Fixed for Flat or Nested JSON)
-// modified by: Steve Woodis 10-17-25
-// ---------------------------
 
 // ---------------------------
 // 🔍 Search Events (Safe for Manage Events)
@@ -601,22 +424,25 @@ window.isEditing = true;
 async function searchEvents() {
   const nameEl = document.getElementById("searchName");
   const dateEl = document.getElementById("searchDate");
-  const idEl   = document.getElementById("searchID");
+  const idEl = document.getElementById("searchID");
 
   const name = nameEl ? nameEl.value.trim().toLowerCase() : "";
   const date = dateEl ? dateEl.value.trim() : "";
-  const id   = idEl   ? idEl.value.trim() : "";
+  const id = idEl ? idEl.value.trim() : "";
 
   // Load events if not already loaded
   if (!Array.isArray(window.events) || !window.events.length) {
     await loadEvents();
   }
 
-  let results = window.events.filter(e => {
+  let results = window.events.filter((e) => {
     const info = e.EventInfo || e;
     const eventName = (info["eventName"] || "").toLowerCase();
     const eventDate = info["eventDate"] || "";
-    const eventID = e.eventID?.toString() || info["Event ID"]?.toString() || "";
+    const eventID =
+      e.eventID?.toString() ||
+      info["Event ID"]?.toString() ||
+      "";
     return (
       (!name || eventName.includes(name)) &&
       (!date || eventDate === date) &&
@@ -624,37 +450,52 @@ async function searchEvents() {
     );
   });
 
-  const formatted = results.map(e => {
+  const formatted = results.map((e) => {
     const info = e.EventInfo || e;
     return {
       "Event ID": e.eventID,
-      "eventName": info["eventName"] || "",
-      "eventDate": info["eventDate"] || "",
-      "Event coordinator": info["Event coordinator"] || info["coordinator"] || "",
-      "location": info["Event squareLocationId"] || info["squareLocationId"] || "",
-      "eventHost": info["eventHost"] || info["Host"] || ""
+      eventName: info["eventName"] || "",
+      eventDate: info["eventDate"] || "",
+      "Event coordinator":
+        info["Event coordinator"] ||
+        info["coordinator"] ||
+        "",
+      location:
+        info["Event squareLocationId"] ||
+        info["squareLocationId"] ||
+        "",
+      eventHost: info["eventHost"] || info["Host"] || ""
     };
   });
 
   // 🔹 Decide where to render results
-  const targetContainer = document.getElementById("manageResults") 
-                       || document.getElementById("searchResults");
+  const targetContainer =
+    document.getElementById("manageResults") ||
+    document.getElementById("searchResults");
 
   if (!targetContainer) {
-    console.warn("⚠️ No valid container (#manageResults or #searchResults) found for search results.");
+    console.warn(
+      "⚠️ No valid container (#manageResults or #searchResults) found for search results."
+    );
     return;
   }
 
   buildTableHTML(formatted, targetContainer.id);
-  console.log(`Rendered ${formatted.length} event(s) into ${targetContainer.id}.`);
+  console.log(
+    `Rendered ${formatted.length} event(s) into ${targetContainer.id}.`
+  );
 }
 
 async function loadEvents() {
   try {
     const res = await fetch("http://localhost:3000/api/events");
     const newEvent = await res.json();
-    window.events = Array.isArray(newEvent) ? newEvent : newEvent.Events || [];
-    console.log(`✅ Loaded ${window.events.length} events from backend`);
+    window.events = Array.isArray(newEvent)
+      ? newEvent
+      : newEvent.Events || [];
+    console.log(
+      `✅ Loaded ${window.events.length} events from backend`
+    );
   } catch (err) {
     console.error("❌ Failed to load events:", err);
     window.events = [];
@@ -675,90 +516,116 @@ function renderTableArray(elId, arr) {
 
   buildTableHTML(arr);
 }
+
 function coerceForApi(obj) {
-  const num = k => (obj[k] === "" || obj[k] == null) ? null : Number(obj[k]);
-  const int = k => (obj[k] === "" || obj[k] == null) ? null : parseInt(obj[k], 10);
-  const str = k => (obj[k] == null || obj[k] === "") ? null : String(obj[k]);
-  const bool = k => (obj[k] === true || obj[k] === "true" || obj[k] === "1") ? true : false;
+  const num = (k) =>
+    obj[k] === "" || obj[k] == null ? null : Number(obj[k]);
+  const int = (k) =>
+    obj[k] === "" || obj[k] == null ? null : parseInt(obj[k], 10);
+  const str = (k) =>
+    obj[k] == null || obj[k] === "" ? null : String(obj[k]);
+  const bool = (k) =>
+    obj[k] === true ||
+    obj[k] === "true" ||
+    obj[k] === "1"
+      ? true
+      : false;
 
   // normalize every canonical field
-  obj["eventFee"]    = int("eventFee");
-  obj["numDays"]      = int("numDays");
-  obj["grossSales"]  = num("grossSales");
-  obj["tips"]         = num("tips");
-  obj["netSales"]    = num("netSales");
-  obj["totalSales"]  = num("totalSales");
-  obj["isFinalized"]  = bool("isFinalized");
+  obj["eventFee"] = int("eventFee");
+  obj["numDays"] = int("numDays");
+  obj["grossSales"] = num("grossSales");
+  obj["tips"] = num("tips");
+  obj["netSales"] = num("netSales");
+  obj["totalSales"] = num("totalSales");
+  obj["isFinalized"] = bool("isFinalized");
   return obj;
 }
 
-async function submitEvent() {
-  const formEl = document.getElementById("eventForm");
-  if (!formEl) {
-    alert("Form not found!");
-    return;
-  }
+async function submitEvent(e) {
+  if (e) e.preventDefault();
 
+  const formEl = document.getElementById("eventForm");
   const inputs = formEl.querySelectorAll("input, select, textarea");
+
   const newInfo = {};
 
-  inputs.forEach(input => {
+  // 1) collect dynamic fields inside the form
+  inputs.forEach((input) => {
     const rawId = input.id || "";
-    const label = rawId.startsWith("form_")
-  ? rawId.replace(/^form_/, "")
-        .split("_")
-        .map((w, i) => i === 0 ? w : w[0].toUpperCase() + w.slice(1))
-        .join("")
-  : rawId;
-
-    if (!label) return; // skip unlabelled fields
-
-    if (input.type === "checkbox") {
-      newInfo[label] = input.checked ? 1 : 0;
+    if (!rawId.startsWith("form_")) return;
+    const key = rawId.replace(/^form_/, "");
+    if (input.multiple) {
+      newInfo[key] = Array.from(input.selectedOptions).map(o => o.value);
     } else {
-      newInfo[label] = input.value?.trim() || null;
+      newInfo[key] = input.value.trim();
     }
   });
-	console.log("NewInfo Object: ", newInfo);
-  // Basic validation
+
+  // 2) also pull Square Location select
+  const sqSelect = document.getElementById("form_squareLocationId");
+  if (sqSelect) {
+    newInfo.squareLocationId = sqSelect.value || null;
+  }
+
+  // 3) validation
   if (!newInfo.eventName || !newInfo.eventDate) {
-    alert("Please provide at least an eventName and date.");
+    alert("Please provide at least an event name and date.");
     return;
   }
 
-  const url = window.isEditing && window.activeeventID
+  const isEditing = window.isEditing === true && window.activeeventID;
+  const url = isEditing
     ? `http://localhost:3000/api/events/${window.activeeventID}`
-    : `http://localhost:3000/api/events`;
-  const method = window.isEditing ? "PUT" : "POST";
+    : "http://localhost:3000/api/events";
 
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newInfo)
-    });
+  const method = isEditing ? "PUT" : "POST";
 
-    const data = await res.json();
-    if (!res.ok) {
-      console.error("🚨 Backend error:", data);
-      throw new Error(data.error || "Server error saving event.");
-    }
+  console.log("Submitting event:", { method, url, newInfo });
 
-    alert(method === "PUT"
-      ? (data.message || "Event updated successfully!")
-      : "Event saved successfully! New ID: " + data["eventID"]);
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(newInfo)
+  });
 
-    // Reset state
-    window.isEditing = false;
-    window.activeeventID = null;
-
-    await loadEvents();
-    navigateTo("manageSection");
-  } catch (err) {
-    console.error("❌ Error saving event:", err);
-    alert("Error saving event: " + err.message);
+  const payload = await res.json();
+  if (!res.ok) {
+    console.error("🚨 Backend error:", payload);
+    alert(payload.error || "Error saving event.");
+    return;
   }
+
+  // If editing, reuse the same ID
+  const savedEventID = isEditing
+    ? window.activeeventID
+    : payload.eventID || payload.EventID;
+
+  if (!savedEventID) {
+    alert("Could not determine EventID.");
+    console.error(payload);
+    return;
+  }
+
+  await uploadEventPermits(savedEventID);
+
+  alert(isEditing ? "Event updated!" : "Event created!");
+
+  // Reset editing mode
+  window.isEditing = false;
+  window.activeeventID = null;
+  window.activeEvent = null;
+
+  navigateTo("manageSection");
+  await loadAllEvents();
 }
+
+
+/*function showAddEventForm() {
+  navigateTo("addSection");
+  buildAddEventForm();
+  loadSquareLocationsIntoForm(); // ← REQUIRED
+}*/
 
 // ---------------------------
 // 🔄 Clear Search
@@ -782,14 +649,16 @@ function clearSearch() {
 
   console.log("🔄 Search fields and results cleared.");
 }
+
 async function populateEmployeeDropdown(selectEl) {
   try {
     const res = await fetch("http://localhost:3000/api/employees");
     const employees = await res.json();
 
-    selectEl.innerHTML = '<option value=""> -- Select Employee -- </option>';
+    selectEl.innerHTML =
+      '<option value=""> -- Select Employee -- </option>';
 
-    employees.forEach(emp => {
+    employees.forEach((emp) => {
       const opt = document.createElement("option");
       opt.value = emp.EmployeeID;
       opt.textContent = emp.EmployeeName;
@@ -800,12 +669,17 @@ async function populateEmployeeDropdown(selectEl) {
   }
 }
 
-
 function addFieldToTemplate() {
-  const label = document.getElementById('builderLabel').value.trim();
-  const type = document.getElementById('builderType').value;
-  const required = document.getElementById('builderRequired').checked;
-  const optionsInput = document.getElementById('builderOptions').value.trim();
+  const label = document
+    .getElementById("builderLabel")
+    .value.trim();
+  const type = document.getElementById("builderType").value;
+  const required = document.getElementById(
+    "builderRequired"
+  ).checked;
+  const optionsInput = document
+    .getElementById("builderOptions")
+    .value.trim();
 
   if (!label) {
     alert("Please enter a field label.");
@@ -813,46 +687,51 @@ function addFieldToTemplate() {
   }
 
   const newField = { label, type, required };
-  if (['select', 'multiselect'].includes(type)) {
+  if (["select", "multiselect"].includes(type)) {
     if (!optionsInput) {
-      alert("Please enter options for dropdowns or multiselects.");
+      alert(
+        "Please enter options for dropdowns or multiselects."
+      );
       return;
     }
-    newField.options = optionsInput.split(',').map(o => o.trim());
+    newField.options = optionsInput
+      .split(",")
+      .map((o) => o.trim());
   }
 
   formTemplate.fields.push(newField);
   renderFormPreview();
-  document.getElementById('builderLabel').value = '';
-  document.getElementById('builderOptions').value = '';
+  document.getElementById("builderLabel").value = "";
+  document.getElementById("builderOptions").value = "";
 }
 
 function renderFormPreview() {
-  const preview = document.getElementById('formPreview');
-  preview.innerHTML = '';
+  const preview = document.getElementById("formPreview");
+  preview.innerHTML = "";
 
-  formTemplate.fields.forEach(field => {
-    const labelEl = document.createElement('label');
-    labelEl.textContent = field.label + (field.required ? ' *' : '');
+  formTemplate.fields.forEach((field) => {
+    const labelEl = document.createElement("label");
+    labelEl.textContent =
+      field.label + (field.required ? " *" : "");
     let input;
 
     switch (field.type) {
-      case 'select':
-      case 'multiselect':
-        input = document.createElement('select');
-        if (field.type === 'multiselect') input.multiple = true;
-        field.options.forEach(opt => {
-          const option = document.createElement('option');
+      case "select":
+      case "multiselect":
+        input = document.createElement("select");
+        if (field.type === "multiselect") input.multiple = true;
+        field.options.forEach((opt) => {
+          const option = document.createElement("option");
           option.value = opt;
           option.textContent = opt;
           input.appendChild(option);
         });
         break;
-      case 'textarea':
-        input = document.createElement('textarea');
+      case "textarea":
+        input = document.createElement("textarea");
         break;
       default:
-        input = document.createElement('input');
+        input = document.createElement("input");
         input.type = field.type;
     }
 
@@ -867,16 +746,19 @@ async function saveTemplate() {
   if (!templateName) return;
 
   const payload = {
-	  TemplateName: templateName,
-	  Fields: formTemplate.fields || []
+    TemplateName: templateName,
+    Fields: formTemplate.fields || []
   };
-  
+
   try {
-    const response = await fetch("http://localhost:3000/api/formtemplates", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    const response = await fetch(
+      "http://localhost:3000/api/formtemplates",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
 
     if (response.ok) {
       alert("Template saved successfully!");
@@ -890,15 +772,17 @@ async function saveTemplate() {
     alert("Network or server error while saving template.");
   }
 }
+
 async function loadTemplates() {
   try {
     const res = await fetch("http://localhost:3000/api/formTemplates");
     const templates = await res.json();
 
     const selector = document.getElementById("templateSelector");
-    selector.innerHTML = '<option value="">-- Select Template --</option>';
+    selector.innerHTML =
+      '<option value="">-- Select Template --</option>';
 
-    templates.forEach(tpl => {
+    templates.forEach((tpl) => {
       const opt = document.createElement("option");
       opt.value = tpl.templateName;
       opt.textContent = tpl.templateName;
@@ -918,14 +802,15 @@ async function populateTemplateDropdown() {
   try {
     const res = await fetch("http://localhost:3000/api/formtemplates");
     let templates = await res.json();
-	
-	templates = toCamelCaseKeys(templates);
-	
+
+    templates = toCamelCaseKeys(templates);
+
     window.availableTemplates = templates;
 
     const addDropdown = document.getElementById("templateSelect");
-    addDropdown.innerHTML = '<option value="">-- Select Template --</option>';
-    templates.forEach(tpl => {
+    addDropdown.innerHTML =
+      '<option value="">-- Select Template --</option>';
+    templates.forEach((tpl) => {
       const opt = document.createElement("option");
       opt.value = tpl.templateName;
       opt.textContent = tpl.templateName;
@@ -933,10 +818,12 @@ async function populateTemplateDropdown() {
     });
 
     // Fill Design Form dropdown (if visible)
-    const designDropdown = document.getElementById("templateSelector");
+    const designDropdown =
+      document.getElementById("templateSelector");
     if (designDropdown) {
-      designDropdown.innerHTML = '<option value="">-- Select Template --</option>';
-      templates.forEach(tpl => {
+      designDropdown.innerHTML =
+        '<option value="">-- Select Template --</option>';
+      templates.forEach((tpl) => {
         const opt = document.createElement("option");
         opt.value = tpl.templateName;
         opt.textContent = tpl.templateName;
@@ -949,12 +836,18 @@ async function populateTemplateDropdown() {
   }
 }
 
-
 // ⚡ When user picks a template
 // Helper to strip 'Event Color' field from templates defensively
-function stripEventColorFromTemplate(tpl){
+function stripEventColorFromTemplate(tpl) {
   if (!tpl || !Array.isArray(tpl.fields)) return tpl;
-  tpl.fields = tpl.fields.filter(f => !(f && typeof f.label === "string" && /^event\s*color$/i.test(f.label)));
+  tpl.fields = tpl.fields.filter(
+    (f) =>
+      !(
+        f &&
+        typeof f.label === "string" &&
+        /^event\s*color$/i.test(f.label)
+      )
+  );
   return tpl;
 }
 
@@ -964,17 +857,20 @@ function useSelectedTemplate() {
     alert("Please select a template first.");
     return;
   }
-console.log('Template value', selected);
+  console.log("Template value", selected);
 
-
-  const template = window.availableTemplates.find(t => t.templateName === selected);
+  const template = window.availableTemplates.find(
+    (t) => t.templateName === selected
+  );
   if (!template) {
     alert("Template not found!");
     return;
   }
-  
-  
-  console.log("📋 Loading template into Add Event form:", template);
+
+  console.log(
+    "📋 Loading template into Add Event form:",
+    template
+  );
   rebuildAddEventForm(stripEventColorFromTemplate(template));
   alert(`✅ Loaded template: "${template.templateName}"`);
 }
@@ -982,7 +878,9 @@ console.log('Template value', selected);
 function activateTemplate() {
   const selector = document.getElementById("templateSelector");
   if (!selector) {
-    console.warn("activateTemplate called but #templateSelector not found");
+    console.warn(
+      "activateTemplate called but #templateSelector not found"
+    );
     return;
   }
 
@@ -991,16 +889,17 @@ function activateTemplate() {
     alert("Please select a template to activate.");
     return;
   }
-  const tpl = window.availableTemplates.find(t => t.templateName === selectedName);
-	  if (!tpl) {
-		alert("Template not found!");
-		return;
-	  }
+  const tpl = window.availableTemplates.find(
+    (t) => t.templateName === selectedName
+  );
+  if (!tpl) {
+    alert("Template not found!");
+    return;
+  }
   console.log("Activating template:", tpl.templateName);
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
   alert(`✅ "${tpl.TemplateName}" activated!`);
 }
-
 
 function rebuildAddEventForm(template) {
   const formContainer = document.getElementById("eventForm");
@@ -1009,103 +908,123 @@ function rebuildAddEventForm(template) {
   const existing = window.activeEvent || {};
 
   // Only clear the form if we’re not editing an event
-  if (!window.activeEvent) {
-    formContainer.innerHTML = ""; // clear old fields
-  } else {
-    // If editing, just rebuild structure but preserve data
-    formContainer.innerHTML = "";
-  }
+  formContainer.innerHTML = "";
 
-  if (!template || !template.fields || !Array.isArray(template.fields)) {
+  if (
+    !template ||
+    !template.fields ||
+    !Array.isArray(template.fields)
+  ) {
     console.error("❌ Invalid template structure:", template);
-    formContainer.innerHTML = "<p>Template could not be loaded.</p>";
+    formContainer.innerHTML =
+      "<p>Template could not be loaded.</p>";
     return;
   }
 
-  (template.fields[0]?.fields || template.fields).forEach(field => {
-    // Skip deprecated "Event Color"
-    if (field && typeof field.label === "string" && /^event\s*color$/i.test(field.label)) {
-      return;
-    }
-	
-    // Create label
-    const labelEl = document.createElement("label");
-    labelEl.textContent = field.label + (field.required ? " *" : "");
-
-    // Create input
-    let input;
-    switch (field.type) {
-      case "select":
-      case "multiselect":
-        input = document.createElement("select");
-        if (field.type === "multiselect") input.multiple = true;
-        (field.options || []).forEach(optVal => {
-          const opt = document.createElement("option");
-          opt.value = optVal;
-          opt.textContent = optVal;
-          input.appendChild(opt);
-        });
-        break;
-      case "textarea":
-        input = document.createElement("textarea");
-        break;
-      default:
-        input = document.createElement("input");
-        input.type = field.type || "text";
-    }
-	
-    if (field.required) input.required = true;
-
-    // ✅ Consistent ID pattern (no hardcoded fields)
-	const safeLabel = String(field.label).replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
-    input.id = "form_" + safeLabel;
-
-    
-	if (/^employees$/i.test(field.label) && field.type === "select") {
-			// dynamically populate from EmployeeTracker
-			populateEmployeeDropdown(input);
-			// Add Hours Worked field linked to this employee dropdown
-		if (/^employees$/i.test(field.label)) {
-			const hoursInput = document.createElement("input");
-			hoursInput.type = "number";
-			hoursInput.min = "0";
-			hoursInput.step = "0.25";
-			hoursInput.placeholder = "Hours Worked";
-			hoursInput.classList.add("hours-worked");
-			hoursInput.setAttribute("data-employee-hours", input.id);
-
-			formContainer.appendChild(hoursInput);
-		}
-
-	}
-		const lbl = typeof field.label === "string" ? field.label : "";
-		
-	// ✅ Pre-fill input with existing data if available
-    const savedVal =
-      existing[lbl] ||
-      existing[lbl.replaceAll(" ", "_")] ||
-      existing[lbl.toLowerCase()] ||
-      null;
-
-    if (savedVal !== null && savedVal !== undefined) {
-      if (input.tagName === "SELECT" && input.multiple) {
-        // Handle multiselect arrays or comma-delimited strings
-        const values = Array.isArray(savedVal)
-          ? savedVal
-          : savedVal.toString().split(",").map(v => v.trim());
-        for (const opt of input.options) {
-          if (values.includes(opt.value)) opt.selected = true;
-        }
-      } else if (input.tagName === "SELECT") {
-        input.value = savedVal;
-      } else if (input.tagName === "TEXTAREA" || input.tagName === "INPUT") {
-        input.value = savedVal;
+  (template.fields[0]?.fields || template.fields).forEach(
+    (field) => {
+      // Skip deprecated "Event Color"
+      if (
+        field &&
+        typeof field.label === "string" &&
+        /^event\s*color$/i.test(field.label)
+      ) {
+        return;
       }
-    }
 
-    labelEl.appendChild(input);
-    formContainer.appendChild(labelEl);
-  });
+      // Create label
+      const labelEl = document.createElement("label");
+      labelEl.textContent =
+        field.label + (field.required ? " *" : "");
+
+      // Create input
+      let input;
+      switch (field.type) {
+        case "select":
+        case "multiselect":
+          input = document.createElement("select");
+          if (field.type === "multiselect") input.multiple = true;
+          (field.options || []).forEach((optVal) => {
+            const opt = document.createElement("option");
+            opt.value = optVal;
+            opt.textContent = optVal;
+            input.appendChild(opt);
+          });
+          break;
+        case "textarea":
+          input = document.createElement("textarea");
+          break;
+        default:
+          input = document.createElement("input");
+          input.type = field.type || "text";
+      }
+
+      if (field.required) input.required = true;
+
+      // ✅ Consistent ID pattern (no hardcoded fields)
+      const safeLabel = String(field.label)
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9_]/g, "");
+      input.id = "form_" + safeLabel;
+
+      // Employees dropdown special case
+      if (
+        /^employees$/i.test(field.label) &&
+        field.type === "select"
+      ) {
+        // dynamically populate from EmployeeTracker
+        populateEmployeeDropdown(input);
+        // Add Hours Worked field linked to this employee dropdown
+        const hoursInput = document.createElement("input");
+        hoursInput.type = "number";
+        hoursInput.min = "0";
+        hoursInput.step = "0.25";
+        hoursInput.placeholder = "Hours Worked";
+        hoursInput.classList.add("hours-worked");
+        hoursInput.setAttribute(
+          "data-employee-hours",
+          input.id
+        );
+
+        formContainer.appendChild(hoursInput);
+      }
+
+      const lbl =
+        typeof field.label === "string" ? field.label : "";
+
+      // ✅ Pre-fill input with existing data if available
+      const savedVal =
+        existing[lbl] ||
+        existing[lbl.replaceAll(" ", "_")] ||
+        existing[lbl.toLowerCase()] ||
+        null;
+
+      if (savedVal !== null && savedVal !== undefined) {
+        if (input.tagName === "SELECT" && input.multiple) {
+          // Handle multiselect arrays or comma-delimited strings
+          const values = Array.isArray(savedVal)
+            ? savedVal
+            : savedVal
+                .toString()
+                .split(",")
+                .map((v) => v.trim());
+          for (const opt of input.options) {
+            if (values.includes(opt.value)) opt.selected = true;
+          }
+        } else if (input.tagName === "SELECT") {
+          input.value = savedVal;
+        } else if (
+          input.tagName === "TEXTAREA" ||
+          input.tagName === "INPUT"
+        ) {
+          input.value = savedVal;
+        }
+      }
+
+      labelEl.appendChild(input);
+      formContainer.appendChild(labelEl);
+    }
+  );
 
   // Add buttons
   const btnContainer = document.createElement("div");
@@ -1114,37 +1033,217 @@ function rebuildAddEventForm(template) {
     <button type="submit">💾 Save New Event</button>
     <button type="button" onclick="clearEventForm()">⬅️ Cancel</button>
   `;
+
   formContainer.appendChild(btnContainer);
+  formContainer.onsubmit = submitEvent;
+}
+
+// ---------------------------
+// 📊 Event Dashboard Loader
+// ---------------------------
+function loadEventIntoDashboard(fullEvent) {
+  if (!fullEvent) {
+    console.warn("⚠️ loadEventIntoDashboard called with no event");
+    return;
+  }
+
+  // Keep globally for later actions (edit, report, etc.)
+  window.activeEvent = fullEvent;
+
+  // Normalize some common fields
+  const eventID =
+    fullEvent.eventID ||
+    fullEvent.EventID ||
+    fullEvent["Event ID"];
+
+  const eventName =
+    fullEvent.eventName ||
+    fullEvent.EventName ||
+    (fullEvent.EventInfo &&
+      (fullEvent.EventInfo.eventName ||
+        fullEvent.EventInfo["Event Name"])) ||
+    "Unnamed Event";
+
+  const eventDate =
+    fullEvent.eventDate ||
+    fullEvent.EventDate ||
+    (fullEvent.EventInfo &&
+      (fullEvent.EventInfo.eventDate ||
+        fullEvent.EventInfo["Event Date"])) ||
+    "";
+
+  const coordinator =
+    fullEvent.coordinator ||
+    fullEvent.EventCoordinator ||
+    fullEvent["Event coordinator"] ||
+    "";
+
+  const eventLocation =
+    fullEvent.eventLocation ||
+    fullEvent.EventLocation ||
+    fullEvent["Event location"] ||
+    "";
+
+  const status =
+    fullEvent.status ||
+    fullEvent.Status ||
+    fullEvent["Event status"] ||
+    "";
+
+  // Navigate to dashboard section
+  navigateTo("eventDashboardSection");
+
+  const container = document.getElementById(
+    "eventDashboardContainer"
+  );
+  if (!container) {
+    console.warn("⚠️ #eventDashboardContainer not found");
+    return;
+  }
+  container.innerHTML = "";
+
+  // Header fields
+  const headerName = document.getElementById("dashEventName");
+  const headerDate = document.getElementById("dashEventDate");
+  if (headerName) headerName.textContent = eventName;
+  if (headerDate)
+    headerDate.textContent = eventDate
+      ? `Date: ${eventDate}`
+      : "";
+
+  // --- Summary card ---
+  const summaryData = {
+    EventID: eventID ?? "",
+    Date: eventDate || "",
+    eventLocation: eventLocation || "",
+    Coordinator: coordinator || "",
+    Status: status || "",
+    EventType:
+      fullEvent.eventType || fullEvent.EventType || "",
+    NumDays: fullEvent.numDays ?? fullEvent.NumDays ?? ""
+  };
+
+  const summaryCard = createCollapsiblecard(
+    "Event Summary",
+    summaryData
+  );
+  if (summaryCard) container.appendChild(summaryCard);
+
+  // --- Employees card (if present) ---
+  if (
+    Array.isArray(fullEvent.eventEmployees) &&
+    fullEvent.eventEmployees.length
+  ) {
+    const empCard = createCollapsiblecard(
+      "Employees",
+      fullEvent.eventEmployees
+    );
+    if (empCard) container.appendChild(empCard);
+  }
+
+  // --- Footer buttons (Option B: at the bottom) ---
+  const footer = document.createElement("div");
+  footer.classList.add("dashboard-buttons");
+
+  const editBtn = document.createElement("button");
+  editBtn.textContent = "✏️ Edit Event";
+  editBtn.classList.add("btn-secondary");
+  editBtn.addEventListener("click", () => {
+    editEvent(fullEvent);
+  });
+  const squareLocation = fullEvent.squareLocationId || "";
+  
+  const reportBtn = document.createElement("button");
+  reportBtn.textContent = "📊 Open Post-Event Report";
+  reportBtn.classList.add("btn-primary");
+  reportBtn.addEventListener("click", () => {
+    openPostEventReport(fullEvent);
+  });
+
+	const pullBtn = document.createElement("button");
+	pullBtn.textContent = "🔄 Pull Square Sales";
+	pullBtn.classList.add("btn-primary");
+	pullBtn.addEventListener("click", async () => {
+	  await pullSquareSales(eventID);
+	});
+	footer.appendChild(pullBtn);
+
+  footer.appendChild(editBtn);
+  footer.appendChild(reportBtn);
+
+  container.appendChild(footer);
+}
+async function pullSquareSales(eventID) {
+  if (!eventID) {
+    alert("Missing Event ID — cannot pull Square data.");
+    return;
+  }
+
+  if (!confirm("Pull Square sales for this event?")) return;
+
+  try {
+    const res = await fetch(`http://localhost:3000/api/square/sales/${eventID}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Square sync failed.");
+      return;
+    }
+
+    alert("Square Sales Updated!");
+    console.log("Square data:", data);
+
+    // Reload dashboard with fresh numbers
+    const updatedEventRes = await fetch(`http://localhost:3000/api/events/${eventID}`);
+    const updatedEvent = await updatedEventRes.json();
+
+    loadEventIntoDashboard(updatedEvent);
+
+  } catch (err) {
+    console.error("Error pulling Square data:", err);
+    alert("Error pulling Square data. Check console.");
+  }
 }
 
 // ---------------------------
 // 📊 Post-Event Report Viewer
 // ---------------------------
 async function openPostEventReport(eventData) {
-  const eventID =
-    eventData.eventID ||
-    eventData.EventID ||
-    eventData.EventInfo?.["Event ID"];
-
-  if (!eventID) {
-    alert("Cannot determine eventID for report.");
-    console.warn("No eventID in eventData:", eventData);
-    return;
-  }
-
   try {
-    const res = await fetch(`http://localhost:3000/api/events/${eventID}/report`);
+    const eventID =
+      eventData.eventID ||
+      eventData.EventID ||
+      eventData.EventInfo?.["Event ID"];
+
+    if (!eventID) {
+      alert("Cannot determine eventID for report.");
+      console.warn("No eventID in eventData:", eventData);
+      return;
+    }
+
+    const res = await fetch(
+      `http://localhost:3000/api/events/${eventID}/report`
+    );
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `Server error ${res.status}`);
     }
 
     const report = await res.json();
+    window.currentPostEventReport = report;
     renderPostEventReport(report);
     navigateTo("postEventReportSection");
   } catch (err) {
-    console.error("❌ Error loading post-event report:", err);
-    alert("Failed to load post-event report. Check console for details.");
+    console.error(
+      "❌ Error loading post-event report:",
+      err
+    );
+    alert(
+      "Failed to load post-event report. Check console for details."
+    );
   }
 }
 
@@ -1154,7 +1253,9 @@ function formatMoney(v) {
 }
 
 function renderPostEventReport(report) {
-  const container = document.getElementById("postEventReportContainer");
+  const container = document.getElementById(
+    "postEventReportContainer"
+  );
   if (!container) return;
 
   const ev = report.eventInfo || {};
@@ -1168,26 +1269,56 @@ function renderPostEventReport(report) {
   container.innerHTML = `
     <div class="event-card">
       <h3>${ev.eventName || "Unnamed Event"}</h3>
-      <p><strong>Date:</strong> ${ev.eventDate || "N/A"}</p>
-      <p><strong>Application Date:</strong> ${ev.applicationDate || "N/A"}</p>
-      <p><strong>Type:</strong> ${ev.eventType || "N/A"}</p>
-      <p><strong>Location:</strong> ${ev.location || "N/A"}</p>
-      <p><strong>Coordinator:</strong> ${ev.coordinator || "N/A"}</p>
-      <p><strong>Number of Days:</strong> ${ev.numDays ?? "N/A"}</p>
+      <p><strong>Date:</strong> ${
+        ev.eventDate || "N/A"
+      }</p>
+      <p><strong>Application Date:</strong> ${
+        ev.applicationDate || "N/A"
+      }</p>
+      <p><strong>Type:</strong> ${
+        ev.eventType || "N/A"
+      }</p>
+      <p><strong>eventLocation:</strong> ${
+        ev.eventLocation || "N/A"
+      }</p>
+      <p><strong>Coordinator:</strong> ${
+        ev.coordinator || "N/A"
+      }</p>
+      <p><strong>Number of Days:</strong> ${
+        ev.numDays ?? "N/A"
+      }</p>
     </div>
 
     <h3>Revenue Summary</h3>
     <table class="lemondrip-table">
       <tbody>
-        <tr><td>Gross Sales (Square)</td><td>${formatMoney(rev.grossSales)}</td></tr>
-        <tr><td>Returns</td><td>${formatMoney(rev.refunds)}</td></tr>
-        <tr><td>Discounts</td><td>${formatMoney(rev.discounts)}</td></tr>
-        <tr><td><strong>Net Sales</strong></td><td><strong>${formatMoney(rev.netSales)}</strong></td></tr>
-        <tr><td>Tips</td><td>${formatMoney(rev.tips)}</td></tr>
-        <tr><td><strong>Total Collected</strong></td><td><strong>${formatMoney(rev.totalCollected)}</strong></td></tr>
-        <tr><td>Food Tax</td><td>${formatMoney(rev.foodTax)}</td></tr>
-        <tr><td>Square Event Charge</td><td>${formatMoney(rev.squareEventCharge)}</td></tr>
-        <tr><td><strong>Total Net Revenue</strong></td><td><strong>${formatMoney(rev.totalNetRevenue)}</strong></td></tr>
+        <tr><td>Gross Sales (Square)</td><td>${formatMoney(
+          rev.grossSales
+        )}</td></tr>
+        <tr><td>Returns</td><td>${formatMoney(
+          rev.refunds
+        )}</td></tr>
+        <tr><td>Discounts</td><td>${formatMoney(
+          rev.discounts
+        )}</td></tr>
+        <tr><td><strong>Net Sales</strong></td><td><strong>${formatMoney(
+          rev.netSales
+        )}</strong></td></tr>
+        <tr><td>Tips</td><td>${formatMoney(
+          rev.tips
+        )}</td></tr>
+        <tr><td><strong>Total Collected</strong></td><td><strong>${formatMoney(
+          rev.totalCollected
+        )}</strong></td></tr>
+        <tr><td>Food Tax</td><td>${formatMoney(
+          rev.foodTax
+        )}</td></tr>
+        <tr><td>Square Event Charge</td><td>${formatMoney(
+          rev.squareEventCharge
+        )}</td></tr>
+        <tr><td><strong>Total Net Revenue</strong></td><td><strong>${formatMoney(
+          rev.totalNetRevenue
+        )}</strong></td></tr>
       </tbody>
     </table>
 
@@ -1209,22 +1340,38 @@ function renderPostEventReport(report) {
         <tbody>
           ${laborRows
             .map(
-              r => `
+              (r) => `
             <tr>
               <td>${r.employeeName || ""}</td>
               <td>${r.role || ""}</td>
               <td>${r.hoursWorked ?? ""}</td>
-              <td>${r.hourlyRate != null ? formatMoney(r.hourlyRate) : ""}</td>
-              <td>${r.totalPay != null ? formatMoney(r.totalPay) : ""}</td>
-              <td>${r.tipsEarned != null ? formatMoney(r.tipsEarned) : ""}</td>
+              <td>${
+                r.hourlyRate != null
+                  ? formatMoney(r.hourlyRate)
+                  : ""
+              }</td>
+              <td>${
+                r.totalPay != null
+                  ? formatMoney(r.totalPay)
+                  : ""
+              }</td>
+              <td>${
+                r.tipsEarned != null
+                  ? formatMoney(r.tipsEarned)
+                  : ""
+              }</td>
             </tr>
           `
             )
             .join("")}
         </tbody>
       </table>
-      <p><strong>Total Labor:</strong> ${formatMoney(lab.laborTotal)}</p>
-      <p><strong>Total Labor Tips:</strong> ${formatMoney(lab.laborTipTotal)}</p>
+      <p><strong>Total Labor:</strong> ${formatMoney(
+        lab.laborTotal
+      )}</p>
+      <p><strong>Total Labor Tips:</strong> ${formatMoney(
+        lab.laborTipTotal
+      )}</p>
     `
         : `<p>No labor records for this event.</p>`
     }
@@ -1232,21 +1379,39 @@ function renderPostEventReport(report) {
     <h3>Expenses</h3>
     <table class="lemondrip-table">
       <tbody>
-        <tr><td>Event Fee</td><td>${formatMoney(exp.eventFee)}</td></tr>
-        <tr><td>Supply Fees</td><td>${formatMoney(exp.supplyFees)}</td></tr>
-        <tr><td>Additional Fees</td><td>${formatMoney(exp.additionalFeesTotal)}</td></tr>
-        <tr><td>Event Runner Fee</td><td>${formatMoney(exp.eventRunnerFee)}</td></tr>
-        <tr><td><strong>Total Expenses</strong></td><td><strong>${formatMoney(exp.totalExpenses)}</strong></td></tr>
+        <tr><td>Event Fee</td><td>${formatMoney(
+          exp.eventFee
+        )}</td></tr>
+        <tr><td>Supply Fees</td><td>${formatMoney(
+          exp.supplyFees
+        )}</td></tr>
+        <tr><td>Additional Fees</td><td>${formatMoney(
+          exp.additionalFeesTotal
+        )}</td></tr>
+        <tr><td>Event Runner Fee</td><td>${formatMoney(
+          exp.eventRunnerFee
+        )}</td></tr>
+        <tr><td><strong>Total Expenses</strong></td><td><strong>${formatMoney(
+          exp.totalExpenses
+        )}</strong></td></tr>
       </tbody>
     </table>
 
     <h3>Profit</h3>
     <table class="lemondrip-table">
       <tbody>
-        <tr><td><strong>Net Profit before Taxes</strong></td><td><strong>${formatMoney(prof.profitBeforeTaxes)}</strong></td></tr>
-        <tr><td>Utah State Tax</td><td>${formatMoney(prof.utahTax)}</td></tr>
-        <tr><td>Federal Tax</td><td>${formatMoney(prof.federalTax)}</td></tr>
-        <tr><td><strong>Event Profit</strong></td><td><strong>${formatMoney(prof.finalProfit)}</strong></td></tr>
+        <tr><td><strong>Net Profit before Taxes</strong></td><td><strong>${formatMoney(
+          prof.profitBeforeTaxes
+        )}</strong></td></tr>
+        <tr><td>Utah State Tax</td><td>${formatMoney(
+          prof.utahTax
+        )}</td></tr>
+        <tr><td>Federal Tax</td><td>${formatMoney(
+          prof.federalTax
+        )}</td></tr>
+        <tr><td><strong>Event Profit</strong></td><td><strong>${formatMoney(
+          prof.finalProfit
+        )}</strong></td></tr>
       </tbody>
     </table>
   `;
@@ -1254,81 +1419,307 @@ function renderPostEventReport(report) {
 
 async function downloadPostEventPDF() {
   try {
-    const reportEl = document.getElementById("postEventReportContainer");
-    if (!reportEl) return alert("Report content not found.");
+    const report = window.currentPostEventReport;
+    if (!report) return alert("Report data not loaded yet.");
 
-    // Extract visible HTML
-    const html = reportEl.innerHTML;
-
-    // Get event name for filename
-    const titleEl = reportEl.querySelector("h3");
-    const eventName = titleEl ? titleEl.textContent.trim().replace(/\s+/g, "_") : "Report";
-
-    // Load jsPDF
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF("p", "pt", "letter");
-
-    // Convert HTML → PDF
-    await doc.html(html, {
-      callback: () => {
-        doc.save(`PostEventReport_${eventName}.pdf`);
+    // -------------------------------
+    //  Event Header Information
+    // -------------------------------
+    const eventInfoTable = {
+      table: {
+        widths: ["30%", "*"],
+        body: Object.entries(report.eventInfo).map(
+          ([k, v]) => [
+            { text: formatLabel(k), bold: true },
+            String(v ?? "")
+          ]
+        )
       },
-      margin: [20, 20, 20, 20],
-      autoPaging: "text",
-      width: 560
-    });
+      margin: [0, 5, 0, 15]
+    };
 
+    // -------------------------------
+    //  Revenue Table
+    // -------------------------------
+    const revenueTable = {
+      table: {
+        widths: ["30%", "*"],
+        body: Object.entries(report.revenue).map(
+          ([k, v]) => [
+            { text: formatLabel(k), bold: true },
+            money(v)
+          ]
+        )
+      },
+      margin: [0, 5, 0, 15]
+    };
+
+    // -------------------------------
+    // Labor details table
+    // -------------------------------
+    const laborRoster = report.labor.laborRows.length
+      ? {
+          table: {
+            widths: [
+              "25%",
+              "20%",
+              "15%",
+              "15%",
+              "15%",
+              "15%"
+            ],
+            body: [
+              [
+                "Employee",
+                "Role",
+                "Hours",
+                "Rate",
+                "Pay",
+                "Tips"
+              ].map((h) => ({ text: h, bold: true })),
+
+              ...report.labor.laborRows.map((row) => [
+                row.employeeName ?? "",
+                row.role ?? "",
+                row.hoursWorked ?? "",
+                money(row.hourlyRate),
+                money(row.totalPay),
+                money(row.tipsEarned)
+              ])
+            ]
+          },
+          margin: [0, 5, 0, 15],
+          layout: "lightHorizontalLines"
+        }
+      : {
+          text: "No labor entries",
+          italics: true,
+          margin: [0, 10]
+        };
+
+    // Labor summary row
+    const laborSummaryTable = {
+      table: {
+        widths: ["50%", "50%"],
+        body: [
+          ["Total Labor Pay", money(report.labor.laborTotal)],
+          ["Total Tips Paid", money(report.labor.laborTipTotal)]
+        ]
+      },
+      margin: [0, 5, 0, 20]
+    };
+
+    // -------------------------------
+    // Expense Summary Table
+    // -------------------------------
+    const expenseTable = {
+      table: {
+        widths: ["40%", "*"],
+        body: Object.entries(report.expenses).map(
+          ([k, v]) => [
+            { text: formatLabel(k), bold: true },
+            money(v)
+          ]
+        )
+      },
+      margin: [0, 10, 0, 20]
+    };
+
+    // -------------------------------
+    // Profit Summary Table
+    // -------------------------------
+    const profitTable = {
+      table: {
+        widths: ["40%", "*"],
+        body: Object.entries(report.profit).map(
+          ([k, v]) => [
+            { text: formatLabel(k), bold: true },
+            money(v)
+          ]
+        )
+      },
+      margin: [0, 5, 0, 20]
+    };
+
+    // -------------------------------
+    // FINAL DOCUMENT DEFINITION
+    // -------------------------------
+    const docDefinition = {
+      content: [
+        {
+          text: "🍋 LemonDrip Post-Event Report",
+          style: "reportTitle"
+        },
+        {
+          text: `Generated: ${new Date().toLocaleString()}`,
+          style: "generated"
+        },
+        { text: " " },
+
+        sectionHeader("Event Information"),
+        eventInfoTable,
+
+        sectionHeader("Revenue Summary"),
+        revenueTable,
+
+        sectionHeader("Labor Detail"),
+        laborRoster,
+        laborSummaryTable,
+
+        sectionHeader("Expense Summary"),
+        expenseTable,
+
+        sectionHeader("Profit Summary"),
+        profitTable
+      ],
+
+      styles: {
+        reportTitle: {
+          fontSize: 18,
+          bold: true,
+          alignment: "center"
+        },
+        generated: {
+          fontSize: 9,
+          italics: true,
+          alignment: "center"
+        },
+        sectionHeader: {
+          fontSize: 14,
+          bold: true,
+          margin: [0, 15, 0, 5]
+        }
+      },
+
+      defaultStyle: { fontSize: 10 },
+
+      pageMargins: [40, 40, 40, 40]
+    };
+
+    pdfMake
+      .createPdf(docDefinition)
+      .download(
+        `PostEventReport_${report.eventInfo.eventName}.pdf`
+      );
   } catch (err) {
-    console.error("❌ PDF export failed:", err);
-    alert("PDF export failed. Check console.");
+    console.error("PDF export failed:", err);
+    alert("PDF generation failed. Check console.");
   }
 }
 
+// ---------- HELPERS ----------
+function formatLabel(str) {
+  return str
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function money(v) {
+  return `$${Number(v ?? 0).toFixed(2)}`;
+}
+
+function sectionHeader(text) {
+  return { text, style: "sectionHeader" };
+}
+
+async function uploadEventPermits(eventID) {
+  const files = document.getElementById("permitFiles").files;
+  if (!files.length) return; // nothing to upload
+
+  const fd = new FormData();
+  fd.append("eventID", eventID);
+
+  [...files].forEach((f) => fd.append("permits", f));
+
+  const res = await fetch(
+    "http://localhost:3000/api/events/upload-permits",
+    {
+      method: "POST",
+      body: fd
+    }
+  );
+
+  const result = await res.json();
+  console.log("Permit upload result:", result);
+}
 
 function createCollapsiblecard(title, data) {
-  if (!data || (Array.isArray(data) && data.length === 0)) return null;
+  if (!data) return null;
 
   const wrapper = document.createElement("div");
   wrapper.classList.add("collapsible-card");
 
-  const btn = document.createElement("button");
-  btn.classList.add("collapsible-header");
-  btn.textContent = title;
+  const header = document.createElement("button");
+  header.classList.add("collapsible-header");
+  header.innerHTML = title;
 
   const content = document.createElement("div");
   content.classList.add("collapsible-content");
   content.style.display = "none";
 
-  // Render object or array values
+  // Render table if data is array
   if (Array.isArray(data)) {
-    content.innerHTML = `
-      <table class="lemondrip-table">
-        <thead>
-          <tr>${Object.keys(data[0] || {}).map(k => `<th>${k}</th>`).join("")}</tr>
-        </thead>
-        <tbody>
-          ${data
-            .map(row => `
-              <tr>${Object.values(row).map(v => `<td>${v ?? ""}</td>`).join("")}</tr>
-            `)
-            .join("")}
-        </tbody>
-      </table>
-    `;
+    if (data.length === 0) {
+      content.textContent = "No data available.";
+    } else {
+      const table = document.createElement("table");
+      table.classList.add("lemondrip-table");
+
+      const headerRow = table.createTHead().insertRow();
+      Object.keys(data[0]).forEach((key) => {
+        const th = document.createElement("th");
+        th.textContent = key;
+        headerRow.appendChild(th);
+      });
+
+      const tbody = table.createTBody();
+      data.forEach((row) => {
+        const tr = tbody.insertRow();
+        Object.values(row).forEach((v) => {
+          const td = tr.insertCell();
+          if (String(v).startsWith("http")) {
+            // File download links
+            td.innerHTML = `<a href="${v}" target="_blank">Download</a>`;
+          } else {
+            td.textContent = v ?? "";
+          }
+        });
+      });
+
+      content.appendChild(table);
+    }
   } else {
-    content.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+    const infoList = document.createElement("div");
+    infoList.classList.add("info-list");
+
+    Object.entries(data).forEach(([key, value]) => {
+      const row = document.createElement("div");
+      row.classList.add("info-row");
+
+      row.innerHTML = `
+        <span class="info-key">${key.replace(
+          /([A-Z])/g,
+          " $1"
+        )}</span>
+        <span class="info-value">${value ?? ""}</span>
+      `;
+
+      infoList.appendChild(row);
+    });
+
+    content.appendChild(infoList);
   }
 
-  btn.addEventListener("click", () => {
-    content.style.display = content.style.display === "none" ? "block" : "none";
+  header.addEventListener("click", () => {
+    content.style.display =
+      content.style.display === "none" ? "block" : "none";
   });
 
-  wrapper.appendChild(btn);
+  wrapper.appendChild(header);
   wrapper.appendChild(content);
 
   return wrapper;
 }
-
 
 window.addEventListener("DOMContentLoaded", () => {
   populateTemplateDropdown(); // populate dropdown on startup
@@ -1340,7 +1731,11 @@ function clearTemplate() {
   renderFormPreview();
 }
 
-document.getElementById('builderType').addEventListener('change', (e) => {
-  document.getElementById('optionsLabel').style.display =
-    ['select', 'multiselect'].includes(e.target.value) ? 'block' : 'none';
-});
+document
+  .getElementById("builderType")
+  .addEventListener("change", (e) => {
+    document.getElementById("optionsLabel").style.display =
+      ["select", "multiselect"].includes(e.target.value)
+        ? "block"
+        : "none";
+  });
