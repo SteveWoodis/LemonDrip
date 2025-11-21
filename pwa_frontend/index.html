@@ -7,15 +7,21 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+	<div class="app-shell">
   <header>
-    <h1>🍋 LemonDrip Event Manager</h1>
-    <div class="header-buttons">
-      <button id="btnAdd" onclick="navigateTo('addSection')">➕ Add Event</button>
-      <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
-	  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
-	  <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
-      <button onclick="clearSearch()">🧹 Reset Page</button>
-    </div>
+   <div class="brand">
+        <span class="brand-title">🍋 LemonDrip Events</span>
+        <span class="brand-subtitle">Event Manager & Reports</span>
+      </div>
+		  <div class="nav-buttons">
+			<div class="header-buttons">
+		  <button id="btnAdd" onclick="navigateTo('addSection')">➕ Add Event</button>
+		  <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
+		  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
+		  <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
+		  <button onclick="clearSearch()">🧹 Reset Page</button>
+		</div>
+	</div>
   </header>
 
   <!-- ➕ Add Event Section -->
@@ -174,6 +180,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.3/purify.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> -->
-
+</div>
 </body>
 </html>

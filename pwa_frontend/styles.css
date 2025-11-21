@@ -919,3 +919,431 @@ section {
   display: block;
   margin: 6px 0;
 }
+/*------------------------*/
+/* ----------- Global Layout ----------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f3f5fa;
+  color: #222;
+}
+
+/* Simple app shell */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ----------- Top Header / Nav ----------- */
+
+header {
+  background: #ffffff;
+  border-bottom: 1px solid #dde3f0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+header .brand {
+  display: flex;
+  flex-direction: column;
+}
+
+header .brand-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #00ABE2;
+}
+
+header .brand-subtitle {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+header .nav-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ----------- Buttons ----------- */
+
+button,
+.btn {
+  font-family: inherit;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: background 0.15s ease, color 0.15s ease,
+              box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+/* Primary actions */
+.btn-primary {
+  background: #00ABE2;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 171, 226, 0.35);
+}
+
+.btn-primary:hover {
+  background: #0092c2;
+  box-shadow: 0 3px 8px rgba(0, 146, 194, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+/* Secondary actions */
+.btn-secondary {
+  background: #ffffff;
+  color: #333;
+  border: 1px solid #d0d7e5;
+}
+
+.btn-secondary:hover {
+  background: #f4f6fb;
+}
+
+.btn-secondary:active {
+  transform: translateY(1px);
+}
+
+/* Destructive/neutral if you ever need it */
+.btn-ghost {
+  background: transparent;
+  color: #555;
+  border-radius: 999px;
+}
+
+.btn-ghost:hover {
+  background: #eaeff7;
+}
+
+/* ----------- Sections / Cards ----------- */
+
+main {
+  flex: 1;
+  padding: 1.25rem;
+}
+
+section {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* Generic card style */
+.card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Hide/show */
+.hidden {
+  display: none;
+}
+
+/* ----------- Manage Events: Table & Search ----------- */
+
+.manage-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.manage-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.manage-search-row label {
+  font-size: 0.8rem;
+  color: #555;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.manage-search-row input {
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #ccd4e5;
+  font-size: 0.85rem;
+}
+
+/* "No borders" modern table */
+.lemondrip-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  background: #ffffff;
+}
+
+.lemondrip-table thead {
+  background: #f5f7fd;
+}
+
+.lemondrip-table th,
+.lemondrip-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+}
+
+.lemondrip-table th {
+  font-weight: 600;
+  color: #444;
+}
+
+.lemondrip-table tr {
+  border-bottom: 1px solid rgba(221, 227, 240, 0.6);
+}
+
+.lemondrip-table tr:last-child {
+  border-bottom: none;
+}
+
+/* row hover, but no hard borders */
+.lemondrip-table tbody tr:hover {
+  background: #eef7ff;
+  cursor: pointer;
+}
+
+/* ----------- Add/Edit Event Form ----------- */
+
+.form-container,
+#eventForm {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Single-column labels */
+#eventForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.86rem;
+  color: #444;
+}
+
+#eventForm input,
+#eventForm select,
+#eventForm textarea {
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #ccd4e5;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+#eventForm input:focus,
+#eventForm select:focus,
+#eventForm textarea:focus {
+  outline: none;
+  border-color: #00ABE2;
+  box-shadow: 0 0 0 2px rgba(0, 171, 226, 0.15);
+}
+
+#eventForm textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.form-buttons {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* ----------- Event Dashboard ----------- */
+
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dashboard-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+#dashEventName {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+#dashEventDate {
+  font-size: 0.92rem;
+  color: #555;
+}
+
+/* Dashboard cards container */
+#eventDashboardContainer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+/* On larger screens, 2 columns */
+@media (min-width: 900px) {
+  #eventDashboardContainer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Collapsible cards */
+.collapsible-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.collapsible-header {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border: none;
+  background: #f5f7fd;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.collapsible-header::after {
+  content: "▾";
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.collapsible-content {
+  padding: 0.75rem 0.9rem 0.9rem;
+}
+
+/* Info list inside cards */
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.info-key {
+  font-weight: 600;
+  color: #555;
+}
+
+.info-value {
+  color: #222;
+}
+
+/* Dashboard buttons row at bottom */
+.dashboard-buttons {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ----------- Post-Event Report ----------- */
+
+#postEventReportSection .event-card {
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.08);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  background: #ffffff;
+}
+
+#postEventReportSection h3 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+/* Tables used in report reuse .lemondrip-table look */
+#postEventReportSection .lemondrip-table {
+  margin-bottom: 0.75rem;
+}
+
+/* ----------- Misc Helpers ----------- */
+
+.star-container {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.star {
+  font-size: 1rem;
+  color: #d4d7e5;
+  cursor: pointer;
+}
+
+.star.filled {
+  color: #ffc107;
+}
+
+/* permit input area if you have it */
+#permitFiles {
+  margin-top: 0.5rem;
+}
+
+/* builder preview area */
+#formPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Slightly tighter headings inside cards/sections */
+section h2,
+section h3 {
+  margin-top: 0;
+}
