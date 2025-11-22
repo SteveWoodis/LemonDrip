@@ -127,7 +127,7 @@
   </div>
   
 
-  <div id="manageResults"></div>
+  <div id="manageResults" class="table-container"></div>
 </section>
 
   
@@ -147,22 +147,16 @@
   <!-- 📊 Event Dashboard Section -->
 <!-- 📊 Event Dashboard Section -->
 <section id="eventDashboardSection" class="card hidden dashboard-page">
-
-  <!-- Header area -->
-  <div class="event-header">
-    <h2 id="dashEventName">Event Dashboard</h2>
-    <p id="dashEventDate"></p>
+  
+  <div class="dashboard-header">
+  <div class="dashboard-buttons"></div>
+    <div id="dashEventName" class="event-title"></div>
+    <div id="dashEventDate" class="event-date"></div>
+	<div id="dashFinalizedIndicator"></div>
   </div>
-
-  <!-- Cards container -->
-  <div id="eventDashboardContainer" class="dashboard-grid"></div>
-
-  <!-- Footer buttons -->
-  <div class="dashboard-buttons">
-    <button onclick="navigateTo('manageSection')" class="btn-secondary">⬅ Back to Manage Events</button>
-  </div>
-
+  <div id="eventDashboardContainer"></div>
 </section>
+
 
 
 

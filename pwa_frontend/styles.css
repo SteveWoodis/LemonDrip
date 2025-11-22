@@ -11,7 +11,9 @@
 }
 /* Dashboard Page Styles */
 .dashboard-page {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 .info-list {
   font-family: Arial, sans-serif;
@@ -131,9 +133,13 @@
 
 /* Generic buttons */
 .dashboard-buttons {
-  text-align: center;
-  margin-top: 10px;
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  /*justify-content: flex-start;*/
 }
+
 
 .btn-secondary {
   padding: 10px 16px;
@@ -1190,11 +1196,6 @@ section {
 
 /* ----------- Event Dashboard ----------- */
 
-.dashboard-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
 
 .dashboard-header {
   display: flex;
@@ -1203,6 +1204,27 @@ section {
   gap: 0.5rem;
   align-items: baseline;
   margin-bottom: 0.25rem;
+}
+.dashboard-header .event-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #222;
+}
+
+.dashboard-header .event-date {
+  font-size: 0.95rem;
+  color: #555;
+  margin-top: 0.25rem;
+}
+.dashboard-header .finalized-badge-large {
+  display: inline-block;
+  margin-top: 0.35rem;
+  background: #00ABE2;
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  border-radius: 8px;
 }
 
 #dashEventName {
@@ -1250,6 +1272,20 @@ section {
   justify-content: space-between;
   align-items: center;
 }
+.table-container {
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;  /* prevents table from spilling out */
+  margin-top: 1rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+.lemondrip-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.lemondrip-table thead th {
+  background: #f6f8fd;
+}
 
 .collapsible-header::after {
   content: "▾";
@@ -1284,13 +1320,7 @@ section {
   color: #222;
 }
 
-/* Dashboard buttons row at bottom */
-.dashboard-buttons {
-  margin-top: 0.75rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
+
 
 /* ----------- Post-Event Report ----------- */
 
@@ -1362,4 +1392,22 @@ section {
 section h2,
 section h3 {
   margin-top: 0;
+}
+/* Dashboard-specific button cleanup */
+.dashboard-buttons .btn-primary,
+.dashboard-buttons .btn-secondary {
+  border-radius: 8px !important;  /* No giant circles */
+  padding: 0.55rem 1rem !important;
+  height: auto !important;
+  width: auto !important;
+  min-width: 170px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Keep icons + text normal */
+.dashboard-buttons button i,
+.dashboard-buttons button svg {
+  margin-right: 6px;
 }

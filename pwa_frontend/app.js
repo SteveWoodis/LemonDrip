@@ -1083,7 +1083,7 @@ function rebuildAddEventForm(template) {
 }
 
 // ---------------------------
-// 📊 Event Dashboard Loader
+// 📊 Clean Event Dashboard Loader
 // ---------------------------
 function loadEventIntoDashboard(fullEvent) {
   if (!fullEvent) {
@@ -1091,10 +1091,12 @@ function loadEventIntoDashboard(fullEvent) {
     return;
   }
 
-  // Keep globally for later actions (edit, report, etc.)
+  // Store globally for Edit / Report / Finalize
   window.activeEvent = fullEvent;
 
-  // Normalize some common fields
+  // -----------------------------
+  // 🔍 Normalize Event Fields 
+  // -----------------------------
   const eventID =
     fullEvent.eventID ||
     fullEvent.EventID ||
@@ -1103,139 +1105,128 @@ function loadEventIntoDashboard(fullEvent) {
   const eventName =
     fullEvent.eventName ||
     fullEvent.EventName ||
-    (fullEvent.EventInfo &&
-      (fullEvent.EventInfo.eventName ||
-        fullEvent.EventInfo["Event Name"])) ||
+    fullEvent.EventInfo?.eventName ||
     "Unnamed Event";
 
   const eventDate =
     fullEvent.eventDate ||
     fullEvent.EventDate ||
-    (fullEvent.EventInfo &&
-      (fullEvent.EventInfo.eventDate ||
-        fullEvent.EventInfo["Event Date"])) ||
+    fullEvent.EventInfo?.eventDate ||
     "";
 
   const coordinator =
     fullEvent.coordinator ||
     fullEvent.EventCoordinator ||
-    fullEvent["Event coordinator"] ||
+    fullEvent.EventInfo?.EventCoordinator ||
     "";
 
   const eventLocation =
     fullEvent.eventLocation ||
     fullEvent.EventLocation ||
-    fullEvent["Event location"] ||
+    fullEvent.EventInfo?.EventLocation ||
     "";
 
   const status =
     fullEvent.status ||
     fullEvent.Status ||
-    fullEvent["Event status"] ||
+    fullEvent.EventInfo?.Status ||
     "";
 
-  // Navigate to dashboard section
+  // -----------------------------
+  // 🧭 Navigate to dashboard
+  // -----------------------------
   navigateTo("eventDashboardSection");
 
-  const container = document.getElementById(
-    "eventDashboardContainer"
-  );
+  const container = document.getElementById("eventDashboardContainer");
   if (!container) {
     console.warn("⚠️ #eventDashboardContainer not found");
     return;
   }
   container.innerHTML = "";
 
-  // Header fields
-  // Header elements
-const headerTitle = document.getElementById("dashEventName");
-const headerDate = document.getElementById("dashEventDate");
+  // -----------------------------
+  // 🏷 HEADER SETUP
+  // -----------------------------
+  const headerTitle = document.getElementById("dashEventName");
+  const headerDate = document.getElementById("dashEventDate");
+  const finalizedIndicator = document.getElementById("dashFinalizedIndicator");
 
-// Clear old header children (for fresh rebuild)
-headerTitle.innerHTML = "";
-headerDate.innerHTML = "";
+  headerTitle.textContent = eventName;
+  headerDate.textContent = eventDate;
+  finalizedIndicator.innerHTML = "";
 
-// Event Name (bold)
-const nameEl = document.createElement("div");
-nameEl.textContent = fullEvent.eventName || "Event";
-nameEl.style.fontWeight = "700";
-nameEl.style.fontSize = "1.3rem";
-nameEl.style.marginBottom = "0.15rem";
-headerTitle.appendChild(nameEl);
+  // Finalized badge
+  if (fullEvent.isFinalized === 1) {
+    const finalBadge = document.createElement("div");
+    finalBadge.classList.add("finalized-badge-large");
+    finalBadge.textContent = "FINALIZED";
+    finalizedIndicator.appendChild(finalBadge);
 
-// Event Date (regular)
-const dateEl = document.createElement("div");
-dateEl.textContent = fullEvent.eventDate || "";
-dateEl.style.fontSize = "0.92rem";
-dateEl.style.color = "#555";
-headerDate.appendChild(dateEl);
-
-// ----------------------------
-// ⭐ Finalized Status Section
-// ----------------------------
-if (fullEvent.isFinalized) {
-  const finalStatus = document.createElement("div");
-  finalStatus.textContent = "✔ FINALIZED";
-  finalStatus.style.color = "#00ABE2";
-  finalStatus.style.fontWeight = "700";
-  finalStatus.style.marginTop = "0.4rem";
-  finalStatus.style.fontSize = "0.95rem";
-
-  headerDate.appendChild(finalStatus);
-
-  const finalDate = document.createElement("div");
-  finalDate.textContent =
-    "Finalized on: " + (fullEvent.finalizedDate || "Unknown");
-  finalDate.style.color = "#444";
-  finalDate.style.fontSize = "0.85rem";
-  finalDate.style.marginTop = "0.1rem";
-
-  headerDate.appendChild(finalDate);
-}
-
-
-  // --- Summary card ---
-  const summaryData = {
-    EventID: eventID ?? "",
-    Date: eventDate || "",
-    eventLocation: eventLocation || "",
-    Coordinator: coordinator || "",
-    Status: status || "",
-    EventType:
-      fullEvent.eventType || fullEvent.EventType || "",
-    NumDays: fullEvent.numDays ?? fullEvent.NumDays ?? ""
-  };
-
-  const summaryCard = createCollapsiblecard(
-    "Event Summary",
-    summaryData
-  );
-  if (summaryCard) container.appendChild(summaryCard);
-
-  // --- Employees card (if present) ---
-  if (
-    Array.isArray(fullEvent.eventEmployees) &&
-    fullEvent.eventEmployees.length
-  ) {
-    const empCard = createCollapsiblecard(
-      "Employees",
-      fullEvent.eventEmployees
-    );
-    if (empCard) container.appendChild(empCard);
+    if (fullEvent.finalizedDate) {
+      const finalDate = document.createElement("div");
+      finalDate.style.fontSize = "0.85rem";
+      finalDate.style.color = "#444";
+      finalDate.style.marginTop = "4px";
+      finalDate.textContent = `Finalized on: ${fullEvent.finalizedDate}`;
+      finalizedIndicator.appendChild(finalDate);
+    }
   }
 
-  // --- Footer buttons (Option B: at the bottom) ---
-  const footer = document.createElement("div");
-  footer.classList.add("dashboard-buttons");
+  // -----------------------------
+  // 🟦 BUTTONS AT TOP OF DASHBOARD
+  // -----------------------------
+  const buttonContainer = document.querySelector(".dashboard-buttons");
+  buttonContainer.innerHTML = ""; // Clear previous
 
+  // --- Pull Square Sales ---
+  const squareBtn = document.createElement("button");
+  squareBtn.textContent = "🔄 Pull Square Sales";
+  squareBtn.classList.add("btn-primary");
+  squareBtn.addEventListener("click", async () => {
+    await pullSquareSales(eventID);
+  });
+
+  // --- Finalize Event ---
+  const finalizeBtn = document.createElement("button");
+  finalizeBtn.textContent = "✔️ Finalize Event";
+  finalizeBtn.classList.add("btn-primary");
+  finalizeBtn.addEventListener("click", async () => {
+    if (!confirm("Finalize this event? This will save all calculations.")) return;
+
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/events/${eventID}/finalize`,
+        { method: "PUT" }
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Could not finalize event.");
+        return;
+      }
+
+      alert("Event is finalized!");
+
+      const updatedEventRes = await fetch(
+        `http://localhost:3000/api/events/${eventID}`
+      );
+      const updatedEvent = await updatedEventRes.json();
+      loadEventIntoDashboard(updatedEvent);
+    } catch (err) {
+      console.error("Finalize error:", err);
+      alert("Error finalizing event.");
+    }
+  });
+
+  // --- Edit Event ---
   const editBtn = document.createElement("button");
   editBtn.textContent = "✏️ Edit Event";
   editBtn.classList.add("btn-secondary");
   editBtn.addEventListener("click", () => {
     editEvent(fullEvent);
   });
-  const squareLocation = fullEvent.squareLocationId || "";
-  
+
+  // --- Open Post Event Report ---
   const reportBtn = document.createElement("button");
   reportBtn.textContent = "📊 Open Post-Event Report";
   reportBtn.classList.add("btn-primary");
@@ -1243,53 +1234,37 @@ if (fullEvent.isFinalized) {
     openPostEventReport(fullEvent);
   });
 
-	const pullBtn = document.createElement("button");
-	pullBtn.textContent = "🔄 Pull Square Sales";
-	pullBtn.classList.add("btn-primary");
-	pullBtn.addEventListener("click", async () => {
-	  await pullSquareSales(eventID);
-	});
-	
-	const finalizeBtn = document.createElement("button");
-	finalizeBtn.textContent = "✔️ Finalize Event";
-	finalizeBtn.classList.add("btn-primary");
+  // Append buttons in clean order
+  buttonContainer.appendChild(finalizeBtn);
+  buttonContainer.appendChild(squareBtn);
+  buttonContainer.appendChild(editBtn);
+  buttonContainer.appendChild(reportBtn);
 
-	finalizeBtn.addEventListener("click", async () => {
-	  if (!confirm("Finalize this event? This will save all calculations.")) return;
+  // -----------------------------
+  // 🗂 EVENT SUMMARY CARD
+  // -----------------------------
+  const summaryData = {
+    EventID: eventID ?? "",
+    Date: eventDate || "",
+    eventLocation: eventLocation || "",
+    Coordinator: coordinator || "",
+    Status: status || "",
+    EventType: fullEvent.eventType || fullEvent.EventType || "",
+    NumDays: fullEvent.numDays ?? fullEvent.NumDays ?? ""
+  };
 
-	  try {
-		const res = await fetch(`http://localhost:3000/api/events/${eventID}/finalize`, {
-		  method: "PUT"
-		});
+  const summaryCard = createCollapsiblecard("Event Summary", summaryData);
+  if (summaryCard) container.appendChild(summaryCard);
 
-	const data = await res.json();
-		if (!res.ok) {
-		  alert(data.error || "Could not finalize event.");
-		  return;
-		}
-
-		alert("Event is finalized!");
-
-		// Refresh dashboard view
-	const updatedEventRes = await fetch(`http://localhost:3000/api/events/${eventID}`);
-	const updatedEvent = await updatedEventRes.json();
-		loadEventIntoDashboard(updatedEvent);
-
-	  } catch (err) {
-		console.error("Finalize error:", err);
-		alert("Error finalizing event.");
-	  }
-	});
-	footer.appendChild(finalizeBtn);
-	
-	footer.appendChild(pullBtn);
-
-	footer.appendChild(editBtn);
-	
-	footer.appendChild(reportBtn);
-
-	container.appendChild(footer);
+  // -----------------------------
+  // 👥 EMPLOYEE CARD (if any)
+  // -----------------------------
+  if (Array.isArray(fullEvent.eventEmployees) && fullEvent.eventEmployees.length) {
+    const empCard = createCollapsiblecard("Employees", fullEvent.eventEmployees);
+    if (empCard) container.appendChild(empCard);
+  }
 }
+
 async function pullSquareSales(eventID) {
   if (!eventID) {
     alert("Missing Event ID — cannot pull Square data.");
