@@ -19,7 +19,7 @@
 		  <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
 		  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
 		  <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
-		  <button onclick="clearSearch()">🧹 Reset Page</button>
+		  
 		</div>
 	</div>
   </header>
@@ -113,6 +113,11 @@
 
 <section id="manageSection" class="card hidden">
   <h2>Manage Events</h2>
+  <div class="manage-filter-bar">
+  <button class="btn-secondary" onclick="filterEvents('all')">All</button>
+  <button class="btn-secondary" onclick="filterEvents('finalized')">Finalized</button>
+  <button class="btn-secondary" onclick="filterEvents('notfinalized')">Not Finalized</button>
+</div>
   <div class="search-fields">
     <input type="text" id="manageSearchName" placeholder="eventName">
     <input type="date" id="manageSearchDate">
@@ -120,6 +125,8 @@
     <button type="button" onclick="manageSearch()">🔍 Search</button>
     <button type="button" onclick="loadAllEvents()">📋 List All</button>
   </div>
+  
+
   <div id="manageResults"></div>
 </section>
 

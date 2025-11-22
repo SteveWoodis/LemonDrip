@@ -1312,6 +1312,22 @@ section {
 #postEventReportSection .lemondrip-table {
   margin-bottom: 0.75rem;
 }
+/* ----------------Finalized Badge--------------------*/
+.finalized-badge {
+  background: #00ABE2;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin-left: 6px;
+}
+.manage-filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
 
 /* ----------- Misc Helpers ----------- */
 

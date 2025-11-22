@@ -177,6 +177,38 @@ app.get("/api/events", (req, res) => {
     res.status(500).json({ error: "Error reading events." });
   }
 });
+// 🔍 SEARCH EVENTS ROUTE
+app.get("/api/events/search", (req, res) => {
+  try {
+    const { eventName, eventDate, eventID } = req.query;
+
+    let sql = `SELECT * FROM EventInfo WHERE 1=1`;
+    const params = [];
+
+    if (eventName) {
+      sql += ` AND eventName LIKE ?`;
+      params.push(`%${eventName}%`);
+    }
+
+    if (eventDate) {
+      sql += ` AND eventDate = ?`;
+      params.push(eventDate);
+    }
+
+    if (eventID) {
+      sql += ` AND eventID = ?`;
+      params.push(eventID);
+    }
+
+    const rows = db.prepare(sql).all(params);
+    res.json({ Events: rows });
+
+  } catch (err) {
+    console.error("Search error:", err);
+    res.status(500).json({ error: "Failed to search events." });
+  }
+});
+
 
 app.get("/api/events/:eventID/permits", (req, res) => {
   const eventID = req.params.eventID;
@@ -189,6 +221,7 @@ app.get("/api/events/:eventID/permits", (req, res) => {
 
   res.json(permits);
 });
+
 
 // -------------------------------
 // GET /api/events/:id
@@ -375,15 +408,15 @@ app.post("/api/employees", (req, res) => {
       return res.status(400).json({ error: "Employee name required." });
 
     const stmt = db.prepare(`
-      INSERT INTO EmployeeTracker (EmployeeName, Role, Phone, HourlyRate)
+      INSERT INTO EmployeeTracker (employeeName, role, phone, hourlyRate)
       VALUES (?, ?, ?, ?)
     `);
 
     const result = stmt.run(
-      EmployeeName,
-      Role || null,
-      Phone || null,
-      HourlyRate || null
+      employeeName,
+      role || null,
+      phone || null,
+      hourlyRate || null
     );
 
     res.json({ success: true, EmployeeID: result.lastInsertRowid });
@@ -675,13 +708,13 @@ app.put("/api/events/:id/finalize", (req, res) => {
     ).get(eventId)?.laborCost || 0;
 
     const supplySum = db.prepare(
-      `SELECT SUM(cost) AS supplyCost
+      `SELECT SUM(totalCost) AS supplyCost
          FROM SupplyCosts
          WHERE EventID = ?`
     ).get(eventId)?.supplyCost || 0;
 
     const feeSum = db.prepare(
-      `SELECT SUM(amount) AS fees
+      `SELECT SUM(feeAmount) AS fees
          FROM AdditionalFees
          WHERE EventID = ?`
     ).get(eventId)?.fees || 0;
@@ -771,6 +804,7 @@ app.put("/api/events/:id/finalize", (req, res) => {
 // -----------------------------------------------
 // Save ratings
 // -----------------------------------------------
+
 
 app.put("/api/events/:id/ratings", (req, res) => {
   try {
@@ -951,7 +985,7 @@ function buildPostEventReport(eventID) {
   // 3️⃣ Load Labor rows
   const laborRows = db.prepare(`
     SELECT employeeName, role, hoursWorked, hourlyRate, totalPay, tipsEarned
-    FROM EventEmployees WHERE eventID = ?
+    FROM EmployeeTracker WHERE eventID = ?
   `).all(eventID);
 
   const laborTotal = laborRows.reduce((tot, r) => tot + (r.totalPay || 0), 0);

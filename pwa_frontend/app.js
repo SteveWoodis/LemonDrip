@@ -84,15 +84,35 @@ function navigateTo(sectionId) {
   document.querySelectorAll("section").forEach((sec) =>
     sec.classList.add("hidden")
   );
+
   const section = document.getElementById(sectionId);
-  if (section) {
-    section.classList.remove("hidden");
-    section.scrollIntoView({ behavior: "smooth" });
-  } else {
-    console.warn(`⚠️ Section "${sectionId}" not found`);
+  if (!section) return console.warn(`⚠️ Section "${sectionId}" not found`);
+
+  section.classList.remove("hidden");
+  section.scrollIntoView({ behavior: "smooth" });
+
+  // ⭐ AUTO-LOAD EVENTS ON MANAGE PAGE
+  if (sectionId === "manageSection") {
+    loadAllEvents();     // <-- FIX EVERYTHING
   }
 }
+
 window.navigateTo = navigateTo; // <-- FIX
+
+function formatEvent(e) {
+  return {
+    eventID: e.eventID ?? e.EventID ?? e["Event ID"],
+    eventName: e.eventName ?? e.EventName ?? e["Event Name"],
+    eventDate: e.eventDate ?? e.EventDate ?? e["Event Date"],
+    coordinator: e.coordinator ?? e.EventCoordinator ?? e["Event coordinator"],
+    eventLocation: e.eventLocation ?? e.EventLocation ?? e["Event Location"],
+    squareLocationId: e.squareLocationId ?? e["squareLocationId"] ?? e.squareLocationID,
+    isFinalized: Number(e.isFinalized) === 1 ? 1 : 0,
+    finalizedDate: e.finalizedDate ?? e.FinalizedDate ?? e["finalizedDate"] ?? null,
+    status: e.status ?? e.Status ?? e["Event status"],
+  };
+}
+
 
 // -------------------------------------
 // END IF UTILITIES
@@ -159,10 +179,26 @@ function buildTableHTML(results, containerId = "searchResults") {
   const body = table.createTBody();
   results.forEach((event) => {
     const tr = body.insertRow();
-    Object.values(event).forEach((val) => {
-      const td = tr.insertCell();
+    Object.keys(results[0]).forEach((key, colIndex) => {
+    const td = tr.insertCell();
+    let val = event[key] ?? "";
+
+    // If this is the Event Name column, attach finalized badge
+    if (colIndex === 0 && event.isFinalized) {
+      const spanName = document.createElement("span");
+      spanName.textContent = val;
+
+      const badge = document.createElement("span");
+      badge.textContent = "FINALIZED";
+      badge.className = "finalized-badge";
+
+      td.appendChild(spanName);
+      td.appendChild(badge);
+    } else {
       td.textContent = val ?? "";
-    });
+    }
+	});
+
 
     tr.addEventListener("click", async () => {
       try {
@@ -200,6 +236,21 @@ function buildTableHTML(results, containerId = "searchResults") {
 
   container.appendChild(table);
 }
+let lastLoadedEvents = [];
+
+async function filterEvents(mode) {
+  const events = lastLoadedEvents;
+
+  let filtered = events;
+
+  if (mode === "finalized") {
+    filtered = lastLoadedEvents.filter(e => e.isFinalized == 1);
+  } else if (mode === "notfinalized") {
+    filtered = lastLoadedEvents.filter(e => Number(e.isFinalized) !== 1);
+  }
+
+  buildTableHTML(filtered, "manageResults");
+}
 
 function clearEventForm() {
   const formEl = document.getElementById("eventForm");
@@ -221,55 +272,48 @@ function clearEventForm() {
 
 // List all
 async function loadAllEvents() {
-  const res = await fetch("http://localhost:3000/api/events");
-  const data = await res.json();
-  const events = data.Events || [];
+  try {
+    const res = await fetch("http://localhost:3000/api/events");
+    const data = await res.json();
+    const events = data.Events || [];
 
-  const formatted = events.map((e) => ({
-    eventID: e.eventID ?? e.EventID ?? e["Event ID"],
-    eventName: e.eventName ?? e["Event Name"],
-    eventDate: e.eventDate ?? e["Event Date"],
-    coordinator: e.coordinator ?? e.EventCoordinator ?? e["Event coordinator"],
-    eventLocation: e.eventLocation ??  e["Event Location"],
-    squareLocationId: e.EventsquareLocationId ?? e["Event squareLocationId"],
-    status: e.status ?? e.Status ?? e["Event status"]
-  }));
+    const formatted = events.map(formatEvent);
 
-  buildTableHTML(formatted, "manageResults");
+    lastLoadedEvents = formatted;
+    buildTableHTML(formatted, "manageResults");
+
+  } catch (err) {
+    console.error("loadAllEvents error:", err);
+  }
 }
+
 
 // Search
 async function manageSearch() {
-  const name = document
-    .getElementById("manageSearchName")
-    .value.trim();
-  const date = document
-    .getElementById("manageSearchDate")
-    .value.trim();
-  const id = document.getElementById("manageSearchID").value.trim();
+  const name = document.getElementById("manageSearchName")?.value.trim() || "";
+  const date = document.getElementById("manageSearchDate")?.value.trim() || "";
+  const id = document.getElementById("manageSearchID")?.value.trim() || "";
 
-  const qs = new URLSearchParams();
-  if (name) qs.set("name", name);
-  if (date) qs.set("date", date);
-  if (id) qs.set("id", id);
+  const query = new URLSearchParams();
+  if (name) query.append("eventName", name);
+  if (date) query.append("eventDate", date);
+  if (id) query.append("eventID", id);
 
-  const url = qs.toString()
-    ? `http://localhost:3000/api/events?${qs.toString()}`
-    : `http://localhost:3000/api/events`;
+  try {
+    const res = await fetch(
+      `http://localhost:3000/api/events/search?${query.toString()}`
+    );
+    const data = await res.json();
+    const results = data.Events || [];
 
-  const res = await fetch(url);
-  const data = await res.json();
-  const events = data.Events || [];
-  const formatted = events.map((e) => ({
-    "Event ID": e["Event ID"] ?? e.eventID,
-    eventName: e["eventName"] ?? e.eventName,
-    eventDate: e["eventDate"] ?? e.eventDate,
-    "Event coordinator":
-      e["Event coordinator"] ?? e.Eventcoordinator,
-    eventLocation: e["Event Location"] ?? e.eventLocation,
-    status: e["Event status"] ?? e.status
-  }));
-  buildTableHTML(formatted, "manageResults");
+    // ✔ Apply unified formatter *here*, AFTER results exists
+    const formatted = results.map(formatEvent);
+    lastLoadedEvents = formatted;
+
+    buildTableHTML(formatted, "manageResults");
+  } catch (err) {
+    console.error("manageSearch error:", err);
+  }
 }
 
 //---------------
@@ -1103,13 +1147,52 @@ function loadEventIntoDashboard(fullEvent) {
   container.innerHTML = "";
 
   // Header fields
-  const headerName = document.getElementById("dashEventName");
-  const headerDate = document.getElementById("dashEventDate");
-  if (headerName) headerName.textContent = eventName;
-  if (headerDate)
-    headerDate.textContent = eventDate
-      ? `Date: ${eventDate}`
-      : "";
+  // Header elements
+const headerTitle = document.getElementById("dashEventName");
+const headerDate = document.getElementById("dashEventDate");
+
+// Clear old header children (for fresh rebuild)
+headerTitle.innerHTML = "";
+headerDate.innerHTML = "";
+
+// Event Name (bold)
+const nameEl = document.createElement("div");
+nameEl.textContent = fullEvent.eventName || "Event";
+nameEl.style.fontWeight = "700";
+nameEl.style.fontSize = "1.3rem";
+nameEl.style.marginBottom = "0.15rem";
+headerTitle.appendChild(nameEl);
+
+// Event Date (regular)
+const dateEl = document.createElement("div");
+dateEl.textContent = fullEvent.eventDate || "";
+dateEl.style.fontSize = "0.92rem";
+dateEl.style.color = "#555";
+headerDate.appendChild(dateEl);
+
+// ----------------------------
+// ⭐ Finalized Status Section
+// ----------------------------
+if (fullEvent.isFinalized) {
+  const finalStatus = document.createElement("div");
+  finalStatus.textContent = "✔ FINALIZED";
+  finalStatus.style.color = "#00ABE2";
+  finalStatus.style.fontWeight = "700";
+  finalStatus.style.marginTop = "0.4rem";
+  finalStatus.style.fontSize = "0.95rem";
+
+  headerDate.appendChild(finalStatus);
+
+  const finalDate = document.createElement("div");
+  finalDate.textContent =
+    "Finalized on: " + (fullEvent.finalizedDate || "Unknown");
+  finalDate.style.color = "#444";
+  finalDate.style.fontSize = "0.85rem";
+  finalDate.style.marginTop = "0.1rem";
+
+  headerDate.appendChild(finalDate);
+}
+
 
   // --- Summary card ---
   const summaryData = {
@@ -1166,12 +1249,46 @@ function loadEventIntoDashboard(fullEvent) {
 	pullBtn.addEventListener("click", async () => {
 	  await pullSquareSales(eventID);
 	});
+	
+	const finalizeBtn = document.createElement("button");
+	finalizeBtn.textContent = "✔️ Finalize Event";
+	finalizeBtn.classList.add("btn-primary");
+
+	finalizeBtn.addEventListener("click", async () => {
+	  if (!confirm("Finalize this event? This will save all calculations.")) return;
+
+	  try {
+		const res = await fetch(`http://localhost:3000/api/events/${eventID}/finalize`, {
+		  method: "PUT"
+		});
+
+	const data = await res.json();
+		if (!res.ok) {
+		  alert(data.error || "Could not finalize event.");
+		  return;
+		}
+
+		alert("Event is finalized!");
+
+		// Refresh dashboard view
+	const updatedEventRes = await fetch(`http://localhost:3000/api/events/${eventID}`);
+	const updatedEvent = await updatedEventRes.json();
+		loadEventIntoDashboard(updatedEvent);
+
+	  } catch (err) {
+		console.error("Finalize error:", err);
+		alert("Error finalizing event.");
+	  }
+	});
+	footer.appendChild(finalizeBtn);
+	
 	footer.appendChild(pullBtn);
 
-  footer.appendChild(editBtn);
-  footer.appendChild(reportBtn);
+	footer.appendChild(editBtn);
+	
+	footer.appendChild(reportBtn);
 
-  container.appendChild(footer);
+	container.appendChild(footer);
 }
 async function pullSquareSales(eventID) {
   if (!eventID) {
