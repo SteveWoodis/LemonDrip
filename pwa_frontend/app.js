@@ -592,32 +592,100 @@ async function submitEvent(e) {
   const formEl = document.getElementById("eventForm");
   const inputs = formEl.querySelectorAll("input, select, textarea");
 
-  const newInfo = {};
+  // 1️⃣ Load the active template (required for canonical/custom separation)
+  const templateName = document.getElementById("templateSelect")?.value;
+  const template = window.availableTemplates?.find(t => t.templateName === templateName);
 
-  // 1) collect dynamic fields inside the form
+  if (!template || !Array.isArray(template.fields)) {
+    alert("Template not found or invalid. Please load a template first.");
+    return;
+  }
+
+  // 2️⃣ Build raw values from the DOM
+  const rawValues = {};
   inputs.forEach((input) => {
-    const rawId = input.id || "";
-    if (!rawId.startsWith("form_")) return;
-    const key = rawId.replace(/^form_/, "");
+    const id = input.id || "";
+    if (!id.startsWith("form_")) return;
+
+    const formKey = id.replace(/^form_/, ""); // e.g. "Event_Name"
     if (input.multiple) {
-      newInfo[key] = Array.from(input.selectedOptions).map(o => o.value);
+      rawValues[formKey] = Array.from(input.selectedOptions).map(o => o.value);
     } else {
-      newInfo[key] = input.value.trim();
+      rawValues[formKey] = input.value.trim();
     }
   });
 
-  // 2) also pull Square Location select
-  const sqSelect = document.getElementById("form_squareLocationId");
-  if (sqSelect) {
-    newInfo.squareLocationId = sqSelect.value || null;
-  }
+  // Square Location (optional)
+  const sq = document.getElementById("form_squareLocationId");
+  if (sq) rawValues.squareLocationId = sq.value || null;
 
-  // 3) validation
-  if (!newInfo.eventName || !newInfo.eventDate) {
+  // 3️⃣ Known canonical fields in your database schema
+  const CANONICAL_KEYS = new Set([
+    "eventName",
+    "eventDate",
+    "applicationDate",
+    "finalizedDate",
+    "eventFee",
+    "squareLocationId",
+    "time",
+    "employees",
+    "eventRating",
+    "eventHost",
+    "notes",
+    "status",
+    "eventType",
+    "numDays",
+    "coordinator",
+    "grossSales",
+    "tips",
+    "netSales",
+    "totalSales",
+    "isFinalized"
+  ]);
+
+  // 4️⃣ Split rawValues → canonical + custom using template
+  const canonical = {};
+  const custom = {};
+
+  template.fields.forEach((field) => {
+    // normalize template field identifier
+    const safeKey = String(field.label)
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_]/g, "");
+
+    const value = rawValues[safeKey];
+
+    // If the template explicitly mapped dbKey (future extension)
+    if (field.dbKey && CANONICAL_KEYS.has(field.dbKey)) {
+      canonical[field.dbKey] = value ?? null;
+      return;
+    }
+
+    // If the label *itself* matches a canonical DB column (current behavior)
+    const lower = field.label.toLowerCase().replace(/\s+/g, "");
+    const matches = [...CANONICAL_KEYS].find(k => k.toLowerCase() === lower);
+
+    if (matches) {
+      canonical[matches] = value ?? null;
+    } else {
+      // Otherwise treat as vendor-custom field
+      custom[field.label] = value ?? null;
+    }
+  });
+
+  // Attach custom fields object
+  canonical.customFields = Object.keys(custom).length ? custom : null;
+
+  // 5️⃣ Validation (eventName + eventDate are required)
+  if (!canonical.eventName || !canonical.eventDate) {
     alert("Please provide at least an event name and date.");
     return;
   }
 
+  // 6️⃣ Type coercion (uses your existing helper)
+  const payload = coerceForApi(canonical);
+
+  // 7️⃣ Determine POST vs PUT
   const isEditing = window.isEditing === true && window.activeeventID;
   const url = isEditing
     ? `http://localhost:3000/api/events/${window.activeeventID}`
@@ -625,44 +693,48 @@ async function submitEvent(e) {
 
   const method = isEditing ? "PUT" : "POST";
 
-  console.log("Submitting event:", { method, url, newInfo });
+  console.log("📨 Final Submit Payload:", { method, url, payload });
 
+  // 8️⃣ Send to backend
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(newInfo)
+    body: JSON.stringify(payload)
   });
 
-  const payload = await res.json();
+  const responseJSON = await res.json();
+
   if (!res.ok) {
-    console.error("🚨 Backend error:", payload);
-    alert(payload.error || "Error saving event.");
+    console.error("🚨 Backend error:", responseJSON);
+    alert(responseJSON.error || "Error saving event.");
     return;
   }
 
-  // If editing, reuse the same ID
-  const savedEventID = isEditing
+  // Determine eventID
+  const savedID = isEditing
     ? window.activeeventID
-    : payload.eventID || payload.EventID;
+    : responseJSON.eventID || responseJSON.EventID;
 
-  if (!savedEventID) {
-    alert("Could not determine EventID.");
-    console.error(payload);
+  if (!savedID) {
+    alert("Could not determine EventID from server response.");
     return;
   }
 
-  await uploadEventPermits(savedEventID);
+  // 9️⃣ Upload permits if any
+  await uploadEventPermits(savedID);
 
   alert(isEditing ? "Event updated!" : "Event created!");
 
-  // Reset editing mode
+  // Reset editing globals
   window.isEditing = false;
   window.activeeventID = null;
   window.activeEvent = null;
 
+  // Navigate back & refresh
   navigateTo("manageSection");
   await loadAllEvents();
 }
+
 
 
 /*function showAddEventForm() {
@@ -693,6 +765,10 @@ function clearSearch() {
 
   console.log("🔄 Search fields and results cleared.");
 }
+
+//-------------------------------------------------------
+//populateEmployeeDropdown
+//--------------------------------------------------------
 
 async function populateEmployeeDropdown(selectEl) {
   try {
@@ -1255,6 +1331,23 @@ function loadEventIntoDashboard(fullEvent) {
 
   const summaryCard = createCollapsiblecard("Event Summary", summaryData);
   if (summaryCard) container.appendChild(summaryCard);
+	// -----------------------------
+	// 🟨 CUSTOM FIELDS CARD
+	// -----------------------------
+	if (fullEvent.customFields) {
+	  try {
+		const parsed = typeof fullEvent.customFields === "string"
+		  ? JSON.parse(fullEvent.customFields)
+		  : fullEvent.customFields;
+
+		if (parsed && Object.keys(parsed).length) {
+		  const customCard = createCollapsiblecard("Custom Fields", parsed);
+		  container.appendChild(customCard);
+		}
+	  } catch (err) {
+		console.error("❌ Failed to parse customFields:", err);
+	  }
+	}
 
   // -----------------------------
   // 👥 EMPLOYEE CARD (if any)
@@ -1344,7 +1437,7 @@ function formatMoney(v) {
   return `$${n.toFixed(2)}`;
 }
 
-function renderPostEventReport(report) {
+function Report(report) {
   const container = document.getElementById(
     "postEventReportContainer"
   );
@@ -1380,6 +1473,29 @@ function renderPostEventReport(report) {
         ev.numDays ?? "N/A"
       }</p>
     </div>
+	    <!-- 🟨 Custom Fields (dynamic) -->
+    ${
+      report.eventInfo.customFields &&
+      Object.keys(report.eventInfo.customFields).length
+        ? `
+      <h3>Custom Fields</h3>
+      <table class="lemondrip-table">
+        <tbody>
+          ${Object.entries(report.eventInfo.customFields)
+            .map(
+              ([key, value]) => `
+            <tr>
+              <td><strong>${key}</strong></td>
+              <td>${value ?? ""}</td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    `
+        : ""
+    }
 
     <h3>Revenue Summary</h3>
     <table class="lemondrip-table">

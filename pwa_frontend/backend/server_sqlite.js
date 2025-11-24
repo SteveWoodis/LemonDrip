@@ -432,18 +432,19 @@ app.post("/api/employees", (req, res) => {
 app.post("/api/events", (req, res) => {
   try {
     const e = coerceEvent(req.body);
+
     if (!e.eventName)
       return res.status(400).json({ error: "Missing eventName." });
 
     const stmt = db.prepare(`
       INSERT INTO EventInfo (
         eventName, eventDate, applicationDate, finalizedDate,
-        eventFee, squareLocationId, time, permits, employees,
+        eventFee, squareLocationId, time, employees,
         eventRating, eventHost, notes, status, eventType,
         numDays, coordinator, grossSales, tips, netSales,
-        totalSales, isFinalized
+        totalSales, isFinalized, customFields
       )
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `);
 
     const result = stmt.run(
@@ -454,56 +455,6 @@ app.post("/api/events", (req, res) => {
       e.eventFee,
       e.squareLocationId,
       e.time,
-      e.permits,
-      e.employees,
-      e.eventRating,
-      e.eventHost,
-      e.notes,
-      e.status,
-      e.eventType,
-      e.numDays,
-      e.coordinator,
-      e.grossSales,
-      e.tips,
-      e.netSales,
-      e.totalSales,
-      e.isFinalized
-    );
-
-    res.json({ success: true, eventID: result.lastInsertRowid });
-  } catch (err) {
-    console.error("❌ Error inserting event:", err);
-    res.status(500).json({ error: "Error inserting event." });
-  }
-});
-
-// -------------------------------
-// PUT /api/events/:id  (UPDATE EVENT)
-// -------------------------------
-app.put("/api/events/:id", (req, res) => {
-  try {
-    const id = req.params.id;
-    const e = coerceEvent(req.body);
-
-    const stmt = db.prepare(`
-      UPDATE EventInfo SET
-        eventName=?, eventDate=?, applicationDate=?, finalizedDate=?,
-        eventFee=?, squareLocationId=?, time=?, permits=?, employees=?,
-        eventRating=?, eventHost=?, notes=?, status=?, eventType=?,
-        numDays=?, coordinator=?, grossSales=?, tips=?, netSales=?,
-        totalSales=?, isFinalized=?
-      WHERE eventID=?
-    `);
-
-    const result = stmt.run(
-      e.eventName,
-      e.eventDate,
-      e.applicationDate,
-      e.finalizedDate,
-      e.eventFee,
-      e.squareLocationId,
-      e.time,
-      e.permits,
       e.employees,
       e.eventRating,
       e.eventHost,
@@ -517,18 +468,72 @@ app.put("/api/events/:id", (req, res) => {
       e.netSales,
       e.totalSales,
       e.isFinalized,
+      e.customFields
+    );
+
+    res.json({ success: true, eventID: result.lastInsertRowid });
+
+  } catch (err) {
+    console.error("❌ Error inserting event:", err);
+    res.status(500).json({ error: "Error inserting event." });
+  }
+});
+
+
+// -------------------------------
+// PUT /api/events/:id  (UPDATE EVENT)
+// -------------------------------
+app.put("/api/events/:id", (req, res) => {
+  try {
+    const id = req.params.id;
+    const e = coerceEvent(req.body);
+
+    const stmt = db.prepare(`
+      UPDATE EventInfo SET
+        eventName=?, eventDate=?, applicationDate=?, finalizedDate=?,
+        eventFee=?, squareLocationId=?, time=?, employees=?,
+        eventRating=?, eventHost=?, notes=?, status=?, eventType=?,
+        numDays=?, coordinator=?, grossSales=?, tips=?, netSales=?,
+        totalSales=?, isFinalized=?, customFields=?
+      WHERE eventID=?
+    `);
+
+    const result = stmt.run(
+      e.eventName,
+      e.eventDate,
+      e.applicationDate,
+      e.finalizedDate,
+      e.eventFee,
+      e.squareLocationId,
+      e.time,
+      e.employees,
+      e.eventRating,
+      e.eventHost,
+      e.notes,
+      e.status,
+      e.eventType,
+      e.numDays,
+      e.coordinator,
+      e.grossSales,
+      e.tips,
+      e.netSales,
+      e.totalSales,
+      e.isFinalized,
+      e.customFields,
       id
     );
 
     if (result.changes === 0)
       return res.status(404).json({ error: "Event not found." });
 
-    res.json({ message: "Event updated successfully." });
+    res.json({ success: true, message: "Event updated successfully." });
+
   } catch (err) {
     console.error("❌ Error updating event:", err);
     res.status(500).json({ error: "Error updating event." });
   }
 });
+
 // -------------------------------
 // PUT /api/square/sales/:eventId
 // Pull ALL Square payments (paginated)
@@ -891,10 +896,10 @@ function coerceEvent(body) {
     eventDate: toStr(body.eventDate),
     applicationDate: toStr(body.applicationDate),
     finalizedDate: toStr(body.finalizedDate),
+
     eventFee: toInt(body.eventFee),
     squareLocationId: toStr(body.squareLocationId),
     time: toStr(body.time),
-    permits: toStr(body.permits),
     employees: toStr(body.employees),
     eventRating: toStr(body.eventRating),
     eventHost: toStr(body.eventHost),
@@ -903,13 +908,21 @@ function coerceEvent(body) {
     eventType: toStr(body.eventType),
     numDays: toInt(body.numDays),
     coordinator: toStr(body.coordinator),
+
     grossSales: toNum(body.grossSales),
     tips: toNum(body.tips),
     netSales: toNum(body.netSales),
     totalSales: toNum(body.totalSales),
     isFinalized: toBoolI(body.isFinalized),
+
+    // NEW: safe JSON stringify
+    customFields:
+      body.customFields && Object.keys(body.customFields).length
+        ? JSON.stringify(body.customFields)
+        : null
   };
 }
+
 
 function computeEventScores(e) {
   // ---- Financials ----
@@ -1072,7 +1085,10 @@ function buildPostEventReport(eventID) {
 app.get("/api/events/:id/report", (req, res) => {
   try {
     const report = buildPostEventReport(req.params.id);
+	
     res.json(report);
+	eventInfo.customFields = JSON.parse(row.customFields)
+
   } catch (err) {
     console.error("❌ Report error:", err);
     res.status(500).json({ error: err.message });
