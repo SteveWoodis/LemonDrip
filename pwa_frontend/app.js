@@ -157,6 +157,21 @@ function createStarRating(name, currentValue = 0, editable = true) {
 // modified 10-17-25 8:30 am.
 // ---------------------------
 function buildTableHTML(results, containerId = "searchResults") {
+	
+  results = results.map(ev => {
+  if (ev.customFields && typeof ev.customFields === "string") {
+    try {
+      const parsed = JSON.parse(ev.customFields);
+      ev.customFields = Object.entries(parsed)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("; ");
+    } catch {
+      // leave as-is
+    }
+  }
+  return ev;
+	});
+
   const container = document.getElementById(containerId) || document.body;
   container.innerHTML = "";
 
@@ -290,31 +305,22 @@ async function loadAllEvents() {
 
 // Search
 async function manageSearch() {
-  const name = document.getElementById("manageSearchName")?.value.trim() || "";
-  const date = document.getElementById("manageSearchDate")?.value.trim() || "";
-  const id = document.getElementById("manageSearchID")?.value.trim() || "";
+  const name = document.getElementById("manageSearchName").value.trim();
+  const date = document.getElementById("manageSearchDate").value.trim();
+  const id = document.getElementById("manageSearchID").value.trim();
 
-  const query = new URLSearchParams();
-  if (name) query.append("eventName", name);
-  if (date) query.append("eventDate", date);
-  if (id) query.append("eventID", id);
-
-  try {
-    const res = await fetch(
-      `http://localhost:3000/api/events/search?${query.toString()}`
-    );
-    const data = await res.json();
-    const results = data.Events || [];
-
-    // ✔ Apply unified formatter *here*, AFTER results exists
-    const formatted = results.map(formatEvent);
-    lastLoadedEvents = formatted;
-
-    buildTableHTML(formatted, "manageResults");
-  } catch (err) {
-    console.error("manageSearch error:", err);
+  const q = name || date || id;
+  if (!q) {
+    alert("Please enter a search term.");
+    return;
   }
+
+  const res = await fetch(`/api/events/search?q=${encodeURIComponent(q)}`);
+  const results = await res.json();
+
+  buildTableHTML(results, "manageResults");
 }
+
 
 //---------------
 // Add Company - get company information for potential SASS down the road.
@@ -1419,18 +1425,250 @@ async function openPostEventReport(eventData) {
 
     const report = await res.json();
     window.currentPostEventReport = report;
-    renderPostEventReport(report);
+	
+    const html = renderPostEventReport(report);
+	 const target = document.getElementById("postEventReportContent");
+    if (target) {
+      target.innerHTML = html;
+    } else {
+      console.error("❌ postEventReportContent not found in DOM");
+    }
     navigateTo("postEventReportSection");
   } catch (err) {
     console.error(
-      "❌ Error loading post-event report:",
-      err
-    );
-    alert(
-      "Failed to load post-event report. Check console for details."
-    );
+      "❌ Error loading post-event report:", err);
+    alert("Failed to load post-event report. Check console for details.");
   }
 }
+
+function renderPostEventReport(report) {
+  if (!report) return "<p>Error: No report data.</p>";
+
+  // Helpers
+  const fmt = (v) => (v == null ? "" : v);
+  const money = (v) =>
+    v == null ? "" : `$${Number(v).toFixed(2)}`;
+
+  // --------------------------
+  // 1️⃣ Event Information
+  // --------------------------
+  const ev = report.eventInfo || {};
+  const custom = report.customFields || {};
+
+  const eventInfoHTML = `
+    <h3>Event Information</h3>
+    <table class="lemondrip-table">
+      <tbody>
+        <tr><td><strong>Event Name</strong></td><td>${fmt(ev.eventName)}</td></tr>
+        <tr><td><strong>Event Date</strong></td><td>${fmt(ev.eventDate)}</td></tr>
+        <tr><td><strong>Application Date</strong></td><td>${fmt(ev.applicationDate)}</td></tr>
+        <tr><td><strong>Event Type</strong></td><td>${fmt(ev.eventType)}</td></tr>
+        <tr><td><strong>Num Days</strong></td><td>${fmt(ev.numDays)}</td></tr>
+        <tr><td><strong>Location</strong></td><td>${fmt(ev.location)}</td></tr>
+        <tr><td><strong>Coordinator</strong></td><td>${fmt(ev.coordinator)}</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  // --------------------------
+  // 2️⃣ Custom Fields
+  // --------------------------
+  let customHTML = "";
+  if (custom && Object.keys(custom).length) {
+    const rows = Object.entries(custom)
+      .map(
+        ([k, v]) => `
+        <tr>
+          <td><strong>${k}</strong></td>
+          <td>${fmt(v)}</td>
+        </tr>`
+      )
+      .join("");
+
+    customHTML = `
+      <h3>Custom Fields</h3>
+      <table class="lemondrip-table">
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  // --------------------------
+  // 3️⃣ Sales Summary
+  // --------------------------
+  const s = report.sales || {};
+  const salesHTML = `
+    <h3>Sales Summary</h3>
+    <table class="lemondrip-table">
+      <tbody>
+        <tr><td><strong>Gross Sales</strong></td><td>${money(s.gross)}</td></tr>
+        <tr><td><strong>Refunds</strong></td><td>${money(s.refunds)}</td></tr>
+        <tr><td><strong>Discounts</strong></td><td>${money(s.discounts)}</td></tr>
+        <tr><td><strong>Tips</strong></td><td>${money(s.tips)}</td></tr>
+        <tr><td><strong>Net Sales</strong></td><td>${money(s.net)}</td></tr>
+        <tr><td><strong>Total Collected</strong></td><td>${money(s.total)}</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  // --------------------------
+  // 4️⃣ Employees
+  // --------------------------
+  const employees = report.employees || [];
+  const employeesHTML = `
+    <h3>Employees</h3>
+    ${
+      employees.length
+        ? `<table class="lemondrip-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Hours</th>
+                <th>Rate</th>
+                <th>Total Pay</th>
+                <th>Tips</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${employees
+                .map(
+                  (e) => `
+                <tr>
+                  <td>${fmt(e.name)}</td>
+                  <td>${fmt(e.hours)}</td>
+                  <td>${money(e.rate)}</td>
+                  <td>${money(e.total)}</td>
+                  <td>${money(e.tips)}</td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>`
+        : "<p>No employee data.</p>"
+    }
+  `;
+
+  // --------------------------
+  // 5️⃣ Supply Costs
+  // --------------------------
+  const supplies = report.supplies || [];
+  const suppliesHTML = `
+    <h3>Supply Costs</h3>
+    ${
+      supplies.length
+        ? `<table class="lemondrip-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${supplies
+                .map(
+                  (s) => `
+                <tr>
+                  <td>${fmt(s.item)}</td>
+                  <td>${fmt(s.qty)}</td>
+                  <td>${money(s.unitCost)}</td>
+                  <td>${money(s.total)}</td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>`
+        : "<p>No supply cost data.</p>"
+    }
+  `;
+
+  // --------------------------
+  // 6️⃣ Discounts
+  // --------------------------
+  const discounts = report.discountsList || [];
+  const discountsHTML = `
+    <h3>Discounts</h3>
+    ${
+      discounts.length
+        ? `<table class="lemondrip-table">
+            <thead><tr><th>Name</th><th>Amount</th></tr></thead>
+            <tbody>
+              ${discounts
+                .map(
+                  (d) => `
+                <tr>
+                  <td>${fmt(d.name)}</td>
+                  <td>${money(d.amount)}</td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>`
+        : "<p>No discounts recorded.</p>"
+    }
+  `;
+
+  // --------------------------
+  // 7️⃣ Tips
+  // --------------------------
+  const tips = report.tipsList || [];
+  const tipsHTML = `
+    <h3>Tip Distribution</h3>
+    ${
+      tips.length
+        ? `<table class="lemondrip-table">
+            <thead><tr><th>Employee</th><th>Tips</th></tr></thead>
+            <tbody>
+              ${tips
+                .map(
+                  (t) => `
+                <tr>
+                  <td>${fmt(t.employeeName)}</td>
+                  <td>${money(t.tipAmount)}</td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>`
+        : "<p>No tip distribution recorded.</p>"
+    }
+  `;
+
+  // --------------------------
+  // 8️⃣ Totals
+  // --------------------------
+  const t = report.totals || {};
+  const totalsHTML = `
+    <h3>Event Totals</h3>
+    <table class="lemondrip-table">
+      <tbody>
+        <tr><td><strong>Total Labor</strong></td><td>${money(t.laborTotal)}</td></tr>
+        <tr><td><strong>Supplies</strong></td><td>${money(t.supplyTotal)}</td></tr>
+        <tr><td><strong>Discounts</strong></td><td>${money(t.discountTotal)}</td></tr>
+        <tr><td><strong>Tips Paid Out</strong></td><td>${money(t.tipTotal)}</td></tr>
+        <tr><td><strong>Net Profit</strong></td><td>${money(t.netProfit)}</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  // --------------------------
+  // 9️⃣ COMBINE ALL SECTIONS
+  // --------------------------
+  return `
+    <div class="report-container">
+      ${eventInfoHTML}
+      ${customHTML}
+      ${salesHTML}
+      ${employeesHTML}
+      ${suppliesHTML}
+      ${discountsHTML}
+      ${tipsHTML}
+      ${totalsHTML}
+    </div>
+  `;
+}
+
 
 function formatMoney(v) {
   const n = Number(v || 0);
@@ -1624,196 +1862,245 @@ function Report(report) {
     </table>
   `;
 }
+function buildCustomFieldsTable(custom) {
+  if (!custom || typeof custom !== "object" || !Object.keys(custom).length) {
+    return { text: "No custom fields", italics: true, margin: [0, 5, 0, 10] };
+  }
+
+  return {
+    table: {
+      widths: ["35%", "*"],
+      body: Object.entries(custom).map(([key, value]) => [
+        { text: key, bold: true },
+        String(value ?? "")
+      ])
+    },
+    margin: [0, 5, 0, 15]
+  };
+}
 
 async function downloadPostEventPDF() {
-  try {
-    const report = window.currentPostEventReport;
-    if (!report) return alert("Report data not loaded yet.");
+  if (!window.currentPostEventReport) {
+    alert("No report available.");
+    return;
+  }
 
-    // -------------------------------
-    //  Event Header Information
-    // -------------------------------
-    const eventInfoTable = {
-      table: {
-        widths: ["30%", "*"],
-        body: Object.entries(report.eventInfo).map(
-          ([k, v]) => [
-            { text: formatLabel(k), bold: true },
-            String(v ?? "")
-          ]
-        )
-      },
-      margin: [0, 5, 0, 15]
-    };
+  const report = window.currentPostEventReport;
 
-    // -------------------------------
-    //  Revenue Table
-    // -------------------------------
-    const revenueTable = {
-      table: {
-        widths: ["30%", "*"],
-        body: Object.entries(report.revenue).map(
-          ([k, v]) => [
-            { text: formatLabel(k), bold: true },
-            money(v)
-          ]
-        )
-      },
-      margin: [0, 5, 0, 15]
-    };
+  // Helpers
+  const money = (v) =>
+    v == null ? "" : `$${Number(v).toFixed(2)}`;
+  const fmt = (v) => (v == null ? "" : String(v));
 
-    // -------------------------------
-    // Labor details table
-    // -------------------------------
-    const laborRoster = report.labor.laborRows.length
-      ? {
-          table: {
-            widths: [
-              "25%",
-              "20%",
-              "15%",
-              "15%",
-              "15%",
-              "15%"
-            ],
-            body: [
-              [
-                "Employee",
-                "Role",
-                "Hours",
-                "Rate",
-                "Pay",
-                "Tips"
-              ].map((h) => ({ text: h, bold: true })),
+  // -----------------------------
+  //  EVENT INFO TABLE
+  // -----------------------------
+  const ev = report.eventInfo || {};
+  const eventInfoTable = {
+    table: {
+      widths: ["35%", "*"],
+      body: [
+        ["Event Name", fmt(ev.eventName)],
+        ["Event Date", fmt(ev.eventDate)],
+        ["Application Date", fmt(ev.applicationDate)],
+        ["Event Type", fmt(ev.eventType)],
+        ["Num Days", fmt(ev.numDays)],
+        ["Location", fmt(ev.location)],
+        ["Coordinator", fmt(ev.coordinator)],
+      ],
+    },
+    margin: [0, 10, 0, 20],
+  };
 
-              ...report.labor.laborRows.map((row) => [
-                row.employeeName ?? "",
-                row.role ?? "",
-                row.hoursWorked ?? "",
-                money(row.hourlyRate),
-                money(row.totalPay),
-                money(row.tipsEarned)
-              ])
-            ]
-          },
-          margin: [0, 5, 0, 15],
-          layout: "lightHorizontalLines"
-        }
+  // -----------------------------
+  //  CUSTOM FIELDS
+  // -----------------------------
+  const custom = report.customFields || {};
+  const customFieldsTable =
+    Object.keys(custom).length === 0
+      ? { text: "No custom fields provided.", italics: true }
       : {
-          text: "No labor entries",
-          italics: true,
-          margin: [0, 10]
+          table: {
+            widths: ["35%", "*"],
+            body: Object.entries(custom).map(([k, v]) => [
+              k,
+              fmt(v),
+            ]),
+          },
+          margin: [0, 10, 0, 20],
         };
 
-    // Labor summary row
-    const laborSummaryTable = {
-      table: {
-        widths: ["50%", "50%"],
-        body: [
-          ["Total Labor Pay", money(report.labor.laborTotal)],
-          ["Total Tips Paid", money(report.labor.laborTipTotal)]
-        ]
-      },
-      margin: [0, 5, 0, 20]
-    };
-
-    // -------------------------------
-    // Expense Summary Table
-    // -------------------------------
-    const expenseTable = {
-      table: {
-        widths: ["40%", "*"],
-        body: Object.entries(report.expenses).map(
-          ([k, v]) => [
-            { text: formatLabel(k), bold: true },
-            money(v)
-          ]
-        )
-      },
-      margin: [0, 10, 0, 20]
-    };
-
-    // -------------------------------
-    // Profit Summary Table
-    // -------------------------------
-    const profitTable = {
-      table: {
-        widths: ["40%", "*"],
-        body: Object.entries(report.profit).map(
-          ([k, v]) => [
-            { text: formatLabel(k), bold: true },
-            money(v)
-          ]
-        )
-      },
-      margin: [0, 5, 0, 20]
-    };
-
-    // -------------------------------
-    // FINAL DOCUMENT DEFINITION
-    // -------------------------------
-    const docDefinition = {
-      content: [
-        {
-          text: "🍋 LemonDrip Post-Event Report",
-          style: "reportTitle"
-        },
-        {
-          text: `Generated: ${new Date().toLocaleString()}`,
-          style: "generated"
-        },
-        { text: " " },
-
-        sectionHeader("Event Information"),
-        eventInfoTable,
-
-        sectionHeader("Revenue Summary"),
-        revenueTable,
-
-        sectionHeader("Labor Detail"),
-        laborRoster,
-        laborSummaryTable,
-
-        sectionHeader("Expense Summary"),
-        expenseTable,
-
-        sectionHeader("Profit Summary"),
-        profitTable
+  // -----------------------------
+  //  SALES SUMMARY
+  // -----------------------------
+  const s = report.sales || {};
+  const salesTable = {
+    table: {
+      widths: ["35%", "*"],
+      body: [
+        ["Gross Sales", money(s.gross)],
+        ["Refunds", money(s.refunds)],
+        ["Discounts", money(s.discounts)],
+        ["Tips", money(s.tips)],
+        ["Net Sales", money(s.net)],
+        ["Total Collected", money(s.total)],
       ],
+    },
+    margin: [0, 10, 0, 20],
+  };
 
-      styles: {
-        reportTitle: {
-          fontSize: 18,
-          bold: true,
-          alignment: "center"
-        },
-        generated: {
-          fontSize: 9,
-          italics: true,
-          alignment: "center"
-        },
-        sectionHeader: {
-          fontSize: 14,
-          bold: true,
-          margin: [0, 15, 0, 5]
-        }
-      },
+  // -----------------------------
+  //  EMPLOYEES
+  // -----------------------------
+  const employees = report.employees || [];
+  const employeesTable =
+    employees.length === 0
+      ? { text: "No employee data.", italics: true }
+      : {
+          table: {
+            widths: ["25%", "15%", "15%", "20%", "15%"],
+            body: [
+              ["Name", "Hours", "Rate", "Total Pay", "Tips"],
+              ...employees.map((e) => [
+                fmt(e.name),
+                fmt(e.hours),
+                money(e.rate),
+                money(e.total),
+                money(e.tips),
+              ]),
+            ],
+          },
+          margin: [0, 10, 0, 20],
+        };
 
-      defaultStyle: { fontSize: 10 },
+  // -----------------------------
+  // SUPPLIES
+  // -----------------------------
+  const supplies = report.supplies || [];
+  const suppliesTable =
+    supplies.length === 0
+      ? { text: "No supply cost data.", italics: true }
+      : {
+          table: {
+            widths: ["40%", "15%", "20%", "20%"],
+            body: [
+              ["Item", "Qty", "Unit Cost", "Total"],
+              ...supplies.map((s) => [
+                fmt(s.item),
+                fmt(s.qty),
+                money(s.unitCost),
+                money(s.total),
+              ]),
+            ],
+          },
+          margin: [0, 10, 0, 20],
+        };
 
-      pageMargins: [40, 40, 40, 40]
-    };
+  // -----------------------------
+  // DISCOUNTS LIST
+  // -----------------------------
+  const discountList = report.discountsList || [];
+  const discountsTable =
+    discountList.length === 0
+      ? { text: "No discounts recorded.", italics: true }
+      : {
+          table: {
+            widths: ["60%", "40%"],
+            body: [
+              ["Discount Name", "Amount"],
+              ...discountList.map((d) => [
+                fmt(d.name),
+                money(d.amount),
+              ]),
+            ],
+          },
+          margin: [0, 10, 0, 20],
+        };
 
-    pdfMake
-      .createPdf(docDefinition)
-      .download(
-        `PostEventReport_${report.eventInfo.eventName}.pdf`
-      );
-  } catch (err) {
-    console.error("PDF export failed:", err);
-    alert("PDF generation failed. Check console.");
-  }
+  // -----------------------------
+  // TIPS LIST
+  // -----------------------------
+  const tipsList = report.tipsList || [];
+  const tipsTable =
+    tipsList.length === 0
+      ? { text: "No tip distribution.", italics: true }
+      : {
+          table: {
+            widths: ["60%", "40%"],
+            body: [
+              ["Employee", "Tips"],
+              ...tipsList.map((t) => [
+                fmt(t.employeeName),
+                money(t.tipAmount),
+              ]),
+            ],
+          },
+          margin: [0, 10, 0, 20],
+        };
+
+  // -----------------------------
+  // TOTALS
+  // -----------------------------
+  const t = report.totals || {};
+  const totalsTable = {
+    table: {
+      widths: ["50%", "50%"],
+      body: [
+        ["Total Labor", money(t.laborTotal)],
+        ["Supplies", money(t.supplyTotal)],
+        ["Discounts", money(t.discountTotal)],
+        ["Tips Paid Out", money(t.tipTotal)],
+        [
+          { text: "Net Profit", bold: true },
+          { text: money(t.netProfit), bold: true },
+        ],
+      ],
+    },
+    margin: [0, 10, 0, 20],
+  };
+
+  // -----------------------------
+  // PDF Definition
+  // -----------------------------
+  const docDefinition = {
+    content: [
+      { text: "🍋 LemonDrip Post-Event Report", style: "header" },
+      { text: `Generated: ${new Date().toLocaleString()}`, style: "subheader" },
+
+      { text: "\nEvent Information", style: "section" },
+      eventInfoTable,
+
+      { text: "Custom Fields", style: "section" },
+      customFieldsTable,
+
+      { text: "Sales Summary", style: "section" },
+      salesTable,
+
+      { text: "Employees", style: "section" },
+      employeesTable,
+
+      { text: "Supply Costs", style: "section" },
+      suppliesTable,
+
+      { text: "Discounts", style: "section" },
+      discountsTable,
+
+      { text: "Tip Distribution", style: "section" },
+      tipsTable,
+
+      { text: "Totals", style: "section" },
+      totalsTable,
+    ],
+    styles: {
+      header: { fontSize: 18, bold: true },
+      subheader: { fontSize: 10, italics: true, margin: [0, 0, 0, 10] },
+      section: { fontSize: 14, bold: true, margin: [0, 10, 0, 4] },
+    },
+  };
+
+  pdfMake.createPdf(docDefinition).download("PostEventReport.pdf");
 }
+
 
 // ---------- HELPERS ----------
 function formatLabel(str) {
@@ -1854,40 +2141,111 @@ async function uploadEventPermits(eventID) {
 function createCollapsiblecard(title, data) {
   if (!data) return null;
 
+  const isArray = Array.isArray(data);
+  const isObject = !isArray && typeof data === "object";
+
+  // If it's an object, filter out empty/null-ish values
+  let entries = [];
+  if (isObject) {
+    entries = Object.entries(data).filter(([_, v]) => {
+      if (v === null || v === undefined) return false;
+      if (typeof v === "string" && v.trim() === "") return false;
+      if (Array.isArray(v) && v.length === 0) return false;
+      return true;
+    });
+    if (!entries.length) return null;
+  }
+
+  // ---------------------------
+  // Helper: label formatting
+  // ---------------------------
+  const formatLabel = (key) =>
+    String(key)
+      .replace(/([A-Z])/g, " $1")
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^./, (c) => c.toUpperCase());
+
+  // ---------------------------
+  // Helper: value formatting
+  // ---------------------------
+  const renderValue = (value) => {
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) {
+      // array of primitives
+      if (value.every((v) => typeof v !== "object")) {
+        return value.join(", ");
+      }
+      // array of objects → summarize
+      return value
+        .map((row) =>
+          Object.entries(row || {})
+            .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
+            .join("; ")
+        )
+        .join(" | ");
+    }
+    if (typeof value === "object") {
+      return Object.entries(value)
+        .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
+        .join("; ");
+    }
+    return String(value);
+  };
+
+  // ---------------------------
+  // Card shell
+  // ---------------------------
   const wrapper = document.createElement("div");
   wrapper.classList.add("collapsible-card");
 
   const header = document.createElement("button");
   header.classList.add("collapsible-header");
-  header.innerHTML = title;
+  header.type = "button";
+  header.innerHTML = `
+    <span class="collapsible-title">${title}</span>
+    <span class="collapsible-icon">▼</span>
+  `;
 
   const content = document.createElement("div");
+  // keep existing class name for CSS compatibility
   content.classList.add("collapsible-content");
   content.style.display = "none";
 
-  // Render table if data is array
-  if (Array.isArray(data)) {
-    if (data.length === 0) {
+  // ---------------------------
+  // Body content: arrays vs objects
+  // ---------------------------
+  if (isArray) {
+    const arr = data;
+
+    if (!arr.length) {
       content.textContent = "No data available.";
-    } else {
+    } else if (typeof arr[0] === "object" && arr[0] !== null) {
+      // Array of objects → table
       const table = document.createElement("table");
       table.classList.add("lemondrip-table");
 
-      const headerRow = table.createTHead().insertRow();
-      Object.keys(data[0]).forEach((key) => {
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+
+      const columns = Object.keys(arr[0]);
+      columns.forEach((key) => {
         const th = document.createElement("th");
-        th.textContent = key;
+        th.textContent = formatLabel(key);
         headerRow.appendChild(th);
       });
 
       const tbody = table.createTBody();
-      data.forEach((row) => {
+      arr.forEach((row) => {
         const tr = tbody.insertRow();
-        Object.values(row).forEach((v) => {
+        columns.forEach((key) => {
           const td = tr.insertCell();
-          if (String(v).startsWith("http")) {
-            // File download links
-            td.innerHTML = `<a href="${v}" target="_blank">Download</a>`;
+          const v = row[key];
+
+          if (typeof v === "string" && /^https?:\/\//i.test(v)) {
+            // detect URLs and render as links
+            td.innerHTML = `<a href="${v}" target="_blank">Open</a>`;
           } else {
             td.textContent = v ?? "";
           }
@@ -1895,32 +2253,51 @@ function createCollapsiblecard(title, data) {
       });
 
       content.appendChild(table);
+    } else {
+      // Array of primitives → list
+      const ul = document.createElement("ul");
+      arr.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = renderValue(item);
+        ul.appendChild(li);
+      });
+      content.appendChild(ul);
     }
-  } else {
+  } else if (isObject) {
     const infoList = document.createElement("div");
     infoList.classList.add("info-list");
 
-    Object.entries(data).forEach(([key, value]) => {
+    entries.forEach(([key, value]) => {
       const row = document.createElement("div");
       row.classList.add("info-row");
 
-      row.innerHTML = `
-        <span class="info-key">${key.replace(
-          /([A-Z])/g,
-          " $1"
-        )}</span>
-        <span class="info-value">${value ?? ""}</span>
-      `;
+      const labelSpan = document.createElement("span");
+      labelSpan.classList.add("info-key");
+      labelSpan.textContent = formatLabel(key);
 
+      const valueSpan = document.createElement("span");
+      valueSpan.classList.add("info-value");
+      valueSpan.textContent = renderValue(value);
+
+      row.appendChild(labelSpan);
+      row.appendChild(valueSpan);
       infoList.appendChild(row);
     });
 
     content.appendChild(infoList);
+  } else {
+    content.textContent = renderValue(data);
   }
 
+  // ---------------------------
+  // Expand / collapse behavior
+  // ---------------------------
   header.addEventListener("click", () => {
-    content.style.display =
-      content.style.display === "none" ? "block" : "none";
+    const isOpen = content.style.display === "block";
+    content.style.display = isOpen ? "none" : "block";
+
+    const icon = header.querySelector(".collapsible-icon");
+    if (icon) icon.textContent = isOpen ? "▼" : "▲";
   });
 
   wrapper.appendChild(header);
@@ -1928,6 +2305,7 @@ function createCollapsiblecard(title, data) {
 
   return wrapper;
 }
+
 
 window.addEventListener("DOMContentLoaded", () => {
   populateTemplateDropdown(); // populate dropdown on startup

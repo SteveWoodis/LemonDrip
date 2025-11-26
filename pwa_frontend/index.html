@@ -73,6 +73,7 @@
       <option value="">-- Select Template --</option>
     </select>
     <button type="button" onclick="useSelectedTemplate()">⚡ Activate</button>
+	<p class="field-warning">NOTE: Field Name and Field Date are required Fields for All Templates.  </p>
   </div>
 
   <div class="form-builder-controls">
@@ -163,15 +164,14 @@
 
 	  <!-- 📊 Post-Event Report Section -->
   <section id="postEventReportSection" class="card hidden">
-    <h2>📊 Post-Event Report</h2>
-    <div id="postEventReportContainer"></div>
-	<label>Permit Documents:</label>
-	<input type="file" id="permitFiles" multiple>
-
-    <div class="form-buttons">
-	  <button type="button" onclick="downloadPostEventPDF()">📄 Download PDF</button>
-      <button type="button" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
-    </div>
+		<h2>📊 Post-Event Report</h2>
+		<div id="postEventReportContainer">
+			<label>Permit Documents:</label>
+			<input type="file" id="permitFiles" multiple>
+		<button type="button" onclick="downloadPostEventPDF()">📄 Download PDF</button>
+			<button type="button" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
+		</div>
+			<div id="postEventReportContent"></div>
   </section>
 
 

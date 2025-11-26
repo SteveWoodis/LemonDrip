@@ -1,5 +1,5 @@
 // -------------------------------
-// ✅ SQLite + Express Server for LemonDrip (ESM)
+// ✅ SQLite + Express Server for LemonDrip
 // -------------------------------
 import express from "express";
 import Database from "better-sqlite3";
@@ -11,23 +11,22 @@ import { fileURLToPath } from "url";
 import { fetchSquareLocations, getSquareLocationIdByName } from "./square_locations.js";
 import multer, { diskStorage } from "multer";
 import fs from "fs";
-import axios from "axios";
-import crypto from "crypto";              // ⬅️ NEW
 
 
 dotenv.config();
-console.log("DEBUG: Loaded APP ID =", process.env.SQUARE_APP_ID);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = process.env.LEMONDRIP_DB_PATH || path.join(__dirname, "lemonDrip.db");
+const DB_PATH =
+  process.env.LEMONDRIP_DB_PATH || path.join(__dirname, "lemonDrip.db");
+
 
 const SQUARE_APP_ID = process.env.SQUARE_APP_ID;  // sq0idp-...
 const SQUARE_APP_SECRET = process.env.SQUARE_APP_SECRET;
-const SQUARE_OAUTH_REDIRECT =
-  process.env.SQUARE_OAUTH_REDIRECT ||
-  "http://localhost:3000/api/square/oauth/callback";
+const SQUARE_OAUTH_REDIRECT = process.env.SQUARE_OAUTH_REDIRECT || "http://localhost:3000/api/square/oauth/callback";
+
+
 
 let db = new Database(DB_PATH);
 db.pragma("foreign_keys = ON");
@@ -36,12 +35,11 @@ console.log(`Connected to SQLite database: ${DB_PATH}`);
 
 const app = express();
 app.use(cors());
-app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(express.json());app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// -------------------------------
-// 📂 Multer storage for permits
-// -------------------------------
+
+
+// Storage engine
 const storage = diskStorage({
   destination(req, file, cb) {
     const eventID = req.body.eventID;
@@ -52,10 +50,11 @@ const storage = diskStorage({
   filename(req, file, cb) {
     const safeName = file.originalname.replace(/\s+/g, "_");
     cb(null, `permit_${Date.now()}_${safeName}`);
-  },
+  }
 });
 
 const upload = multer({ storage });
+
 
 // -------------------------------
 // 📂 Initialize Tables
@@ -89,53 +88,34 @@ db.exec(`
     DatePulledAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
   );
-
+  
   CREATE TABLE IF NOT EXISTS EventEmployees (
     eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
     eventID INTEGER NOT NULL,
     employeeID INTEGER NOT NULL,
-    employeeName TEXT,
-    role TEXT,
-    hourlyRate REAL,
-    totalPay REAL,
-    tipsEarned REAL,
-    metadata JSON,
+	employeeName	TEXT,
+	role	TEXT,
+	hourlyRate	REAL,
+	totalPay	REAL,
+	tipsEarned	REAL,
+	metadata	JSON,
     hoursWorked REAL,
     FOREIGN KEY(eventID) REFERENCES EventInfo(eventID),
     FOREIGN KEY(employeeID) REFERENCES EmployeeTracker(employeeID)
   );
-
   CREATE TABLE IF NOT EXISTS EventPermits (
-    permitID     INTEGER PRIMARY KEY AUTOINCREMENT,
-    eventID      INTEGER NOT NULL,
-    fileName     TEXT NOT NULL,
-    originalName TEXT NOT NULL,
-    mimeType     TEXT,
-    uploadedAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (eventID) REFERENCES EventInfo(eventID)
-  );
+  permitID     INTEGER PRIMARY KEY AUTOINCREMENT,
+  eventID      INTEGER NOT NULL,
+  fileName     TEXT NOT NULL,
+  originalName TEXT NOT NULL,
+  mimeType     TEXT,
+  uploadedAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (eventID) REFERENCES EventInfo(eventID)
+);
 
-  
+
+
 `);
-// --- Square OAuth Token Table --------------------------
-db.exec(`
-  CREATE TABLE IF NOT EXISTS SquareAuth (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    accessToken TEXT NOT NULL,
-    refreshToken TEXT,
-    merchantId TEXT,
-    expiresAt TEXT,
-    createdAt TEXT DEFAULT (datetime('now')),
-    updatedAt TEXT DEFAULT (datetime('now'))
-  );
-`);
-
-try {
-  db.exec(`ALTER TABLE SquareAuth ADD COLUMN expiresAt TEXT;`);
-} catch (err) {
-  // ignore: column already exists
-}
-
 
 // -------------------------------
 // 🚀 Server Startup + warm Square cache
@@ -153,72 +133,65 @@ try {
 })();
 
 export { db };
-// Keep track of valid OAuth "state" values to prevent CSRF
-const activeOAuthStates = new Set();
 
 // -------------------------------
 // 🧭 Root (health check)
 // -------------------------------
 app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
 
-// -------------------------------
-// 📎 Upload permit files
-// -------------------------------
-app.post(
-  "/api/events/upload-permits",
-  upload.array("permits"),
-  (req, res) => {
-    const eventID = Number(req.body.eventID);
 
-    for (const file of req.files) {
-      db.prepare(
-        `
+// ROUTE: Upload permit files
+app.post("/api/events/upload-permits", upload.array("permits"), (req, res) => {
+  const eventID = Number(req.body.eventID);
+
+  for (const file of req.files) {
+    db.prepare(`
       INSERT INTO EventPermits (eventID, fileName, originalName, mimeType)
       VALUES (?, ?, ?, ?)
-    `
-      ).run(eventID, file.filename, file.originalname, file.mimetype);
-    }
-
-    res.json({ message: "Permit files saved", count: req.files.length });
+    `).run(eventID, file.filename, file.originalname, file.mimetype);
   }
-);
 
-// -------------------------------
-// 🔐 OAuth routes for Labor (Shifts)
-// -------------------------------
+  res.json({ message: "Permit files saved", count: req.files.length });
+});
+import axios from "axios";
+ // if you’re not already using it
+// or you can use fetch; axios is just nice for JSON
+
+// Simple table: SquareAuth( id INTEGER PK, accessToken TEXT, refreshToken TEXT, merchantId TEXT )
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS SquareAuth (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    accessToken TEXT NOT NULL,
+    refreshToken TEXT,
+    merchantId TEXT,
+    createdAt TEXT DEFAULT (datetime('now')),
+    updatedAt TEXT DEFAULT (datetime('now'))
+  )
+`).run();
+
 app.get("/api/square/oauth/callback", async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
-  // 1) Handle user / Square errors first
   if (error) {
     console.error("Square OAuth error:", error, error_description);
     return res.status(400).send("Square OAuth error: " + error_description);
   }
 
-  if (!code || !state) {
-    return res.status(400).send("Missing authorization code or state.");
+  if (!code) {
+    return res.status(400).send("Missing authorization code.");
   }
-
-  // 2) CSRF protection: check that state is one we issued
-  if (!activeOAuthStates.has(state)) {
-    console.error("⚠️ OAuth state mismatch or expired:", state);
-    return res.status(400).send("Invalid or expired OAuth state.");
-  }
-  // One-time use: remove it
-  activeOAuthStates.delete(state);
 
   try {
-    // 3) Exchange code for tokens
     const tokenRes = await axios.post(
       "https://connect.squareup.com/oauth2/token",
       {
         client_id: SQUARE_APP_ID,
         client_secret: SQUARE_APP_SECRET,
         code,
-        grant_type: "authorization_code",
+        grant_type: "authorization_code"
       },
       {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }
       }
     );
 
@@ -227,43 +200,32 @@ app.get("/api/square/oauth/callback", async (req, res) => {
     const accessToken = payload.access_token;
     const refreshToken = payload.refresh_token;
     const merchantId = payload.merchant_id;
-    const expiresAt = payload.expires_at; // ISO timestamp string
 
-    // 4) Persist tokens (single row for now)
+    // Persist (for now, just one row; later you can key by CompanyID)
     db.prepare("DELETE FROM SquareAuth").run();
     db.prepare(`
-      INSERT INTO SquareAuth (accessToken, refreshToken, merchantId, expiresAt)
-      VALUES (?, ?, ?, ?)
-    `).run(accessToken, refreshToken, merchantId, expiresAt);
+      INSERT INTO SquareAuth (accessToken, refreshToken, merchantId)
+      VALUES (?, ?, ?)
+    `).run(accessToken, refreshToken, merchantId);
 
     console.log("✅ Square OAuth connected for merchant:", merchantId);
-    res.send(
-      "Square Labor integration connected successfully. You can close this tab and go back to LemonDrip."
-    );
+
+    res.send("Square Labor integration connected successfully. You can close this tab and go back to LemonDrip.");
   } catch (err) {
-    console.error(
-      "❌ Error exchanging OAuth code:",
-      err.response?.data || err.message
-    );
+    console.error("❌ Error exchanging OAuth code:", err.response?.data || err.message);
     res.status(500).send("Error exchanging OAuth code. Check server logs.");
   }
 });
 
 
-// Start OAuth flow
+// 1) Start OAuth flow: redirect user to Square
 app.get("/api/square/oauth/start", (req, res) => {
-  // 1) Generate a random state for CSRF protection
-  const state = crypto.randomBytes(24).toString("hex");
+  const state = "lemonDripDemoState"; // TODO: generate & store real CSRF state token
 
-  // 2) Track it in memory and auto-expire after 10 minutes
-  activeOAuthStates.add(state);
-  setTimeout(() => activeOAuthStates.delete(state), 10 * 60 * 1000);
-
-  // 3) Scopes we want (once Square approves them)
   const scopes = [
-    "shifts.read",
-    "team_members.read",
-    "labor.read",
+    "LABOR_SHIFTS_READ",
+    "LABOR_READ",
+    "TEAM_MEMBERS_READ"  // optional but useful
   ];
 
   const params = new URLSearchParams({
@@ -271,18 +233,15 @@ app.get("/api/square/oauth/start", (req, res) => {
     scope: scopes.join(" "),
     session: "false",
     state,
-    redirect_uri: SQUARE_OAUTH_REDIRECT,
-    response_type: "code",
+    redirect_uri: SQUARE_OAUTH_REDIRECT
   });
 
   const url = `https://connect.squareup.com/oauth2/authorize?${params.toString()}`;
   res.redirect(url);
 });
 
-
-
 // -------------------------------
-// 🔍 GET /api/events (list/search)
+// GET /api/events
 // -------------------------------
 app.get("/api/events", (req, res) => {
   try {
@@ -312,8 +271,7 @@ app.get("/api/events", (req, res) => {
     res.status(500).json({ error: "Error reading events." });
   }
 });
-
-// 🔍 SEARCH EVENTS by free text (includes customFields)
+// 🔍 SEARCH EVENTS ROUTE
 app.get("/api/events/search", (req, res) => {
   try {
     const q = req.query.q?.trim();
@@ -333,31 +291,30 @@ app.get("/api/events/search", (req, res) => {
 
     const results = stmt.all({ q });
     res.json(results);
+
   } catch (err) {
     console.error("❌ Search error:", err);
     res.status(500).json({ error: String(err) });
   }
 });
 
-// Get permits for an event
+
+
 app.get("/api/events/:eventID/permits", (req, res) => {
   const eventID = req.params.eventID;
 
-  const permits = db
-    .prepare(
-      `
+  const permits = db.prepare(`
     SELECT permitID, fileName, originalName, mimeType, uploadedAt
     FROM EventPermits
     WHERE eventID = ?
-  `
-    )
-    .all(eventID);
+  `).all(eventID);
 
   res.json(permits);
 });
 
+
 // -------------------------------
-// GET /api/events/:id (single)
+// GET /api/events/:id
 // -------------------------------
 app.get("/api/events/:id", (req, res) => {
   try {
@@ -404,7 +361,7 @@ app.get("/api/employees", (req, res) => {
       .prepare(
         `SELECT EmployeeID, EmployeeName, Role
          FROM EmployeeTracker
-         ORDER BY EmployeeName ASC`
+		 ORDER BY EmployeeName ASC`
       )
       .all();
     res.json(rows);
@@ -414,16 +371,13 @@ app.get("/api/employees", (req, res) => {
   }
 });
 
-// Get employees for an event
+
+// Save employees for an event
 app.get("/api/events/:eventID/employees", (req, res) => {
   try {
-    const rows = db
-      .prepare(
-        `
+    const rows = db.prepare(`
       SELECT * FROM EventEmployees WHERE eventID = ?
-    `
-      )
-      .all(req.params.eventID);
+    `).all(req.params.eventID);
 
     res.json(rows);
   } catch (err) {
@@ -454,8 +408,9 @@ app.get("/api/formtemplates", (req, res) => {
     res.status(500).json({ error: "Failed to load templates" });
   }
 });
-
-// POST /api/formtemplates
+// -------------------------------
+// POST /api/formtemplates  (SAVE NEW TEMPLATE)
+// -------------------------------
 app.post("/api/formtemplates", (req, res) => {
   try {
     const { TemplateName, Fields } = req.body;
@@ -468,12 +423,15 @@ app.post("/api/formtemplates", (req, res) => {
       VALUES (?, ?)
     `);
 
-    const result = stmt.run(TemplateName, JSON.stringify(Fields || []));
+    const result = stmt.run(
+      TemplateName,
+      JSON.stringify(Fields || [])
+    );
 
-    res.json({
-      success: true,
+    res.json({ 
+      success: true, 
       TemplateID: result.lastInsertRowid,
-      message: "Template saved successfully.",
+      message: "Template saved successfully." 
     });
   } catch (err) {
     console.error("❌ Error saving template:", err);
@@ -491,8 +449,8 @@ app.get("/api/square/locations", async (req, res) => {
       method: "GET",
       headers: {
         "Square-Version": "2025-01-15",
-        Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-      },
+        Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`
+      }
     });
 
     const json = await response.json();
@@ -501,6 +459,7 @@ app.get("/api/square/locations", async (req, res) => {
     res.status(500).json({ error: "Failed to load Square locations" });
   }
 });
+
 
 // -------------------------------
 // POST /api/company
@@ -534,9 +493,8 @@ app.post("/api/company", (req, res) => {
 // -------------------------------
 app.post("/api/employees", (req, res) => {
   try {
-    // 🔧 FIX: use lower-case names consistently
-    const { employeeName, role, phone, hourlyRate } = req.body;
-    if (!employeeName)
+    const { EmployeeName, Role, Phone, HourlyRate } = req.body;
+    if (!EmployeeName)
       return res.status(400).json({ error: "Employee name required." });
 
     const stmt = db.prepare(`
@@ -604,11 +562,13 @@ app.post("/api/events", (req, res) => {
     );
 
     res.json({ success: true, eventID: result.lastInsertRowid });
+
   } catch (err) {
     console.error("❌ Error inserting event:", err);
     res.status(500).json({ error: String(err) });
   }
 });
+
 
 // -------------------------------
 // PUT /api/events/:id  (UPDATE EVENT)
@@ -657,6 +617,7 @@ app.put("/api/events/:id", (req, res) => {
       return res.status(404).json({ error: "Event not found." });
 
     res.json({ success: true, message: "Event updated successfully." });
+
   } catch (err) {
     console.error("❌ Error updating event:", err);
     res.status(500).json({ error: String(err) });
@@ -664,41 +625,53 @@ app.put("/api/events/:id", (req, res) => {
 });
 
 // -------------------------------
-// PUT /api/square/sales/:eventId  (DST-aware)
+// PUT /api/square/sales/:eventId
+// Pull ALL Square payments (paginated)
 // -------------------------------
+// -----------------------------------------------
+// PUT /api/square/sales/:eventId
+// Fully DST-aware Mountain Time version
+// -----------------------------------------------
 app.put("/api/square/sales/:eventId", async (req, res) => {
   try {
     const eventId = req.params.eventId;
 
-    const ev = db
-      .prepare(
-        `
+    // 1) Get event info
+    const ev = db.prepare(`
       SELECT eventDate, squareLocationId
       FROM EventInfo
       WHERE eventID = ?
-    `
-      )
-      .get(eventId);
+    `).get(eventId);
 
     if (!ev) {
       return res.status(404).json({ error: "Event not found." });
     }
 
     if (!ev.squareLocationId) {
-      return res
-        .status(400)
-        .json({ error: "Event has no Square Location ID." });
+      return res.status(400).json({ error: "Event has no Square Location ID." });
     }
 
-    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
-    const localEnd = new Date(`${ev.eventDate}T23:59:59-06:00`);
+    // ------------------------------------------
+    // ⭐⭐ DST-aware local-to-UTC conversion ⭐⭐
+    // ------------------------------------------
+    // We convert "YYYY-MM-DD" into real LOCAL Mountain Time and then let JS
+    // convert that into the correct UTC timestamp for Square.
 
+    // Start of event day in Mountain Time (auto DST)
+    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
+    // End of event day in Mountain Time (auto DST)
+    const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
+
+    // Convert to full UTC ISO strings
     const beginTime = localStart.toISOString();
-    const endTime = localEnd.toISOString();
+    const endTime   = localEnd.toISOString();
 
     console.log("DST-AWARE BEGIN:", beginTime);
     console.log("DST-AWARE END  :", endTime);
 
+    // ------------------------------------------
+    // 2) Pull all Square payments (paginated)
+    // ------------------------------------------
     const accessToken = process.env.SQUARE_ACCESS_TOKEN;
     let cursor = null;
 
@@ -719,37 +692,42 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         method: "GET",
         headers: {
           "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${accessToken}`,
-        },
+          Authorization: `Bearer ${accessToken}`
+        }
       });
 
       if (!response.ok) {
         return res.status(response.status).json({
-          error: `Square API error ${response.status}`,
+          error: `Square API error ${response.status}`
         });
       }
 
       const json = await response.json();
       const payments = json.payments || [];
 
+      // Sum all payments
       for (const p of payments) {
-        gross += p.amount_money?.amount || 0;
-        refunds += p.refunded_money?.amount || 0;
-        discounts += p.total_discount_money?.amount || 0;
-        tips += p.tip_money?.amount || 0;
+        gross     += p.amount_money?.amount        || 0;
+        refunds   += p.refunded_money?.amount      || 0;
+        discounts += p.total_discount_money?.amount|| 0;
+        tips      += p.tip_money?.amount           || 0;
       }
 
       cursor = json.cursor || null;
     } while (cursor);
 
-    gross /= 100;
-    refunds /= 100;
+    // Convert cents → dollars
+    gross     /= 100;
+    refunds   /= 100;
     discounts /= 100;
-    tips /= 100;
+    tips      /= 100;
 
     const netSales = gross - refunds - discounts;
     const totalCollected = netSales + tips;
 
+    // ------------------------------------------
+    // 3) UPSERT into SalesSummary
+    // ------------------------------------------
     db.prepare(`
       INSERT INTO SalesSummary (
         EventID, grossSales, netSales, refunds, discounts, tips, totalCollected
@@ -772,6 +750,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       totalCollected
     );
 
+    // Return summary
     res.json({
       success: true,
       message: "Square data synced (DST-aware).",
@@ -780,15 +759,16 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       discounts,
       netSales,
       tips,
-      totalCollected,
+      totalCollected
     });
+
   } catch (err) {
     console.error("❌ Square Sales Error:", err);
     res.status(500).json({ error: "Failed pulling Square sales." });
   }
 });
 
-// Helper: base URL (still here if you need sandbox later)
+// Helper: Square base URL (sandbox vs production)
 function getSquareBaseUrl() {
   const env = process.env.SQUARE_ENV || "production";
   return env === "sandbox"
@@ -796,56 +776,20 @@ function getSquareBaseUrl() {
     : "https://connect.squareup.com";
 }
 
-// Helper: doFetch (for labor & team APIs)
+// Helper: ensure we have fetch in Node (Node 18+ has global fetch)
 const doFetch =
-  typeof globalThis.fetch === "function"
-    ? globalThis.fetch.bind(globalThis)
+  typeof fetch === "function"
+    ? fetch
     : (...args) =>
         import("node-fetch").then(({ default: f }) => f(...args));
 
-// OAuth labor token
-async function getSquareLaborToken() {
-  let row = db
-    .prepare(
-      "SELECT id, accessToken, refreshToken, merchantId, expiresAt FROM SquareAuth ORDER BY id DESC LIMIT 1"
-    )
-    .get();
-
-  if (!row || !row.accessToken) {
-    throw new Error(
-      "No Square OAuth labor token saved. Visit /api/square/oauth/start to connect."
-    );
-  }
-
-  // If there's no expiry info, just use the token
-  if (!row.expiresAt) {
-    return row.accessToken;
-  }
-
-  const now = Date.now();
-  const expiresMs = new Date(row.expiresAt).getTime();
-  const refreshThresholdMs = 5 * 60 * 1000; // 5 minutes before expiry
-
-  if (Number.isFinite(expiresMs) && expiresMs - now < refreshThresholdMs) {
-    console.log("🔄 Refreshing Square OAuth token (near expiry)...");
-    row = await refreshSquareLaborToken(row);
-  }
-
-  return row.accessToken;
-}
-
-
-// Fetch shifts and aggregate into employees[]
 async function fetchSquareLaborForEvent(eventID) {
-  const event = db
-    .prepare(
-      `
+  // 1️⃣ Get event date + location from DB
+  const event = db.prepare(`
     SELECT eventDate, squareLocationId
     FROM EventInfo
     WHERE eventID = ?
-  `
-    )
-    .get(eventID);
+  `).get(eventID);
 
   if (!event) {
     throw new Error(`Event not found for labor fetch: id=${eventID}`);
@@ -858,8 +802,10 @@ async function fetchSquareLaborForEvent(eventID) {
   }
 
   const token = await getSquareLaborToken();
-  const baseUrl = "https://connect.squareup.com"; // labor is production-only
+const baseUrl = "https://connect.squareup.com"; // labor is production-only
 
+
+  // 2️⃣ Build date range for this event (same-day window)
   const startAt = `${event.eventDate}T00:00:00Z`;
   const endAt = `${event.eventDate}T23:59:59Z`;
 
@@ -869,6 +815,7 @@ async function fetchSquareLaborForEvent(eventID) {
     end_at: endAt,
   });
 
+  // 3️⃣ Call Square Labor Shifts API
   const url = `${baseUrl}/v2/labor/shifts?${params.toString()}`;
 
   const res = await doFetch(url, {
@@ -890,9 +837,11 @@ async function fetchSquareLaborForEvent(eventID) {
 
   const shifts = json.shifts || [];
   if (!shifts.length) {
+    // No shifts found for that date+location
     return [];
   }
 
+  // 4️⃣ Aggregate by team_member_id
   const byMember = new Map();
 
   for (const shift of shifts) {
@@ -902,10 +851,10 @@ async function fetchSquareLaborForEvent(eventID) {
     const end = shift.end_at ? new Date(shift.end_at) : null;
     if (!start || !end) continue;
 
-    const hours = (end - start) / (1000 * 60 * 60);
+    const hours = (end - start) / (1000 * 60 * 60); // ms → hours
     const wage = shift.wage || {};
     const hourlyCents = wage.hourly_rate?.amount ?? 0;
-    const hourlyRate = hourlyCents / 100;
+    const hourlyRate = hourlyCents / 100; // cents → dollars
 
     const total = hours * hourlyRate;
 
@@ -913,7 +862,7 @@ async function fetchSquareLaborForEvent(eventID) {
       teamMemberId,
       hours: 0,
       total: 0,
-      hourlyRate,
+      hourlyRate, // we'll keep the latest rate, usually stable
     };
 
     existing.hours += hours;
@@ -923,57 +872,64 @@ async function fetchSquareLaborForEvent(eventID) {
     byMember.set(teamMemberId, existing);
   }
 
-  const memberIds = [...byMember.keys()].filter(
-    (id) => id !== "UNKNOWN"
-  );
-
-  const employees = [];
-
-  if (memberIds.length) {
-    const teamUrl = `${baseUrl}/v2/team-members/batch-retrieve`;
-
-    const teamRes = await doFetch(teamUrl, {
-      method: "POST",
-      headers: {
-        "Square-Version": "2023-10-18",
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ team_member_ids: memberIds }),
-    });
-
-    const teamJson = await teamRes.json();
-    if (!teamRes.ok) {
-      const detail =
-        teamJson.errors?.map((e) => e.detail).join("; ") ||
-        `HTTP ${teamRes.status}`;
-      throw new Error(`Square team members error: ${detail}`);
-    }
-
-    const members = teamJson.team_members || {};
-
-    for (const [id, m] of Object.entries(members)) {
-      const agg = byMember.get(id);
-      if (!agg) continue;
-
-      const profile = m?.profile || {};
-      const fullName =
-        profile.given_name || profile.family_name
-          ? `${profile.given_name || ""} ${
-              profile.family_name || ""
-            }`.trim()
-          : profile.full_name || id;
-
-      employees.push({
-        name: fullName,
-        hours: Number(agg.hours.toFixed(2)),
-        rate: agg.hourlyRate,
-        total: Number(agg.total.toFixed(2)),
-        tips: 0,
-      });
-    }
+  const memberIds = [...byMember.keys()].filter((id) => id !== "UNKNOWN");
+  if (!memberIds.length) {
+    // No identifiable team members; return aggregated anonymous labor if desired
+    return [...byMember.values()].map((m) => ({
+      name: m.teamMemberId,
+      hours: m.hours,
+      rate: m.hourlyRate,
+      total: m.total,
+      tips: 0,
+    }));
   }
 
+  // 5️⃣ Fetch names from Square Team API (batch)
+  const teamUrl = `${baseUrl}/v2/team-members/batch-retrieve`;
+
+  const teamRes = await doFetch(teamUrl, {
+    method: "POST",
+    headers: {
+      "Square-Version": "2023-10-18",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ team_member_ids: memberIds }),
+  });
+
+  const teamJson = await teamRes.json();
+  if (!teamRes.ok) {
+    const detail =
+      teamJson.errors?.map((e) => e.detail).join("; ") ||
+      `HTTP ${teamRes.status}`;
+    throw new Error(`Square team members error: ${detail}`);
+  }
+
+  const members = teamJson.team_members || {};
+  // Build final array of employees
+  const employees = [];
+
+  for (const [id, m] of Object.entries(members)) {
+    const agg = byMember.get(id);
+    if (!agg) continue;
+
+    const profile = m?.profile || {};
+    // use full_name if available
+    const fullName =
+      profile.given_name || profile.family_name
+        ? `${profile.given_name || ""} ${profile.family_name || ""}`.trim()
+        : profile.full_name || id;
+
+    employees.push({
+      name: fullName,
+      hours: Number(agg.hours.toFixed(2)),
+      rate: agg.hourlyRate,
+      total: Number(agg.total.toFixed(2)),
+      tips: 0, // we can integrate TipTracker later if you want
+    });
+  }
+
+  // Also include any "UNKNOWN" aggregated record if present
   const unknown = byMember.get("UNKNOWN");
   if (unknown) {
     employees.push({
@@ -987,154 +943,91 @@ async function fetchSquareLaborForEvent(eventID) {
 
   return employees;
 }
-async function refreshSquareLaborToken(row) {
-  if (!row.refreshToken) {
-    throw new Error(
-      "Cannot refresh Square OAuth token: no refreshToken stored."
-    );
+
+async function getSquareLaborToken() {
+  const row = db.prepare("SELECT accessToken FROM SquareAuth ORDER BY id DESC LIMIT 1").get();
+  if (!row || !row.accessToken) {
+    throw new Error("No Square OAuth labor token saved. Visit /api/square/oauth/start to connect.");
   }
-
-  try {
-    const tokenRes = await axios.post(
-      "https://connect.squareup.com/oauth2/token",
-      {
-        client_id: SQUARE_APP_ID,
-        client_secret: SQUARE_APP_SECRET,
-        grant_type: "refresh_token",
-        refresh_token: row.refreshToken,
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-
-    const payload = tokenRes.data;
-
-    const newAccessToken = payload.access_token;
-    const newRefreshToken = payload.refresh_token;
-    const newMerchantId = payload.merchant_id;
-    const newExpiresAt = payload.expires_at;
-
-    db.prepare(
-      `
-      UPDATE SquareAuth
-      SET accessToken = ?,
-          refreshToken = ?,
-          merchantId = ?,
-          expiresAt = ?,
-          updatedAt = datetime('now')
-      WHERE id = ?
-    `
-    ).run(
-      newAccessToken,
-      newRefreshToken,
-      newMerchantId,
-      newExpiresAt,
-      row.id
-    );
-
-    console.log("✅ Square OAuth token refreshed for merchant:", newMerchantId);
-
-    // Return the updated row
-    return db
-      .prepare(
-        "SELECT id, accessToken, refreshToken, merchantId, expiresAt FROM SquareAuth WHERE id = ?"
-      )
-      .get(row.id);
-  } catch (err) {
-    console.error(
-      "❌ Error refreshing Square OAuth token:",
-      err.response?.data || err.message
-    );
-    throw new Error("Failed to refresh Square OAuth token.");
-  }
+  return row.accessToken;
 }
 
-// -------------------------------
-// Finalize event (scores & metrics)
-// -------------------------------
+// ---------------------------------------------
+// PUT /api/events/:id/finalize
+// ---------------------------------------------
 app.put("/api/events/:id/finalize", (req, res) => {
   try {
     const eventId = req.params.id;
 
-    const event = db
-      .prepare(`SELECT * FROM EventInfo WHERE EventID = ?`)
-      .get(eventId);
+    // Step 1: Load event
+    const event = db.prepare(
+      `SELECT * FROM EventInfo WHERE EventID = ?`
+    ).get(eventId);
 
     if (!event) return res.status(404).json({ error: "Event not found." });
 
-    const square = db
-      .prepare(`SELECT * FROM SalesSummary WHERE EventID = ?`)
-      .get(eventId);
+    // Step 2: Load Square data (already saved earlier)
+    const square = db.prepare(
+      `SELECT * FROM SalesSummary WHERE EventID = ?`
+    ).get(eventId);
 
     if (!square) {
       return res.status(400).json({
-        error: "Square sales have not been pulled for this event.",
+        error: "Square sales have not been pulled for this event."
       });
     }
 
-    const laborSum =
-      db
-        .prepare(
-          `
-      SELECT SUM(hoursWorked * hourlyRate) AS laborCost
-      FROM EmployeeTracker
-      WHERE EventID = ?
-    `
-        )
-        .get(eventId)?.laborCost || 0;
+    // Step 3: Pull computed cost tables
+    const laborSum = db.prepare(
+      `SELECT SUM(hoursWorked * hourlyRate) AS laborCost
+         FROM EmployeeTracker
+         WHERE EventID = ?`
+    ).get(eventId)?.laborCost || 0;
 
-    const supplySum =
-      db
-        .prepare(
-          `
-      SELECT SUM(totalCost) AS supplyCost
-      FROM SupplyCosts
-      WHERE EventID = ?
-    `
-        )
-        .get(eventId)?.supplyCost || 0;
+    const supplySum = db.prepare(
+      `SELECT SUM(totalCost) AS supplyCost
+         FROM SupplyCosts
+         WHERE EventID = ?`
+    ).get(eventId)?.supplyCost || 0;
 
-    const feeSum =
-      db
-        .prepare(
-          `
-      SELECT SUM(feeAmount) AS fees
-      FROM AdditionalFees
-      WHERE EventID = ?
-    `
-        )
-        .get(eventId)?.fees || 0;
+    const feeSum = db.prepare(
+      `SELECT SUM(feeAmount) AS fees
+         FROM AdditionalFees
+         WHERE EventID = ?`
+    ).get(eventId)?.fees || 0;
 
     const totalCosts = laborSum + supplySum + feeSum;
 
+    // Step 4: Pull Square numbers
     const gross = square.grossSales || 0;
     const net = square.netSales || 0;
     const refunds = square.refunds || 0;
     const squareFees = gross - net;
 
+    // Step 5: Compute profit margin + net profit
     const netProfit = net - totalCosts;
     const profitMargin = gross > 0 ? netProfit / gross : 0;
 
+    // Step 6: Compute internal & external scores
     const internalScore =
-      (event.teamArrivalRating || 0) * 0.2 +
+      (event.teamArrivalRating || 0) * 0.20 +
       (event.teamExecutionRating || 0) * 0.25 +
-      (event.teamCommunicationRating || 0) * 0.2 +
+      (event.teamCommunicationRating || 0) * 0.20 +
       (event.teamCleanUpRating || 0) * 0.15 +
-      (event.teamProfessionalismRating || 0) * 0.2;
+      (event.teamProfessionalismRating || 0) * 0.20;
 
     const externalScore =
-      (event.vendorAccessRating || 0) * 0.2 +
-      (event.eventOrganizationRating || 0) * 0.2 +
-      (event.crowdQualityRating || 0) * 0.2 +
+      (event.vendorAccessRating || 0) * 0.20 +
+      (event.eventOrganizationRating || 0) * 0.20 +
+      (event.crowdQualityRating || 0) * 0.20 +
       (event.weatherImpactRating || 0) * 0.15 +
       (event.hostCommunicationRating || 0) * 0.15 +
-      profitMargin * 0.1;
+      (profitMargin * 0.10);
 
-    const eventScore = internalScore * 0.5 + externalScore * 0.5;
+    const eventScore = (internalScore * 0.5) + (externalScore * 0.5);
 
-    db.prepare(
-      `
+    // Step 7: Save all computations
+    db.prepare(`
       UPDATE EventInfo SET
         squareGrossSales = ?,
         squareNetSales = ?,
@@ -1149,8 +1042,7 @@ app.put("/api/events/:id/finalize", (req, res) => {
         isFinalized = 1,
         finalizedDate = CURRENT_TIMESTAMP
       WHERE EventID = ?
-    `
-    ).run(
+    `).run(
       gross,
       net,
       refunds,
@@ -1177,18 +1069,20 @@ app.put("/api/events/:id/finalize", (req, res) => {
         profitMargin,
         internalScore,
         externalScore,
-        eventScore,
-      },
+        eventScore
+      }
     });
+
   } catch (err) {
     console.error("❌ Finalization error:", err);
     res.status(500).json({ error: "Failed to finalize event." });
   }
 });
+// -----------------------------------------------
+// Save ratings
+// -----------------------------------------------
 
-// -------------------------------
-// PUT /api/events/:id/ratings
-// -------------------------------
+
 app.put("/api/events/:id/ratings", (req, res) => {
   try {
     const id = req.params.id;
@@ -1198,8 +1092,7 @@ app.put("/api/events/:id/ratings", (req, res) => {
       return res.status(404).json({ error: "Event not found." });
     }
 
-    db.prepare(
-      `
+    db.prepare(`
       UPDATE EventInfo SET
         teamArrivalRating = ?,
         teamExecutionRating = ?,
@@ -1214,8 +1107,7 @@ app.put("/api/events/:id/ratings", (req, res) => {
         hostCommunicationRating = ?,
         externalNotes = ?
       WHERE EventID = ?
-    `
-    ).run(
+    `).run(
       r.teamArrivalRating,
       r.teamExecutionRating,
       r.teamCommunicationRating,
@@ -1232,11 +1124,13 @@ app.put("/api/events/:id/ratings", (req, res) => {
     );
 
     res.json({ success: true });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error saving ratings." });
   }
 });
+
 
 // -------------------------------
 // DELETE /api/events/:id
@@ -1293,23 +1187,70 @@ function coerceEvent(body) {
     totalSales: toNum(body.totalSales),
     isFinalized: toBoolI(body.isFinalized),
 
+    // NEW: safe JSON stringify
     customFields:
       body.customFields && Object.keys(body.customFields).length
         ? JSON.stringify(body.customFields)
-        : null,
+        : null
   };
 }
 
-// -------------------------------
-// Unified Post-Event Report builder
-// -------------------------------
+
+function computeEventScores(e) {
+  // ---- Financials ----
+  const gross = Number(e.squareGrossSales ?? 0);
+  const net = Number(e.squareNetSales ?? 0);
+  const refunds = Number(e.squareRefunds ?? 0);
+
+  const squareFees = gross - net;
+
+  const totalCosts = Number(e.totalCosts ?? 0);
+  const netProfit = net - totalCosts;
+
+  const profitMargin = gross > 0 ? (netProfit / gross) : 0;
+
+  // ---- Internal Ratings ----
+  const internalScore =
+      (Number(e.teamArrivalRating || 0) * 0.20) +
+      (Number(e.teamExecutionRating || 0) * 0.25) +
+      (Number(e.teamCommunicationRating || 0) * 0.20) +
+      (Number(e.teamCleanUpRating || 0) * 0.15) +
+      (Number(e.teamProfessionalismRating || 0) * 0.20);
+
+  // ---- External Ratings ----
+  const externalScore =
+      (Number(e.vendorAccessRating || 0) * 0.20) +
+      (Number(e.eventOrganizationRating || 0) * 0.20) +
+      (Number(e.crowdQualityRating || 0) * 0.20) +
+      (Number(e.weatherImpactRating || 0) * 0.15) +
+      (Number(e.hostCommunicationRating || 0) * 0.15) +
+      (profitMargin * 0.10);
+
+  // ---- Overall Event Score ----
+  const eventScore = (internalScore * 0.5) + (externalScore * 0.5);
+
+  return {
+    squareFees,
+    netProfit,
+    profitMargin,
+    internalScore,
+    externalScore,
+    eventScore
+  };
+}
+
+
 async function buildPostEventReport(eventID) {
-  const event = db
-    .prepare(`SELECT * FROM EventInfo WHERE eventID = ?`)
-    .get(eventID);
+  //
+  // 1️⃣ Load EventInfo
+  //
+  const event = db.prepare(`
+    SELECT * FROM EventInfo WHERE eventID = ?
+  `).get(eventID);
 
   if (!event) throw new Error(`Event not found: id=${eventID}`);
 
+  // Parse custom fields
   let customFields = {};
   try {
     if (event.customFields) {
@@ -1319,29 +1260,30 @@ async function buildPostEventReport(eventID) {
     customFields = {};
   }
 
-  const summary =
-    db
-      .prepare(`SELECT * FROM SalesSummary WHERE eventID = ?`)
-      .get(eventID) || {};
+  //
+  // 2️⃣ SalesSummary
+  //
+  const summary = db.prepare(`
+    SELECT * FROM SalesSummary WHERE eventID = ?
+  `).get(eventID) || {};
 
-  const gross = summary.grossSales ?? 0;
-  const refunds = summary.refunds ?? 0;
-  const discounts = summary.discounts ?? 0;
-  const tips = summary.tips ?? 0;
-  const net = summary.netSales ?? gross - refunds - discounts;
-  const total = summary.totalCollected ?? net + tips;
+  const gross      = summary.grossSales     ?? 0;
+  const refunds    = summary.refunds        ?? 0;
+  const discounts  = summary.discounts      ?? 0;
+  const tips       = summary.tips           ?? 0;
+  const net        = summary.netSales       ?? gross - refunds - discounts;
+  const total      = summary.totalCollected ?? net + tips;
 
+  //
+  // 3️⃣ Employees from Square (Square is source of truth)
+  //
   let employees = [];
   try {
     employees = await fetchSquareLaborForEvent(eventID);
   } catch (err) {
-    console.error(
-      "❌ Error fetching Square labor; falling back to DB:",
-      err
-    );
-    employees = db
-      .prepare(
-        `
+    console.error("❌ Error fetching Square labor; falling back to DB:", err);
+    // optional: fallback to local EventEmployees table if you want
+    employees = db.prepare(`
       SELECT employeeName AS name,
              hoursWorked  AS hours,
              hourlyRate   AS rate,
@@ -1349,36 +1291,29 @@ async function buildPostEventReport(eventID) {
              tipsEarned   AS tips
       FROM EventEmployees
       WHERE eventID = ?
-    `
-      )
-      .all(eventID);
+    `).all(eventID);
   }
 
   const laborTotal = employees.reduce((a, e) => a + (e.total ?? 0), 0);
 
-  const supplies = db
-    .prepare(
-      `
+  //
+  // 4️⃣ Supplies
+  //
+  const supplies = db.prepare(`
     SELECT itemName, quantityUsed, unitCost, totalCost
     FROM SupplyCosts
     WHERE eventID = ?
-  `
-    )
-    .all(eventID);
+  `).all(eventID);
 
-  const supplyTotal = supplies.reduce(
-    (a, s) => a + (s.totalCost ?? 0),
-    0
-  );
+  const supplyTotal = supplies.reduce((a, s) => a + (s.totalCost ?? 0), 0);
 
-  const discountRows = db
-    .prepare(
-      `
+  //
+  // 5️⃣ Discounts
+  //
+  const discountRows = db.prepare(`
     SELECT description, discountAmount
     FROM Discounts WHERE eventID = ?
-  `
-    )
-    .all(eventID);
+  `).all(eventID);
 
   const discountTotal = discountRows.reduce(
     (a, d) => a + (d.discountAmount ?? 0),
@@ -1390,20 +1325,19 @@ async function buildPostEventReport(eventID) {
     amount: d.discountAmount,
   }));
 
-  const tipsList = db
-    .prepare(
-      `
+  //
+  // 6️⃣ Tips list (per-employee tip distribution)
+  //
+  const tipsList = db.prepare(`
     SELECT employeeName, tipAmount
     FROM TipTracker WHERE eventID = ?
-  `
-    )
-    .all(eventID);
+  `).all(eventID);
 
-  const tipTotal = tipsList.reduce(
-    (a, t) => a + (t.tipAmount ?? 0),
-    0
-  );
+  const tipTotal = tipsList.reduce((a, t) => a + (t.tipAmount ?? 0), 0);
 
+  //
+  // 7️⃣ Final unified report
+  //
   return {
     eventInfo: {
       eventName: event.eventName,
@@ -1414,7 +1348,9 @@ async function buildPostEventReport(eventID) {
       location: event.location,
       coordinator: event.coordinator,
     },
+
     customFields,
+
     sales: {
       gross,
       refunds,
@@ -1423,10 +1359,12 @@ async function buildPostEventReport(eventID) {
       net,
       total,
     },
+
     employees,
     supplies,
     discountsList,
     tipsList,
+
     totals: {
       laborTotal,
       supplyTotal,
@@ -1437,15 +1375,16 @@ async function buildPostEventReport(eventID) {
   };
 }
 
-// -------------------------------
-// GET /api/events/:id/report
-// -------------------------------
+
+
+
+
 app.get("/api/events/:id/report", async (req, res) => {
   try {
-    // 🔧 FIX: await the async report builder
-    const report = await buildPostEventReport(req.params.id);
+    const report = buildPostEventReport(req.params.id);
+	
     res.json(report);
-  } catch (err) {
+	} catch (err) {
     console.error("❌ Report error:", err);
     res.status(500).json({ error: err.message });
   }

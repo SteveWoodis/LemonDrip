@@ -1,8 +1,8 @@
 Task ID,Priority Level,Task Description,Category,Status,Notes
-D,1,Clean submitEvent() and make Add/Edit bulletproof,Core Stability,Not Started,
-B,2,Clean search + filter logic (unify search pipeline),Core Stability,Not Started,
-A,3,Clean up createCollapsibleCard(),UI Core Component,Not Started,
-F,4,Show full Post-Event data in dashboard when finalized=1,Data Flow,Not Started,
+D,1,Clean submitEvent() and make Add/Edit bulletproof,Core Stability,Finished,
+B,2,Clean search + filter logic (unify search pipeline),Core Stability,Finished,
+A,3,Clean up createCollapsibleCard(),UI Core Component,Finished,
+F,4,Show full Post-Event data in dashboard when finalized=1,Data Flow,Not Finished,
 E,5,Pull Employee labor data from Square (hours, rate),Integrations,Not Started,
 J,6,Add link in Event Summary for Itemized Drink Sales v1.0,Reporting,Not Started,
 C,7,Clean template / dynamic form builder,Architecture,Not Started,
