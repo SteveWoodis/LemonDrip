@@ -162,17 +162,28 @@
 
 
 
-	  <!-- 📊 Post-Event Report Section -->
-  <section id="postEventReportSection" class="card hidden">
-		<h2>📊 Post-Event Report</h2>
-		<div id="postEventReportContainer">
-			<label>Permit Documents:</label>
-			<input type="file" id="permitFiles" multiple>
-		<button type="button" onclick="downloadPostEventPDF()">📄 Download PDF</button>
-			<button type="button" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
-		</div>
-			<div id="postEventReportContent"></div>
-  </section>
+<section id="postEventReportSection" class="card hidden report-page">
+
+  <h2 id="postEventTitle" class="report-title">📊 Post-Event Report</h2>
+
+  <div class="report-controls">
+      <div class="file-upload-block">
+        <label for="permitFilesReport"><strong>Permit Documents:</strong></label>
+        <input type="file" id="permitFilesReport" multiple>
+      </div>
+
+      <div class="report-buttons">
+        <button class="btn-primary" onclick="downloadPostEventPDF()">📄 Download PDF</button>
+        <button class="btn-secondary" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
+      </div>
+  </div>
+
+  <div id="postEventReportContent" class="report-content"></div>
+
+</section>
+
+
+
 
 
   <script src="app.js"></script>
@@ -181,6 +192,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.3/purify.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> 
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
 </div>
 </body>
 </html>

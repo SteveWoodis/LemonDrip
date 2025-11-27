@@ -1426,13 +1426,11 @@ async function openPostEventReport(eventData) {
     const report = await res.json();
     window.currentPostEventReport = report;
 	
-    const html = renderPostEventReport(report);
-	 const target = document.getElementById("postEventReportContent");
-    if (target) {
-      target.innerHTML = html;
-    } else {
-      console.error("❌ postEventReportContent not found in DOM");
-    }
+    // ⭐ NEW: populate UI correctly
+    document.getElementById("postEventTitle").textContent =
+      report.eventInfo.eventName || "Post Event Report";
+	  
+    renderPostEventReport(report);
     navigateTo("postEventReportSection");
   } catch (err) {
     console.error(
@@ -1440,126 +1438,203 @@ async function openPostEventReport(eventData) {
     alert("Failed to load post-event report. Check console for details.");
   }
 }
+/* ============================================================
+   🟢 FINAL — Option B
+   Unified Post-Event Report Loader + Renderer
+   (Duplicate definitions removed)
+   ============================================================ */
+
+function normalizeReportPayload(raw) {
+  const eventInfo = raw.eventInfo || raw.EventInfo || raw.event || raw.Event || {};
+
+  return {
+    eventInfo,
+    customFields: raw.customFields || raw.CustomFields || {},
+    sales: raw.sales || raw.Sales || null,
+    employees: raw.employees || raw.labor || raw.Labor || [],
+    supplies: raw.supplies || raw.Supplies || [],
+    discountsList: raw.discountsList || raw.Discounts || [],
+    tipsList: raw.tipsList || raw.Tips || [],
+    totals: raw.totals || raw.Totals || null
+  };
+}
+
+async function openPostEventReport(eventData) {
+  try {
+    const eventID =
+      eventData.eventID ||
+      eventData.EventID ||
+      eventData.EventInfo?.["Event ID"];
+
+    if (!eventID) {
+      alert("Cannot determine eventID for report.");
+      console.warn("No eventID in eventData:", eventData);
+      return;
+    }
+
+    const res = await fetch(`http://localhost:3000/api/events/${eventID}/report`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server error ${res.status}`);
+    }
+
+    const raw = await res.json();
+    console.log("🔎 Raw report payload:", raw);
+
+    const report = normalizeReportPayload(raw);
+    window.currentPostEventReport = report;
+
+    const titleEl = document.getElementById("postEventTitle");
+    if (titleEl && report.eventInfo?.eventName) {
+      titleEl.textContent = report.eventInfo.eventName;
+    } else if (titleEl) {
+      titleEl.textContent = "Post Event Report";
+    }
+
+    renderPostEventReport(report);
+    navigateTo("postEventReportSection");
+
+  } catch (err) {
+    console.error("❌ Error loading post-event report:", err);
+    alert("Failed to load post-event report. Check console for details.");
+  }
+}
 
 function renderPostEventReport(report) {
-  let html = `
-    <h2>Post Event Report</h2>
-    <section class="report-section">
-      <h3>Event Summary</h3>
-      ${renderKeyValueTable(report.eventInfo)}
-    </section>
-  `;
+  const container = document.getElementById("postEventReportContent");
+  if (!container) {
+    console.error("❌ postEventReportContent not found");
+    return;
+  }
 
-  // Custom Fields (vendor-defined)
-  if (report.customFields && Object.keys(report.customFields).length) {
+  // Sanitize KV rows
+  const renderKV = (obj) => {
+    const rows = Object.entries(obj)
+      .filter(([k, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `
+        <div class="kv-row">
+          <div class="kv-label">${k.replace(/([A-Z])/g, " $1")}</div>
+          <div class="kv-value">${v}</div>
+        </div>
+      `)
+      .join("");
+
+    return rows || `<div class="kv-empty">No data available</div>`;
+  };
+
+  // Pretty section header
+  const sectionHeader = (title, icon = "📄") =>
+    `
+    <div class="report-section-title">
+      <span class="report-icon">${icon}</span>
+      <span>${title}</span>
+    </div>
+    `;
+
+  let html = "";
+
+  // EVENT SUMMARY
+  if (report.eventInfo) {
     html += `
-      <section class="report-section">
-        <h3>Custom Fields</h3>
-        ${renderKeyValueTable(report.customFields)}
+      <section class="report-block">
+        ${sectionHeader("Event Summary", "📅")}
+        ${renderKV(report.eventInfo)}
       </section>
     `;
   }
 
-  // Sales Summary
+  // SALES SUMMARY
   if (report.sales) {
     html += `
-      <section class="report-section">
-        <h3>Sales Summary</h3>
-        ${renderKeyValueTable(report.sales)}
+      <section class="report-block">
+        ${sectionHeader("Sales Summary", "💲")}
+        ${renderKV(report.sales)}
       </section>
     `;
   }
 
-  // Labor Summary
+  // LABOR
   if (report.employees?.length) {
     html += `
-      <section class="report-section">
-        <h3>Labor Summary</h3>
-        <table class="lemondrip-table">
+      <section class="report-block">
+        ${sectionHeader("Labor Summary", "👥")}
+        <table class="report-table">
           <thead>
             <tr>
               <th>Employee</th>
               <th>Hours</th>
               <th>Wage</th>
-              <th>Total Pay</th>
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
-            ${report.employees.map(emp => `
+            ${report.employees
+              .map(
+                (e) => `
               <tr>
-                <td>${emp.name}</td>
-                <td>${emp.hours.toFixed(2)}</td>
-                <td>$${emp.wage.toFixed(2)}</td>
-                <td>$${emp.totalPay.toFixed(2)}</td>
+                <td>${e.employeeName || e.name}</td>
+                <td>${e.hours}</td>
+                <td>$${e.wage}</td>
+                <td class="money">$${e.totalPay}</td>
               </tr>
-            `).join("")}
+            `
+              )
+              .join("")}
           </tbody>
         </table>
       </section>
     `;
   }
 
-  // Supplies
+  // SUPPLIES
   if (report.supplies?.length) {
     html += `
-      <section class="report-section">
-        <h3>Supplies Used</h3>
-        <table class="lemondrip-table">
+      <section class="report-block">
+        ${sectionHeader("Supplies Used", "📦")}
+        <table class="report-table">
           <thead>
             <tr>
               <th>Item</th>
               <th>Qty</th>
-              <th>Cost</th>
+              <th>Unit</th>
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
-            ${report.supplies.map(s => `
+            ${report.supplies
+              .map(
+                (s) => `
               <tr>
-                <td>${s.item}</td>
-                <td>${s.quantity}</td>
-                <td>$${s.cost.toFixed(2)}</td>
+                <td>${s.itemName}</td>
+                <td>${s.quantityUsed}</td>
+                <td>$${s.unitCost}</td>
+                <td class="money">$${s.totalCost}</td>
               </tr>
-            `).join("")}
+            `
+              )
+              .join("")}
           </tbody>
         </table>
       </section>
     `;
   }
 
-  // Discounts
-  if (report.discountsList?.length) {
-    html += `
-      <section class="report-section">
-        <h3>Discounts</h3>
-        ${renderTable(report.discountsList)}
-      </section>
-    `;
-  }
-
-  // Tips
-  if (report.tipsList?.length) {
-    html += `
-      <section class="report-section">
-        <h3>Tips</h3>
-        ${renderTable(report.tipsList)}
-      </section>
-    `;
-  }
-
-  // Totals
+  // TOTALS
   if (report.totals) {
     html += `
-      <section class="report-section">
-        <h3>Totals</hh3>
-        ${renderKeyValueTable(report.totals)}
+      <section class="report-block totals-block">
+        ${sectionHeader("Final Totals", "📘")}
+        ${renderKV(report.totals)}
       </section>
     `;
   }
 
-  // Render into container
-  const container = document.getElementById("postEventReportContainer");
   container.innerHTML = html;
+  document.getElementById("postEventReportSection").scrollIntoView({ behavior: "smooth" });
 }
+
+
+
 
 
 
@@ -1631,121 +1706,142 @@ async function downloadPostEventPDF() {
   const report = window.currentPostEventReport;
 
   const doc = new jspdf.jsPDF({ unit: "pt", format: "letter" });
+  const marginLeft = 40;
   let y = 40;
 
-  const addSectionHeader = (title) => {
+  // =============================
+  // HEADER
+  // =============================
+  doc.setFontSize(20);
+  doc.setFont("helvetica", "bold");
+  doc.text(report.eventInfo.eventName || "Post Event Report", marginLeft, y);
+  y += 30;
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Event Date: ${report.eventInfo.eventDate || ""}`, marginLeft, y);
+  y += 20;
+
+  // ---- helper: section header ----
+  const sectionHeader = (title) => {
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text(title, 40, y);
-    y += 18;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
+    doc.text(title, marginLeft, y);
+    y += 12;
   };
 
-  const addKeyValueTable = (obj) => {
-    for (const [key, value] of Object.entries(obj)) {
-      doc.text(`${key}: ${value ?? ""}`, 40, y);
-      y += 14;
-    }
-    y += 10;
-  };
-
-  const addTable = (rows, columns) => {
-    if (!rows.length) {
-      doc.text("No data", 40, y);
-      y += 20;
-      return;
-    }
-
-    // headers
-    let x = 40;
-    doc.setFont("helvetica", "bold");
-    columns.forEach(col => {
-      doc.text(col, x, y);
-      x += 140;
-    });
+  // ---- helper: key/value detail block ----
+  const renderKeyValueBlock = (obj) => {
+    doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
-    y += 16;
 
-    // rows
-    rows.forEach(row => {
-      let rx = 40;
-      columns.forEach(col => {
-        const text = String(row[col] ?? "");
-        doc.text(text, rx, y);
-        rx += 140;
-      });
+    Object.entries(obj).forEach(([key, val]) => {
+      doc.text(`${key}: ${val ?? ""}`, marginLeft, y);
       y += 14;
+
+      // auto page break
+      if (y > 700) {
+        doc.addPage();
+        y = 40;
+      }
     });
 
-    y += 20;
+    y += 10; // spacing between sections
   };
 
-  // --------------------------------------
-  // BEGIN REPORT CONTENT
-  // --------------------------------------
+  // =============================
+  // EVENT SUMMARY
+ //=============================
+  sectionHeader("Event Summary");
+  renderKeyValueBlock(report.eventInfo);
 
-  addSectionHeader("Post Event Report");
-
-  // -------- Event Summary --------
-  if (report.eventInfo) {
-    addSectionHeader("Event Summary");
-    addKeyValueTable(report.eventInfo);
-  }
-
-  // -------- Custom Fields --------
-  if (report.customFields && Object.keys(report.customFields).length) {
-    addSectionHeader("Custom Fields");
-    addKeyValueTable(report.customFields);
-  }
-
-  // -------- Sales Summary --------
+  // =============================
+  // SALES SUMMARY
+  //=============================
   if (report.sales) {
-    addSectionHeader("Sales Summary");
-    addKeyValueTable(report.sales);
+    sectionHeader("Sales Summary");
+    renderKeyValueBlock(report.sales);
   }
 
-  // -------- Labor Summary --------
+  // =============================
+  // CUSTOM FIELDS
+  //=============================
+  if (report.customFields && Object.keys(report.customFields).length) {
+    sectionHeader("Custom Fields");
+    renderKeyValueBlock(report.customFields);
+  }
+
+  // ---- helper: render table via autoTable ----
+  const renderTable = (rows, columns, title) => {
+    if (!rows || !rows.length) return;
+
+    sectionHeader(title);
+
+    doc.autoTable({
+      startY: y,
+      margin: { left: marginLeft },
+      head: [columns],
+      body: rows.map(row => columns.map(c => row[c] ?? "")),
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [0, 171, 226] }, // LemonDrip blue (#00ABE2)
+      theme: "grid"
+    });
+
+    y = doc.lastAutoTable.finalY + 20;
+  };
+
+  // =============================
+  // LABOR SUMMARY
+  //=============================
   if (report.employees?.length) {
-    addSectionHeader("Labor Summary");
-    addTable(
+    renderTable(
       report.employees,
-      ["name", "hours", "wage", "totalPay"]
+      ["employeeName", "hours", "wage", "totalPay"],
+      "Labor Summary"
     );
   }
 
-  // -------- Supplies --------
+  // =============================
+  // SUPPLIES
+  //=============================
   if (report.supplies?.length) {
-    addSectionHeader("Supplies Used");
-    addTable(
+    renderTable(
       report.supplies,
-      ["item", "quantity", "cost"]
+      ["itemName", "quantityUsed", "unitCost", "totalCost"],
+      "Supplies Used"
     );
   }
 
-  // -------- Discounts --------
+  // =============================
+  // DISCOUNTS
+  //=============================
   if (report.discountsList?.length) {
-    addSectionHeader("Discounts");
     const cols = Object.keys(report.discountsList[0]);
-    addTable(report.discountsList, cols);
+    renderTable(report.discountsList, cols, "Discounts");
   }
 
-  // -------- Tips --------
+  // =============================
+  // TIPS
+  //=============================
   if (report.tipsList?.length) {
-    addSectionHeader("Tips");
     const cols = Object.keys(report.tipsList[0]);
-    addTable(report.tipsList, cols);
+    renderTable(report.tipsList, cols, "Tips");
   }
 
-  // -------- Totals --------
+  // =============================
+  // TOTALS
+  //=============================
   if (report.totals) {
-    addSectionHeader("Totals");
-    addKeyValueTable(report.totals);
+    sectionHeader("Totals");
+    renderKeyValueBlock(report.totals);
   }
 
-  // Save PDF
-  doc.save(`PostEventReport_${report.eventInfo?.EventName || "Event"}.pdf`);
+  // =============================
+  // SAVE PDF
+  //=============================
+  doc.save(`PostEventReport_${report.eventInfo.eventName || "Event"}.pdf`);
 }
+
 
 
 
@@ -1765,7 +1861,7 @@ function sectionHeader(text) {
 }
 
 async function uploadEventPermits(eventID) {
-  const files = document.getElementById("permitFiles").files;
+  const files = document.getElementById("permitFilesReport").files;
   if (!files.length) return; // nothing to upload
 
   const fd = new FormData();

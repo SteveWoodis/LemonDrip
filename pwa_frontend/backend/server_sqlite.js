@@ -91,7 +91,7 @@ db.exec(`
     FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
   );
 
-  CREATE TABLE IF NOT EXISTS EventEmployees (
+   CREATE TABLE IF NOT EXISTS EventEmployees (
     eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
     eventID INTEGER NOT NULL,
     employeeID INTEGER NOT NULL,
@@ -1418,8 +1418,7 @@ app.put("/api/events/:id/ratings", (req, res) => {
 // -------------------------------
 app.delete("/api/events/:id", (req, res) => {
   try {
-    const result = db
-      .prepare(`DELETE FROM EventInfo WHERE eventID = ?`)
+    const result = db.prepare(`DELETE FROM EventInfo WHERE eventID = ?`)
       .run(req.params.id);
 
     if (result.changes === 0)
@@ -1507,11 +1506,18 @@ async function buildPostEventReport(eventID) {
   const total = summary.totalCollected ?? net + tips;
 
   let employees = db.prepare(`
-  SELECT employeeID, employeeName, hoursWorked AS hours,
-         hourlyRate AS wage, totalPay, startTime AS start, endTime AS end
-  FROM EventEmployees
-  WHERE eventID = ?
-	`).all(eventID);
+  SELECT 
+    ee.employeeID,
+    et.employeeName,
+    ee.hoursWorked AS hours,
+    ee.hourlyRate AS wage,
+    ee.totalPay,
+    ee.startTime AS start,
+    ee.endTime AS end
+  FROM EventEmployees ee
+  JOIN EmployeeTracker et ON et.employeeID = ee.employeeID
+  WHERE ee.eventID = ?
+`).all(eventID);
 
 	if (!employees.length) {
 	  // No stored labor — fetch from Square
@@ -1523,53 +1529,41 @@ async function buildPostEventReport(eventID) {
 	  }
 	}
 
-	report.employees = employees;
+	//report.employees = employees;
 
 
   const laborTotal = employees.reduce((a, e) => a + (e.total ?? 0), 0);
 
-  const supplies = db
-    .prepare(
-      `
+  let supplies = db.prepare(`
     SELECT itemName, quantityUsed, unitCost, totalCost
     FROM SupplyCosts
     WHERE eventID = ?
-  `
-    )
-    .all(eventID);
-
+    `).all(eventID);
+  
   const supplyTotal = supplies.reduce(
     (a, s) => a + (s.totalCost ?? 0),
     0
   );
 
-  const discountRows = db
-    .prepare(
-      `
+  let discountRows = db.prepare(`
     SELECT description, discountAmount
     FROM Discounts WHERE eventID = ?
-  `
-    )
-    .all(eventID);
+  `).all(eventID);
 
   const discountTotal = discountRows.reduce(
     (a, d) => a + (d.discountAmount ?? 0),
     0
   );
 
-  const discountsList = discountRows.map((d) => ({
+  let discountsList = discountRows.map((d) => ({
     name: d.description,
     amount: d.discountAmount,
   }));
 
-  const tipsList = db
-    .prepare(
-      `
+  let tipsList = db.prepare(`
     SELECT employeeName, tipAmount
     FROM TipTracker WHERE eventID = ?
-  `
-    )
-    .all(eventID);
+  `).all(eventID);
 
   const tipTotal = tipsList.reduce(
     (a, t) => a + (t.tipAmount ?? 0),
