@@ -1442,426 +1442,132 @@ async function openPostEventReport(eventData) {
 }
 
 function renderPostEventReport(report) {
-  if (!report) return "<p>Error: No report data.</p>";
-
-  // Helpers
-  const fmt = (v) => (v == null ? "" : v);
-  const money = (v) =>
-    v == null ? "" : `$${Number(v).toFixed(2)}`;
-
-  // --------------------------
-  // 1️⃣ Event Information
-  // --------------------------
-  const ev = report.eventInfo || {};
-  const custom = report.customFields || {};
-
-  const eventInfoHTML = `
-    <h3>Event Information</h3>
-    <table class="lemondrip-table">
-      <tbody>
-        <tr><td><strong>Event Name</strong></td><td>${fmt(ev.eventName)}</td></tr>
-        <tr><td><strong>Event Date</strong></td><td>${fmt(ev.eventDate)}</td></tr>
-        <tr><td><strong>Application Date</strong></td><td>${fmt(ev.applicationDate)}</td></tr>
-        <tr><td><strong>Event Type</strong></td><td>${fmt(ev.eventType)}</td></tr>
-        <tr><td><strong>Num Days</strong></td><td>${fmt(ev.numDays)}</td></tr>
-        <tr><td><strong>Location</strong></td><td>${fmt(ev.location)}</td></tr>
-        <tr><td><strong>Coordinator</strong></td><td>${fmt(ev.coordinator)}</td></tr>
-      </tbody>
-    </table>
+  let html = `
+    <h2>Post Event Report</h2>
+    <section class="report-section">
+      <h3>Event Summary</h3>
+      ${renderKeyValueTable(report.eventInfo)}
+    </section>
   `;
 
-  // --------------------------
-  // 2️⃣ Custom Fields
-  // --------------------------
-  let customHTML = "";
-  if (custom && Object.keys(custom).length) {
-    const rows = Object.entries(custom)
-      .map(
-        ([k, v]) => `
-        <tr>
-          <td><strong>${k}</strong></td>
-          <td>${fmt(v)}</td>
-        </tr>`
-      )
-      .join("");
-
-    customHTML = `
-      <h3>Custom Fields</h3>
-      <table class="lemondrip-table">
-        <tbody>${rows}</tbody>
-      </table>
+  // Custom Fields (vendor-defined)
+  if (report.customFields && Object.keys(report.customFields).length) {
+    html += `
+      <section class="report-section">
+        <h3>Custom Fields</h3>
+        ${renderKeyValueTable(report.customFields)}
+      </section>
     `;
   }
 
-  // --------------------------
-  // 3️⃣ Sales Summary
-  // --------------------------
-  const s = report.sales || {};
-  const salesHTML = `
-    <h3>Sales Summary</h3>
-    <table class="lemondrip-table">
-      <tbody>
-        <tr><td><strong>Gross Sales</strong></td><td>${money(s.gross)}</td></tr>
-        <tr><td><strong>Refunds</strong></td><td>${money(s.refunds)}</td></tr>
-        <tr><td><strong>Discounts</strong></td><td>${money(s.discounts)}</td></tr>
-        <tr><td><strong>Tips</strong></td><td>${money(s.tips)}</td></tr>
-        <tr><td><strong>Net Sales</strong></td><td>${money(s.net)}</td></tr>
-        <tr><td><strong>Total Collected</strong></td><td>${money(s.total)}</td></tr>
-      </tbody>
-    </table>
-  `;
+  // Sales Summary
+  if (report.sales) {
+    html += `
+      <section class="report-section">
+        <h3>Sales Summary</h3>
+        ${renderKeyValueTable(report.sales)}
+      </section>
+    `;
+  }
 
-  // --------------------------
-  // 4️⃣ Employees
-  // --------------------------
-  const employees = report.employees || [];
-  const employeesHTML = `
-    <h3>Employees</h3>
-    ${
-      employees.length
-        ? `<table class="lemondrip-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Hours</th>
-                <th>Rate</th>
-                <th>Total Pay</th>
-                <th>Tips</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${employees
-                .map(
-                  (e) => `
-                <tr>
-                  <td>${fmt(e.name)}</td>
-                  <td>${fmt(e.hours)}</td>
-                  <td>${money(e.rate)}</td>
-                  <td>${money(e.total)}</td>
-                  <td>${money(e.tips)}</td>
-                </tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>`
-        : "<p>No employee data.</p>"
-    }
-  `;
-
-  // --------------------------
-  // 5️⃣ Supply Costs
-  // --------------------------
-  const supplies = report.supplies || [];
-  const suppliesHTML = `
-    <h3>Supply Costs</h3>
-    ${
-      supplies.length
-        ? `<table class="lemondrip-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Unit Cost</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${supplies
-                .map(
-                  (s) => `
-                <tr>
-                  <td>${fmt(s.item)}</td>
-                  <td>${fmt(s.qty)}</td>
-                  <td>${money(s.unitCost)}</td>
-                  <td>${money(s.total)}</td>
-                </tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>`
-        : "<p>No supply cost data.</p>"
-    }
-  `;
-
-  // --------------------------
-  // 6️⃣ Discounts
-  // --------------------------
-  const discounts = report.discountsList || [];
-  const discountsHTML = `
-    <h3>Discounts</h3>
-    ${
-      discounts.length
-        ? `<table class="lemondrip-table">
-            <thead><tr><th>Name</th><th>Amount</th></tr></thead>
-            <tbody>
-              ${discounts
-                .map(
-                  (d) => `
-                <tr>
-                  <td>${fmt(d.name)}</td>
-                  <td>${money(d.amount)}</td>
-                </tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>`
-        : "<p>No discounts recorded.</p>"
-    }
-  `;
-
-  // --------------------------
-  // 7️⃣ Tips
-  // --------------------------
-  const tips = report.tipsList || [];
-  const tipsHTML = `
-    <h3>Tip Distribution</h3>
-    ${
-      tips.length
-        ? `<table class="lemondrip-table">
-            <thead><tr><th>Employee</th><th>Tips</th></tr></thead>
-            <tbody>
-              ${tips
-                .map(
-                  (t) => `
-                <tr>
-                  <td>${fmt(t.employeeName)}</td>
-                  <td>${money(t.tipAmount)}</td>
-                </tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>`
-        : "<p>No tip distribution recorded.</p>"
-    }
-  `;
-
-  // --------------------------
-  // 8️⃣ Totals
-  // --------------------------
-  const t = report.totals || {};
-  const totalsHTML = `
-    <h3>Event Totals</h3>
-    <table class="lemondrip-table">
-      <tbody>
-        <tr><td><strong>Total Labor</strong></td><td>${money(t.laborTotal)}</td></tr>
-        <tr><td><strong>Supplies</strong></td><td>${money(t.supplyTotal)}</td></tr>
-        <tr><td><strong>Discounts</strong></td><td>${money(t.discountTotal)}</td></tr>
-        <tr><td><strong>Tips Paid Out</strong></td><td>${money(t.tipTotal)}</td></tr>
-        <tr><td><strong>Net Profit</strong></td><td>${money(t.netProfit)}</td></tr>
-      </tbody>
-    </table>
-  `;
-
-  // --------------------------
-  // 9️⃣ COMBINE ALL SECTIONS
-  // --------------------------
-  return `
-    <div class="report-container">
-      ${eventInfoHTML}
-      ${customHTML}
-      ${salesHTML}
-      ${employeesHTML}
-      ${suppliesHTML}
-      ${discountsHTML}
-      ${tipsHTML}
-      ${totalsHTML}
-    </div>
-  `;
-}
-
-
-function formatMoney(v) {
-  const n = Number(v || 0);
-  return `$${n.toFixed(2)}`;
-}
-
-function Report(report) {
-  const container = document.getElementById(
-    "postEventReportContainer"
-  );
-  if (!container) return;
-
-  const ev = report.eventInfo || {};
-  const rev = report.revenue || {};
-  const lab = report.labor || {};
-  const exp = report.expenses || {};
-  const prof = report.profit || {};
-
-  const laborRows = lab.laborRows || [];
-
-  container.innerHTML = `
-    <div class="event-card">
-      <h3>${ev.eventName || "Unnamed Event"}</h3>
-      <p><strong>Date:</strong> ${
-        ev.eventDate || "N/A"
-      }</p>
-      <p><strong>Application Date:</strong> ${
-        ev.applicationDate || "N/A"
-      }</p>
-      <p><strong>Type:</strong> ${
-        ev.eventType || "N/A"
-      }</p>
-      <p><strong>eventLocation:</strong> ${
-        ev.eventLocation || "N/A"
-      }</p>
-      <p><strong>Coordinator:</strong> ${
-        ev.coordinator || "N/A"
-      }</p>
-      <p><strong>Number of Days:</strong> ${
-        ev.numDays ?? "N/A"
-      }</p>
-    </div>
-	    <!-- 🟨 Custom Fields (dynamic) -->
-    ${
-      report.eventInfo.customFields &&
-      Object.keys(report.eventInfo.customFields).length
-        ? `
-      <h3>Custom Fields</h3>
-      <table class="lemondrip-table">
-        <tbody>
-          ${Object.entries(report.eventInfo.customFields)
-            .map(
-              ([key, value]) => `
+  // Labor Summary
+  if (report.employees?.length) {
+    html += `
+      <section class="report-section">
+        <h3>Labor Summary</h3>
+        <table class="lemondrip-table">
+          <thead>
             <tr>
-              <td><strong>${key}</strong></td>
-              <td>${value ?? ""}</td>
+              <th>Employee</th>
+              <th>Hours</th>
+              <th>Wage</th>
+              <th>Total Pay</th>
             </tr>
-          `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    `
-        : ""
-    }
+          </thead>
+          <tbody>
+            ${report.employees.map(emp => `
+              <tr>
+                <td>${emp.name}</td>
+                <td>${emp.hours.toFixed(2)}</td>
+                <td>$${emp.wage.toFixed(2)}</td>
+                <td>$${emp.totalPay.toFixed(2)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }
 
-    <h3>Revenue Summary</h3>
-    <table class="lemondrip-table">
-      <tbody>
-        <tr><td>Gross Sales (Square)</td><td>${formatMoney(
-          rev.grossSales
-        )}</td></tr>
-        <tr><td>Returns</td><td>${formatMoney(
-          rev.refunds
-        )}</td></tr>
-        <tr><td>Discounts</td><td>${formatMoney(
-          rev.discounts
-        )}</td></tr>
-        <tr><td><strong>Net Sales</strong></td><td><strong>${formatMoney(
-          rev.netSales
-        )}</strong></td></tr>
-        <tr><td>Tips</td><td>${formatMoney(
-          rev.tips
-        )}</td></tr>
-        <tr><td><strong>Total Collected</strong></td><td><strong>${formatMoney(
-          rev.totalCollected
-        )}</strong></td></tr>
-        <tr><td>Food Tax</td><td>${formatMoney(
-          rev.foodTax
-        )}</td></tr>
-        <tr><td>Square Event Charge</td><td>${formatMoney(
-          rev.squareEventCharge
-        )}</td></tr>
-        <tr><td><strong>Total Net Revenue</strong></td><td><strong>${formatMoney(
-          rev.totalNetRevenue
-        )}</strong></td></tr>
-      </tbody>
-    </table>
-
-    <h3>Labor</h3>
-    ${
-      laborRows.length
-        ? `
-      <table class="lemondrip-table">
-        <thead>
-          <tr>
-            <th>Employee</th>
-            <th>Role</th>
-            <th>Hours Worked</th>
-            <th>Hourly Rate</th>
-            <th>Total Pay</th>
-            <th>Tips Earned</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${laborRows
-            .map(
-              (r) => `
+  // Supplies
+  if (report.supplies?.length) {
+    html += `
+      <section class="report-section">
+        <h3>Supplies Used</h3>
+        <table class="lemondrip-table">
+          <thead>
             <tr>
-              <td>${r.employeeName || ""}</td>
-              <td>${r.role || ""}</td>
-              <td>${r.hoursWorked ?? ""}</td>
-              <td>${
-                r.hourlyRate != null
-                  ? formatMoney(r.hourlyRate)
-                  : ""
-              }</td>
-              <td>${
-                r.totalPay != null
-                  ? formatMoney(r.totalPay)
-                  : ""
-              }</td>
-              <td>${
-                r.tipsEarned != null
-                  ? formatMoney(r.tipsEarned)
-                  : ""
-              }</td>
+              <th>Item</th>
+              <th>Qty</th>
+              <th>Cost</th>
             </tr>
-          `
-            )
-            .join("")}
-        </tbody>
-      </table>
-      <p><strong>Total Labor:</strong> ${formatMoney(
-        lab.laborTotal
-      )}</p>
-      <p><strong>Total Labor Tips:</strong> ${formatMoney(
-        lab.laborTipTotal
-      )}</p>
-    `
-        : `<p>No labor records for this event.</p>`
-    }
+          </thead>
+          <tbody>
+            ${report.supplies.map(s => `
+              <tr>
+                <td>${s.item}</td>
+                <td>${s.quantity}</td>
+                <td>$${s.cost.toFixed(2)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }
 
-    <h3>Expenses</h3>
-    <table class="lemondrip-table">
-      <tbody>
-        <tr><td>Event Fee</td><td>${formatMoney(
-          exp.eventFee
-        )}</td></tr>
-        <tr><td>Supply Fees</td><td>${formatMoney(
-          exp.supplyFees
-        )}</td></tr>
-        <tr><td>Additional Fees</td><td>${formatMoney(
-          exp.additionalFeesTotal
-        )}</td></tr>
-        <tr><td>Event Runner Fee</td><td>${formatMoney(
-          exp.eventRunnerFee
-        )}</td></tr>
-        <tr><td><strong>Total Expenses</strong></td><td><strong>${formatMoney(
-          exp.totalExpenses
-        )}</strong></td></tr>
-      </tbody>
-    </table>
+  // Discounts
+  if (report.discountsList?.length) {
+    html += `
+      <section class="report-section">
+        <h3>Discounts</h3>
+        ${renderTable(report.discountsList)}
+      </section>
+    `;
+  }
 
-    <h3>Profit</h3>
-    <table class="lemondrip-table">
-      <tbody>
-        <tr><td><strong>Net Profit before Taxes</strong></td><td><strong>${formatMoney(
-          prof.profitBeforeTaxes
-        )}</strong></td></tr>
-        <tr><td>Utah State Tax</td><td>${formatMoney(
-          prof.utahTax
-        )}</td></tr>
-        <tr><td>Federal Tax</td><td>${formatMoney(
-          prof.federalTax
-        )}</td></tr>
-        <tr><td><strong>Event Profit</strong></td><td><strong>${formatMoney(
-          prof.finalProfit
-        )}</strong></td></tr>
-      </tbody>
-    </table>
-  `;
+  // Tips
+  if (report.tipsList?.length) {
+    html += `
+      <section class="report-section">
+        <h3>Tips</h3>
+        ${renderTable(report.tipsList)}
+      </section>
+    `;
+  }
+
+  // Totals
+  if (report.totals) {
+    html += `
+      <section class="report-section">
+        <h3>Totals</hh3>
+        ${renderKeyValueTable(report.totals)}
+      </section>
+    `;
+  }
+
+  // Render into container
+  const container = document.getElementById("postEventReportContainer");
+  container.innerHTML = html;
 }
+
+
+
+
+//---------------------------------------------------
+// Helper Functions
+//-----------------------------------------------------
+
 function buildCustomFieldsTable(custom) {
   if (!custom || typeof custom !== "object" || !Object.keys(custom).length) {
     return { text: "No custom fields", italics: true, margin: [0, 5, 0, 10] };
@@ -1878,228 +1584,169 @@ function buildCustomFieldsTable(custom) {
     margin: [0, 5, 0, 15]
   };
 }
+function renderKeyValueTable(obj) {
+  return `
+    <table class="lemondrip-table">
+      <tbody>
+        ${Object.entries(obj).map(([key, val]) => `
+          <tr>
+            <td><strong>${key}</strong></td>
+            <td>${val ?? ""}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderTable(rows) {
+  if (!rows.length) return "<p>No data</p>";
+
+  const columns = Object.keys(rows[0]);
+
+  return `
+    <table class="lemondrip-table">
+      <thead>
+        <tr>
+          ${columns.map(col => `<th>${col}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => `
+          <tr>
+            ${columns.map(col => `<td>${row[col]}</td>`).join("")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
 
 async function downloadPostEventPDF() {
   if (!window.currentPostEventReport) {
-    alert("No report available.");
+    alert("No report data available.");
     return;
   }
 
   const report = window.currentPostEventReport;
 
-  // Helpers
-  const money = (v) =>
-    v == null ? "" : `$${Number(v).toFixed(2)}`;
-  const fmt = (v) => (v == null ? "" : String(v));
+  const doc = new jspdf.jsPDF({ unit: "pt", format: "letter" });
+  let y = 40;
 
-  // -----------------------------
-  //  EVENT INFO TABLE
-  // -----------------------------
-  const ev = report.eventInfo || {};
-  const eventInfoTable = {
-    table: {
-      widths: ["35%", "*"],
-      body: [
-        ["Event Name", fmt(ev.eventName)],
-        ["Event Date", fmt(ev.eventDate)],
-        ["Application Date", fmt(ev.applicationDate)],
-        ["Event Type", fmt(ev.eventType)],
-        ["Num Days", fmt(ev.numDays)],
-        ["Location", fmt(ev.location)],
-        ["Coordinator", fmt(ev.coordinator)],
-      ],
-    },
-    margin: [0, 10, 0, 20],
+  const addSectionHeader = (title) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(title, 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
   };
 
-  // -----------------------------
-  //  CUSTOM FIELDS
-  // -----------------------------
-  const custom = report.customFields || {};
-  const customFieldsTable =
-    Object.keys(custom).length === 0
-      ? { text: "No custom fields provided.", italics: true }
-      : {
-          table: {
-            widths: ["35%", "*"],
-            body: Object.entries(custom).map(([k, v]) => [
-              k,
-              fmt(v),
-            ]),
-          },
-          margin: [0, 10, 0, 20],
-        };
-
-  // -----------------------------
-  //  SALES SUMMARY
-  // -----------------------------
-  const s = report.sales || {};
-  const salesTable = {
-    table: {
-      widths: ["35%", "*"],
-      body: [
-        ["Gross Sales", money(s.gross)],
-        ["Refunds", money(s.refunds)],
-        ["Discounts", money(s.discounts)],
-        ["Tips", money(s.tips)],
-        ["Net Sales", money(s.net)],
-        ["Total Collected", money(s.total)],
-      ],
-    },
-    margin: [0, 10, 0, 20],
+  const addKeyValueTable = (obj) => {
+    for (const [key, value] of Object.entries(obj)) {
+      doc.text(`${key}: ${value ?? ""}`, 40, y);
+      y += 14;
+    }
+    y += 10;
   };
 
-  // -----------------------------
-  //  EMPLOYEES
-  // -----------------------------
-  const employees = report.employees || [];
-  const employeesTable =
-    employees.length === 0
-      ? { text: "No employee data.", italics: true }
-      : {
-          table: {
-            widths: ["25%", "15%", "15%", "20%", "15%"],
-            body: [
-              ["Name", "Hours", "Rate", "Total Pay", "Tips"],
-              ...employees.map((e) => [
-                fmt(e.name),
-                fmt(e.hours),
-                money(e.rate),
-                money(e.total),
-                money(e.tips),
-              ]),
-            ],
-          },
-          margin: [0, 10, 0, 20],
-        };
+  const addTable = (rows, columns) => {
+    if (!rows.length) {
+      doc.text("No data", 40, y);
+      y += 20;
+      return;
+    }
 
-  // -----------------------------
-  // SUPPLIES
-  // -----------------------------
-  const supplies = report.supplies || [];
-  const suppliesTable =
-    supplies.length === 0
-      ? { text: "No supply cost data.", italics: true }
-      : {
-          table: {
-            widths: ["40%", "15%", "20%", "20%"],
-            body: [
-              ["Item", "Qty", "Unit Cost", "Total"],
-              ...supplies.map((s) => [
-                fmt(s.item),
-                fmt(s.qty),
-                money(s.unitCost),
-                money(s.total),
-              ]),
-            ],
-          },
-          margin: [0, 10, 0, 20],
-        };
+    // headers
+    let x = 40;
+    doc.setFont("helvetica", "bold");
+    columns.forEach(col => {
+      doc.text(col, x, y);
+      x += 140;
+    });
+    doc.setFont("helvetica", "normal");
+    y += 16;
 
-  // -----------------------------
-  // DISCOUNTS LIST
-  // -----------------------------
-  const discountList = report.discountsList || [];
-  const discountsTable =
-    discountList.length === 0
-      ? { text: "No discounts recorded.", italics: true }
-      : {
-          table: {
-            widths: ["60%", "40%"],
-            body: [
-              ["Discount Name", "Amount"],
-              ...discountList.map((d) => [
-                fmt(d.name),
-                money(d.amount),
-              ]),
-            ],
-          },
-          margin: [0, 10, 0, 20],
-        };
+    // rows
+    rows.forEach(row => {
+      let rx = 40;
+      columns.forEach(col => {
+        const text = String(row[col] ?? "");
+        doc.text(text, rx, y);
+        rx += 140;
+      });
+      y += 14;
+    });
 
-  // -----------------------------
-  // TIPS LIST
-  // -----------------------------
-  const tipsList = report.tipsList || [];
-  const tipsTable =
-    tipsList.length === 0
-      ? { text: "No tip distribution.", italics: true }
-      : {
-          table: {
-            widths: ["60%", "40%"],
-            body: [
-              ["Employee", "Tips"],
-              ...tipsList.map((t) => [
-                fmt(t.employeeName),
-                money(t.tipAmount),
-              ]),
-            ],
-          },
-          margin: [0, 10, 0, 20],
-        };
-
-  // -----------------------------
-  // TOTALS
-  // -----------------------------
-  const t = report.totals || {};
-  const totalsTable = {
-    table: {
-      widths: ["50%", "50%"],
-      body: [
-        ["Total Labor", money(t.laborTotal)],
-        ["Supplies", money(t.supplyTotal)],
-        ["Discounts", money(t.discountTotal)],
-        ["Tips Paid Out", money(t.tipTotal)],
-        [
-          { text: "Net Profit", bold: true },
-          { text: money(t.netProfit), bold: true },
-        ],
-      ],
-    },
-    margin: [0, 10, 0, 20],
+    y += 20;
   };
 
-  // -----------------------------
-  // PDF Definition
-  // -----------------------------
-  const docDefinition = {
-    content: [
-      { text: "🍋 LemonDrip Post-Event Report", style: "header" },
-      { text: `Generated: ${new Date().toLocaleString()}`, style: "subheader" },
+  // --------------------------------------
+  // BEGIN REPORT CONTENT
+  // --------------------------------------
 
-      { text: "\nEvent Information", style: "section" },
-      eventInfoTable,
+  addSectionHeader("Post Event Report");
 
-      { text: "Custom Fields", style: "section" },
-      customFieldsTable,
+  // -------- Event Summary --------
+  if (report.eventInfo) {
+    addSectionHeader("Event Summary");
+    addKeyValueTable(report.eventInfo);
+  }
 
-      { text: "Sales Summary", style: "section" },
-      salesTable,
+  // -------- Custom Fields --------
+  if (report.customFields && Object.keys(report.customFields).length) {
+    addSectionHeader("Custom Fields");
+    addKeyValueTable(report.customFields);
+  }
 
-      { text: "Employees", style: "section" },
-      employeesTable,
+  // -------- Sales Summary --------
+  if (report.sales) {
+    addSectionHeader("Sales Summary");
+    addKeyValueTable(report.sales);
+  }
 
-      { text: "Supply Costs", style: "section" },
-      suppliesTable,
+  // -------- Labor Summary --------
+  if (report.employees?.length) {
+    addSectionHeader("Labor Summary");
+    addTable(
+      report.employees,
+      ["name", "hours", "wage", "totalPay"]
+    );
+  }
 
-      { text: "Discounts", style: "section" },
-      discountsTable,
+  // -------- Supplies --------
+  if (report.supplies?.length) {
+    addSectionHeader("Supplies Used");
+    addTable(
+      report.supplies,
+      ["item", "quantity", "cost"]
+    );
+  }
 
-      { text: "Tip Distribution", style: "section" },
-      tipsTable,
+  // -------- Discounts --------
+  if (report.discountsList?.length) {
+    addSectionHeader("Discounts");
+    const cols = Object.keys(report.discountsList[0]);
+    addTable(report.discountsList, cols);
+  }
 
-      { text: "Totals", style: "section" },
-      totalsTable,
-    ],
-    styles: {
-      header: { fontSize: 18, bold: true },
-      subheader: { fontSize: 10, italics: true, margin: [0, 0, 0, 10] },
-      section: { fontSize: 14, bold: true, margin: [0, 10, 0, 4] },
-    },
-  };
+  // -------- Tips --------
+  if (report.tipsList?.length) {
+    addSectionHeader("Tips");
+    const cols = Object.keys(report.tipsList[0]);
+    addTable(report.tipsList, cols);
+  }
 
-  pdfMake.createPdf(docDefinition).download("PostEventReport.pdf");
+  // -------- Totals --------
+  if (report.totals) {
+    addSectionHeader("Totals");
+    addKeyValueTable(report.totals);
+  }
+
+  // Save PDF
+  doc.save(`PostEventReport_${report.eventInfo?.EventName || "Event"}.pdf`);
 }
+
 
 
 // ---------- HELPERS ----------

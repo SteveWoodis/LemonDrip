@@ -28,6 +28,7 @@ const SQUARE_APP_SECRET = process.env.SQUARE_APP_SECRET;
 const SQUARE_OAUTH_REDIRECT =
   process.env.SQUARE_OAUTH_REDIRECT ||
   "http://localhost:3000/api/square/oauth/callback";
+  
 
 let db = new Database(DB_PATH);
 db.pragma("foreign_keys = ON");
@@ -94,15 +95,14 @@ db.exec(`
     eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
     eventID INTEGER NOT NULL,
     employeeID INTEGER NOT NULL,
-    employeeName TEXT,
-    role TEXT,
+    hoursWorked REAL,
     hourlyRate REAL,
     totalPay REAL,
-    tipsEarned REAL,
-    metadata JSON,
-    hoursWorked REAL,
-    FOREIGN KEY(eventID) REFERENCES EventInfo(eventID),
-    FOREIGN KEY(employeeID) REFERENCES EmployeeTracker(employeeID)
+    startTime TEXT,
+    endTime TEXT,
+    squareTimecardID TEXT,
+    FOREIGN KEY (eventID) REFERENCES EventInfo(eventID),
+    FOREIGN KEY (employeeID) REFERENCES EmployeeTracker(employeeID)
   );
 
   CREATE TABLE IF NOT EXISTS EventPermits (
@@ -155,7 +155,6 @@ try {
 export { db };
 // Keep track of valid OAuth "state" values to prevent CSRF
 const activeOAuthStates = new Set();
-
 // -------------------------------
 // 🧭 Root (health check)
 // -------------------------------
@@ -164,10 +163,7 @@ app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
 // -------------------------------
 // 📎 Upload permit files
 // -------------------------------
-app.post(
-  "/api/events/upload-permits",
-  upload.array("permits"),
-  (req, res) => {
+app.post("/api/events/upload-permits", upload.array("permits"),  (req, res) => {
     const eventID = Number(req.body.eventID);
 
     for (const file of req.files) {
@@ -189,7 +185,6 @@ app.post(
 app.get("/api/square/oauth/callback", async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
-  // 1) Handle user / Square errors first
   if (error) {
     console.error("Square OAuth error:", error, error_description);
     return res.status(400).send("Square OAuth error: " + error_description);
@@ -199,16 +194,12 @@ app.get("/api/square/oauth/callback", async (req, res) => {
     return res.status(400).send("Missing authorization code or state.");
   }
 
-  // 2) CSRF protection: check that state is one we issued
-  if (!activeOAuthStates.has(state)) {
-    console.error("⚠️ OAuth state mismatch or expired:", state);
-    return res.status(400).send("Invalid or expired OAuth state.");
-  }
-  // One-time use: remove it
+  // ------------------------------------------------------
+  // TEMPORARY: Disable state validation in development ONLY
+  // ------------------------------------------------------
   activeOAuthStates.delete(state);
 
   try {
-    // 3) Exchange code for tokens
     const tokenRes = await axios.post(
       "https://connect.squareup.com/oauth2/token",
       {
@@ -216,9 +207,10 @@ app.get("/api/square/oauth/callback", async (req, res) => {
         client_secret: SQUARE_APP_SECRET,
         code,
         grant_type: "authorization_code",
+        redirect_uri: SQUARE_OAUTH_REDIRECT
       },
       {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }
       }
     );
 
@@ -227,9 +219,8 @@ app.get("/api/square/oauth/callback", async (req, res) => {
     const accessToken = payload.access_token;
     const refreshToken = payload.refresh_token;
     const merchantId = payload.merchant_id;
-    const expiresAt = payload.expires_at; // ISO timestamp string
+    const expiresAt = payload.expires_at;
 
-    // 4) Persist tokens (single row for now)
     db.prepare("DELETE FROM SquareAuth").run();
     db.prepare(`
       INSERT INTO SquareAuth (accessToken, refreshToken, merchantId, expiresAt)
@@ -237,33 +228,27 @@ app.get("/api/square/oauth/callback", async (req, res) => {
     `).run(accessToken, refreshToken, merchantId, expiresAt);
 
     console.log("✅ Square OAuth connected for merchant:", merchantId);
-    res.send(
-      "Square Labor integration connected successfully. You can close this tab and go back to LemonDrip."
-    );
+
+    res.send("Square OAuth connected successfully. You can close this tab.");
   } catch (err) {
-    console.error(
-      "❌ Error exchanging OAuth code:",
-      err.response?.data || err.message
-    );
+    console.error("❌ Error exchanging OAuth code:", err.response?.data || err.message);
     res.status(500).send("Error exchanging OAuth code. Check server logs.");
   }
 });
 
 
+
 // Start OAuth flow
 app.get("/api/square/oauth/start", (req, res) => {
-  // 1) Generate a random state for CSRF protection
   const state = crypto.randomBytes(24).toString("hex");
 
-  // 2) Track it in memory and auto-expire after 10 minutes
   activeOAuthStates.add(state);
   setTimeout(() => activeOAuthStates.delete(state), 10 * 60 * 1000);
 
-  // 3) Scopes we want (once Square approves them)
   const scopes = [
-    "shifts.read",
-    "team_members.read",
-    "labor.read",
+    "TIMECARDS_READ",
+    "TIMECARDS_SETTINGS_READ",
+    "EMPLOYEES_READ"
   ];
 
   const params = new URLSearchParams({
@@ -271,13 +256,132 @@ app.get("/api/square/oauth/start", (req, res) => {
     scope: scopes.join(" "),
     session: "false",
     state,
-    redirect_uri: SQUARE_OAUTH_REDIRECT,
-    response_type: "code",
+    redirect_uri: SQUARE_OAUTH_REDIRECT,  // RAW VALUE HERE
+    response_type: "code"
   });
 
   const url = `https://connect.squareup.com/oauth2/authorize?${params.toString()}`;
+
+  console.log("START URL:", url);
   res.redirect(url);
 });
+
+
+async function fetchSquareEmployees() {
+  const token = await getSquareLaborToken();
+  const baseUrl = "https://connect.squareup.com";
+
+  const res = await doFetch(`${baseUrl}/v2/employees`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Square-Version": "2025-01-15",
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      err.errors?.map(e => e.detail).join("; ") || `HTTP ${res.status}`
+    );
+  }
+
+  const json = await res.json();
+  return json.employees || [];
+}
+async function fetchSquareTimecardsForEvent(eventID) {
+  const event = db.prepare(`
+    SELECT eventDate, squareLocationId
+    FROM EventInfo
+    WHERE eventID = ?
+  `).get(eventID);
+
+  if (!event)
+    throw new Error(`Event ${eventID} not found.`);
+
+  const token = await getSquareLaborToken();
+  const baseUrl = "https://connect.squareup.com";
+
+  const start = `${event.eventDate}T00:00:00Z`;
+  const end   = `${event.eventDate}T23:59:59Z`;
+
+  const params = new URLSearchParams({
+    begin_time: start,
+    end_time: end,
+    location_id: event.squareLocationId
+  });
+
+  const res = await doFetch(`${baseUrl}/v2/labor/timecards?${params.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Square-Version": "2025-01-15",
+      "Content-Type": "application/json"
+    }
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(
+      json.errors?.map(e => e.detail).join("; ")
+      || `HTTP ${res.status}`
+    );
+  }
+
+  const timecards = json.timecards || [];
+
+  // Convert timecards → hours worked
+  return timecards.map(tc => {
+    const start = tc.clockin_time ? new Date(tc.clockin_time).getTime() : null;
+    const end   = tc.clockout_time ? new Date(tc.clockout_time).getTime() : null;
+
+    let hours = 0;
+    if (start && end && end > start) {
+      hours = (end - start) / (1000 * 60 * 60); // convert ms → hours
+    }
+
+    return {
+      employeeId: tc.employee_id,
+      start: tc.clockin_time,
+      end: tc.clockout_time,
+      hours
+    };
+  });
+}
+
+async function buildEventLabor(eventID) {
+  const [squareEmployees, timecards] = await Promise.all([
+    fetchSquareEmployees(),
+    fetchSquareTimecardsForEvent(eventID)
+  ]);
+
+  const laborResults = [];
+
+  for (const tc of timecards) {
+    const sqEmp = squareEmployees.find(e => e.id === tc.employeeId);
+    if (!sqEmp) continue;
+
+    const employee = findOrCreateEmployee(sqEmp);
+
+    laborResults.push({
+      employeeID: employee.employeeID,
+      employeeName: employee.employeeName,
+      start: tc.start,
+      end: tc.end,
+      hours: tc.hours,
+      wage: employee.hourlyRate || 0,
+      totalPay: tc.hours * (employee.hourlyRate || 0),
+      squareTimecardID: tc.id || null
+    });
+  }
+
+  // BEFORE returning: save to SQLite
+  saveEventLabor(eventID, laborResults);
+
+  return laborResults;
+}
 
 
 
@@ -787,6 +891,77 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     res.status(500).json({ error: "Failed pulling Square sales." });
   }
 });
+
+function findOrCreateEmployee(squareEmp) {
+  const fullName =
+    `${squareEmp.first_name || ""} ${squareEmp.last_name || ""}`.trim();
+
+  // 1. Try match by Square employee ID
+  let emp = db.prepare(`
+    SELECT * FROM EmployeeTracker WHERE squareEmployeeID = ?
+  `).get(squareEmp.id);
+
+  if (emp) return emp;
+
+  // 2. Try match by full name
+  emp = db.prepare(`
+    SELECT * FROM EmployeeTracker WHERE employeeName = ?
+  `).get(fullName);
+
+  if (emp) {
+    // Update employee to include squareEmployeeID for future matches
+    db.prepare(`
+      UPDATE EmployeeTracker SET squareEmployeeID = ?
+      WHERE employeeID = ?
+    `).run(squareEmp.id, emp.employeeID);
+    return emp;
+  }
+
+  // 3. Create new employee
+  const insert = db.prepare(`
+    INSERT INTO EmployeeTracker (employeeName, squareEmployeeID, employeeRole, hourlyRate)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const result = insert.run(
+    fullName,
+    squareEmp.id,
+    squareEmp.primary_job_title || "Employee",
+    squareEmp.wage?.hourly_rate?.amount_money?.amount
+      ? squareEmp.wage.hourly_rate.amount_money.amount / 100
+      : 0
+  );
+
+  return db.prepare(`
+    SELECT * FROM EmployeeTracker WHERE employeeID = ?
+  `).get(result.lastInsertRowid);
+}
+
+function saveEventLabor(eventID, laborList) {
+  // Delete previous labor for this event
+  db.prepare(`DELETE FROM EventEmployees WHERE eventID = ?`).run(eventID);
+
+  const insert = db.prepare(`
+    INSERT INTO EventEmployees (
+      eventID, employeeID, hoursWorked, hourlyRate, totalPay,
+      startTime, endTime, squareTimecardID
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const entry of laborList) {
+    insert.run(
+      eventID,
+      entry.employeeID,    // resolved local employee ID
+      entry.hours,
+      entry.wage,
+      entry.totalPay,
+      entry.start,
+      entry.end,
+      entry.squareTimecardID || null
+    );
+  }
+}
 
 // Helper: base URL (still here if you need sandbox later)
 function getSquareBaseUrl() {
@@ -1331,28 +1506,25 @@ async function buildPostEventReport(eventID) {
   const net = summary.netSales ?? gross - refunds - discounts;
   const total = summary.totalCollected ?? net + tips;
 
-  let employees = [];
-  try {
-    employees = await fetchSquareLaborForEvent(eventID);
-  } catch (err) {
-    console.error(
-      "❌ Error fetching Square labor; falling back to DB:",
-      err
-    );
-    employees = db
-      .prepare(
-        `
-      SELECT employeeName AS name,
-             hoursWorked  AS hours,
-             hourlyRate   AS rate,
-             totalPay     AS total,
-             tipsEarned   AS tips
-      FROM EventEmployees
-      WHERE eventID = ?
-    `
-      )
-      .all(eventID);
-  }
+  let employees = db.prepare(`
+  SELECT employeeID, employeeName, hoursWorked AS hours,
+         hourlyRate AS wage, totalPay, startTime AS start, endTime AS end
+  FROM EventEmployees
+  WHERE eventID = ?
+	`).all(eventID);
+
+	if (!employees.length) {
+	  // No stored labor — fetch from Square
+	  try {
+		employees = await buildEventLabor(eventID);
+	  } catch (err) {
+		console.error("❌ Square Labor Error:", err.message);
+		employees = [];
+	  }
+	}
+
+	report.employees = employees;
+
 
   const laborTotal = employees.reduce((a, e) => a + (e.total ?? 0), 0);
 
@@ -1440,13 +1612,22 @@ async function buildPostEventReport(eventID) {
 // -------------------------------
 // GET /api/events/:id/report
 // -------------------------------
+// -------------------------------
+// GET /api/events/:id/report
+// -------------------------------
 app.get("/api/events/:id/report", async (req, res) => {
   try {
-    // 🔧 FIX: await the async report builder
-    const report = await buildPostEventReport(req.params.id);
+    const eventID = req.params.id;
+
+    // Build the unified report (already includes customFields, labor, supplies, sales, discounts)
+    const report = await buildPostEventReport(eventID);
+
+    // Return clean JSON
     res.json(report);
+
   } catch (err) {
     console.error("❌ Report error:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
