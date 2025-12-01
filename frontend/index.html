@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LemonDrip Event Manager</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+	<div class="app-shell">
+  <header>
+   <div class="brand">
+        <span class="brand-title">🍋 LemonDrip Events</span>
+        <span class="brand-subtitle">Event Manager & Reports</span>
+      </div>
+		  <div class="nav-buttons">
+			<div class="header-buttons">
+		  <button id="btnAdd" onclick="navigateTo('addSection')">➕ Add Event</button>
+		  <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
+		  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
+		  <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
+		  
+		</div>
+	</div>
+  </header>
+
+  <!-- ➕ Add Event Section -->
+ <section id="addSection" class="card hidden">
+  <h2 id="formTitle">Add New Event</h2>
+
+  <!-- Template selection area -->
+  <div class="template-selector">
+    <label for="templateSelect"><strong>Select Form Template:</strong></label>
+    <select id="templateSelect">
+      <option value="">-- Select Template --</option>
+    </select>
+    <button type="button" onclick="useSelectedTemplate()">Load Template</button>
+  </div>
+	<label for="permitFiles">Permit Documents:</label>
+	<input type="file" id="permitFiles" multiple>
+	<label>Square Location</label>
+<select id="form_squareLocationId">
+  <option value="">Select Square Location…</option>
+</select>
+
+  <!-- 🧩 Dynamic Form Area -->
+  <form id="eventForm" onsubmit="submitEvent(event); return false;" class="event-form">
+    <!-- The fields for this form will be dynamically injected here by rebuildAddEventForm() -->
+  </form>
+</section>
+<!-----------------------Company Section ------------------------>
+<section id="companySection" class="card hidden">
+<h2>Register Your Company</h2>
+    <div class="company-fields">
+      <input type="text" id="companyName" placeholder="CompanyName">
+      <input type="text" id="phone" placeholder="Phone">
+	  <input type="text" id="contactName" placeholder="ContactName">
+	  <input type="text" id="vendorCategory" placeholder="Vendor Category">
+	  <input type="text" id="email" placeholder="email">
+      <button type="button" onclick="addCompany(event)">Submit</button>
+	  <button type="button" onclick="clearEventForm()">Clear</button>
+    </div>
+
+</section>
+
+<!-- 🧩 Design Event Form Section -->
+<section id="designFormSection" class="card hidden">
+  <h2>🧩 Design Event Form</h2>
+	<!-- 🧩 Template Activation Controls -->
+  <div class="template-activation">
+    <label for="templateSelector"><strong>Activate Template:</strong></label>
+    <select id="templateSelector">
+      <option value="">-- Select Template --</option>
+    </select>
+    <button type="button" onclick="useSelectedTemplate()">⚡ Activate</button>
+	<p class="field-warning">NOTE: Field Name and Field Date are required Fields for All Templates.  </p>
+  </div>
+
+  <div class="form-builder-controls">
+    <label>Field Label: <input type="text" id="builderLabel" placeholder="e.g. Event Name"></label>
+    
+    <label>Field Type:
+      <select id="builderType">
+        <option value="text">Text</option>
+        <option value="number">Number</option>
+        <option value="date">Date</option>
+        <option value="select">Dropdown</option>
+        <option value="multiselect">Multi-Select</option>
+        <option value="textarea">Text Area</option>
+      </select>
+    </label>
+
+    <label>Required: <input type="checkbox" id="builderRequired"></label>
+    
+    <label id="optionsLabel" style="display:none;">
+      Options (comma separated): 
+      <input type="text" id="builderOptions" placeholder="e.g. Red, Green, Blue">
+    </label>
+
+    <button type="button" onclick="addFieldToTemplate()">➕ Add Field</button>
+  </div>
+
+  <hr>
+
+  <h3>Preview:</h3>
+  <div id="formPreview" class="preview-card"></div>
+
+  <div class="form-buttons">
+    <button type="button" onclick="saveTemplate()">💾 Save Template</button>
+    <button type="button" onclick="clearEventForm()">🧹 Clear</button>
+  </div>
+</section>
+
+
+<section id="manageSection" class="card hidden">
+  <h2>Manage Events</h2>
+  <div class="manage-filter-bar">
+  <button class="btn-secondary" onclick="filterEvents('all')">All</button>
+  <button class="btn-secondary" onclick="filterEvents('finalized')">Finalized</button>
+  <button class="btn-secondary" onclick="filterEvents('notfinalized')">Not Finalized</button>
+</div>
+  <div class="search-fields">
+    <input type="text" id="manageSearchName" placeholder="eventName">
+    <input type="date" id="manageSearchDate">
+    <input type="text" id="manageSearchID" placeholder="eventID">
+    <button type="button" onclick="manageSearch()">🔍 Search</button>
+    <button type="button" onclick="loadAllEvents()">📋 List All</button>
+  </div>
+  
+
+  <div id="manageResults" class="table-container"></div>
+</section>
+
+  
+  <!-- 📊 Dashboard Section -->
+  <!-- <section id="dashboardSection" class="card hidden">
+    <div id="dashboard" style="display:none;">
+      <h2 id="dashTitle"></h2>
+      <p id="dashDate"></p>
+      <p><strong>Coordinator:</strong> <span id="dashCoordinator"></span></p>
+      <!--<p><strong>Total Sales:</strong> <span id="dashSales"></span></p>
+      <p><strong>Net Profit:</strong> <span id="dashProfit"></span></p> 
+      <p><strong>Square Info:</strong> <span id="dashSquareInfo"></span></p>
+      <div id="dashDetails"></div>
+    </div>
+  </section> -->
+  
+  <!-- 📊 Event Dashboard Section -->
+<!-- 📊 Event Dashboard Section -->
+<section id="eventDashboardSection" class="card hidden dashboard-page">
+  
+  <div class="dashboard-header">
+  <div class="dashboard-buttons"></div>
+    <div id="dashEventName" class="event-title"></div>
+    <div id="dashEventDate" class="event-date"></div>
+	<div id="dashFinalizedIndicator"></div>
+  </div>
+ <div id="eventDashboardContainer">
+
+  <!-- LABOR CARD -->
+  <div class="collapsible-card">
+    <button class="collapsible-header">
+      <span class="collapsible-title">Labor</span>
+    </button>
+
+    <div class="collapsible-content">
+
+      <!-- Add Shift Form -->
+      <div class="labor-form">
+        <label>Employee:
+          <select id="laborEmployeeSelect"></select>
+        </label>
+
+        <label>Hours Worked:
+          <input type="number" step="0.25" id="laborHours">
+        </label>
+
+        <label>Wage:
+          <input type="number" step="0.25" id="laborWage">
+        </label>
+
+        <button type="button" class="btn-primary" onclick="saveLaborShift()">Add Shift</button>
+      </div>
+
+      <!-- Shifts Table -->
+      <div id="laborTableContainer"></div>
+
+    </div>
+  </div>
+
+</div>
+
+</section>
+
+
+
+
+
+<section id="postEventReportSection" class="card hidden report-page">
+
+  <h2 id="postEventTitle" class="report-title">📊 Post-Event Report</h2>
+
+  <div class="report-controls">
+      <div class="file-upload-block">
+        <label for="permitFilesReport"><strong>Permit Documents:</strong></label>
+        <input type="file" id="permitFilesReport" multiple>
+      </div>
+
+      <div class="report-buttons">
+        <button class="btn-primary" onclick="downloadPostEventPDF()">📄 Download PDF</button>
+        <button class="btn-secondary" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
+      </div>
+  </div>
+
+  <div id="postEventReportContent" class="report-content"></div>
+
+</section>
+
+
+
+
+
+  <script src="app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.3/purify.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> 
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+</div>
+</body>
+</html>
