@@ -1006,6 +1006,25 @@ async function saveTemplate() {
   }
 }
 
+function clearManageSearch() {
+  // Clear input fields
+  document.getElementById('manageSearchName').value = '';
+  document.getElementById('manageSearchDate').value = '';
+  document.getElementById('manageSearchID').value = '';
+
+  // Clear results table
+  const container = document.getElementById('manageResults');
+  container.innerHTML = '';
+
+  // Optionally reset filter highlighting (if your UI uses active styles)
+  if (typeof resetFilterButtons === "function") {
+    resetFilterButtons();
+  }
+
+  // Provide user feedback (optional)
+  console.log("Manage search cleared.");
+}
+
 async function loadTemplates() {
   try {
     const res = await fetch("http://localhost:3000/api/formTemplates");
@@ -1270,6 +1289,160 @@ function rebuildAddEventForm(template) {
   formContainer.appendChild(btnContainer);
   formContainer.onsubmit = submitEvent;
 }
+//------------------------
+//Helper Function For Currency
+//------------------------
+function fmt(x) {
+  return Number(x).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+function createCollapsibleCard(id, title, contentData) {
+  if (!contentData) return null;
+
+  // -----------------------------
+  // Card wrapper
+  // -----------------------------
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("collapsible-card");
+  wrapper.id = id;  // ⭐ critical for scroll + anchors
+
+  // -----------------------------
+  // Header
+  // -----------------------------
+  const header = document.createElement("button");
+  header.classList.add("collapsible-header");
+  header.type = "button";
+  header.innerHTML = `
+    <span class="collapsible-title">${title}</span>
+    <span class="collapsible-icon">▼</span>
+  `;
+
+  // -----------------------------
+  // Content container
+  // -----------------------------
+  const content = document.createElement("div");
+  content.classList.add("collapsible-content");
+  content.style.display = "none";
+
+  // Helper: label formatting
+  const formatLabel = (key) =>
+    String(key)
+      .replace(/([A-Z])/g, " $1")
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^./, (c) => c.toUpperCase());
+
+  // Helper: value formatting
+  const renderValue = (value) => {
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object")
+      return Object.entries(value)
+        .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
+        .join("; ");
+    return String(value);
+  };
+
+  // -----------------------------
+  // ⭐ NEW: If contentData is a STRING → treat as preformatted HTML
+  // -----------------------------
+  if (typeof contentData === "string") {
+    content.innerHTML = contentData;
+  }
+
+  // -----------------------------
+  // ⭐ If contentData is ARRAY → table rendering
+  // -----------------------------
+  else if (Array.isArray(contentData)) {
+    if (!contentData.length) {
+      content.textContent = "No data available.";
+    } else if (typeof contentData[0] === "object") {
+      const table = document.createElement("table");
+      table.classList.add("lemondrip-table");
+
+      const columns = Object.keys(contentData[0]);
+
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      columns.forEach((key) => {
+        const th = document.createElement("th");
+        th.textContent = formatLabel(key);
+        headerRow.appendChild(th);
+      });
+
+      const tbody = table.createTBody();
+      contentData.forEach((row) => {
+        const tr = tbody.insertRow();
+        columns.forEach((key) => {
+          const td = tr.insertCell();
+          const val = row[key];
+          td.textContent = val ?? "";
+        });
+      });
+
+      content.appendChild(table);
+    } else {
+      // Array of primitives
+      const ul = document.createElement("ul");
+      contentData.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = renderValue(item);
+        ul.appendChild(li);
+      });
+      content.appendChild(ul);
+    }
+  }
+
+  // -----------------------------
+  // ⭐ Object (key/value list)
+  // -----------------------------
+  else if (typeof contentData === "object") {
+    const entries = Object.entries(contentData).filter(
+      ([_, v]) => v !== null && v !== "" && v !== undefined
+    );
+
+    const infoList = document.createElement("div");
+    infoList.classList.add("info-list");
+
+    entries.forEach(([key, value]) => {
+      const row = document.createElement("div");
+      row.classList.add("info-row");
+
+      const label = document.createElement("span");
+      label.classList.add("info-key");
+      label.textContent = formatLabel(key);
+
+      const val = document.createElement("span");
+      val.classList.add("info-value");
+      val.textContent = renderValue(value);
+
+      row.appendChild(label);
+      row.appendChild(val);
+      infoList.appendChild(row);
+    });
+
+    content.appendChild(infoList);
+  }
+
+  // -----------------------------
+  // Expand / collapse behavior
+  // -----------------------------
+  header.addEventListener("click", () => {
+    const isOpen = content.style.display === "block";
+    content.style.display = isOpen ? "none" : "block";
+
+    const icon = header.querySelector(".collapsible-icon");
+    if (icon) icon.textContent = isOpen ? "▼" : "▲";
+  });
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(content);
+  return wrapper;
+}
+
 
 // ---------------------------
 // 📊 Clean Event Dashboard Loader
@@ -1280,54 +1453,33 @@ function loadEventIntoDashboard(evt) {
     return;
   }
 
-  // Normalize to consistent shape
+  // Normalize shape
   const event = normalizeEvent(evt);
-
-  // Store globally for Edit / Report / Finalize
   window.activeEvent = event;
-
-  // -----------------------------
-  // 🔍 Normalize Event Fields (convenience)
-  // -----------------------------
-  const eventID = event.eventID;
-
-  const eventName =
-    event.eventName ||
-    "Unnamed Event";
-
-  const eventDate = event.eventDate || "";
-
-  const coordinator = event.coordinator || "";
-
-  const eventLocation = event.eventLocation || "";
-
-  const status = event.status || "";
-
-  // -----------------------------
-  // 🧭 Navigate to dashboard
-  // -----------------------------
-  navigateTo("eventDashboardSection");
-
-  // Track current event globally
   window.currentEventId = event.eventID;
 
-  // Load labor UI data (safe if functions not defined yet)
-  if (typeof loadEmployeesForDropdown === "function") {
-    loadEmployeesForDropdown();
-  }
-  if (typeof loadLaborForEvent === "function") {
-    loadLaborForEvent(window.currentEventId);
-  }
+  // Convenience
+  const eventID = event.eventID;
+  const eventName = event.eventName || "Unnamed Event";
+  const eventDate = event.eventDate || "";
+  const coordinator = event.coordinator || "";
+  const eventLocation = event.eventLocation || "";
+  const status = event.status || "";
 
+  // Navigate to dashboard
+  navigateTo("eventDashboardSection");
+
+  // Load labor data if available
+  if (typeof loadEmployeesForDropdown === "function") loadEmployeesForDropdown();
+  if (typeof loadLaborForEvent === "function") loadLaborForEvent(eventID);
+
+  // Dashboard container
   const container = document.getElementById("eventDashboardContainer");
-  if (!container) {
-    console.warn("⚠️ #eventDashboardContainer not found");
-    return;
-  }
+  if (!container) return console.warn("⚠️ #eventDashboardContainer not found");
   container.innerHTML = "";
 
   // -----------------------------
-  // 🏷 HEADER SETUP
+  // HEADER
   // -----------------------------
   const headerTitle = document.getElementById("dashEventName");
   const headerDate = document.getElementById("dashEventDate");
@@ -1337,56 +1489,50 @@ function loadEventIntoDashboard(evt) {
   if (headerDate) headerDate.textContent = eventDate;
   if (finalizedIndicator) finalizedIndicator.innerHTML = "";
 
-  // Finalized badge
   if (event.isFinalized === 1) {
-    const finalBadge = document.createElement("div");
-    finalBadge.classList.add("finalized-badge-large");
-    finalBadge.textContent = "FINALIZED";
-    finalizedIndicator.appendChild(finalBadge);
+    const badge = document.createElement("div");
+    badge.classList.add("finalized-badge-large");
+    badge.textContent = "FINALIZED";
+    finalizedIndicator.appendChild(badge);
 
     if (event.finalizedDate) {
-      const finalDate = document.createElement("div");
-      finalDate.style.fontSize = "0.85rem";
-      finalDate.style.color = "#444";
-      finalDate.style.marginTop = "4px";
-      finalDate.textContent = `Finalized on: ${event.finalizedDate}`;
-      finalizedIndicator.appendChild(finalDate);
+      const fd = document.createElement("div");
+      fd.style.fontSize = "0.85rem";
+      fd.style.color = "#444";
+      fd.style.marginTop = "4px";
+      fd.textContent = `Finalized on: ${event.finalizedDate}`;
+      finalizedIndicator.appendChild(fd);
     }
   }
 
   // -----------------------------
-  // 🟦 BUTTONS AT TOP OF DASHBOARD
+  // DASHBOARD BUTTONS
   // -----------------------------
   const buttonContainer = document.querySelector(".dashboard-buttons");
   if (buttonContainer) {
-    buttonContainer.innerHTML = ""; // Clear previous
+    buttonContainer.innerHTML = "";
 
     // Finalize Event
     const finalizeBtn = document.createElement("button");
     finalizeBtn.textContent = "✔️ Finalize Event";
     finalizeBtn.classList.add("btn-primary");
     finalizeBtn.addEventListener("click", async () => {
-      if (!confirm("Finalize this event? This will save all calculations.")) return;
+      if (!confirm("Finalize this event?")) return;
 
       try {
         const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
           method: "PUT",
         });
-        const data = await res.json();
+        const out = await res.json();
+        if (!res.ok) return alert(out.error || "Could not finalize.");
 
-        if (!res.ok) {
-          alert(data.error || "Could not finalize event.");
-          return;
-        }
+        alert("Event finalized!");
 
-        alert("Event is finalized!");
-
-        const updatedEventRes = await fetch(`${API_BASE}/api/events/${eventID}`);
-        const updatedEvent = await updatedEventRes.json();
-        loadEventIntoDashboard(updatedEvent);
+        const updated = await fetch(`${API_BASE}/api/events/${eventID}`).then(r => r.json());
+        loadEventIntoDashboard(updated);
       } catch (err) {
         console.error("Finalize error:", err);
-        alert("Error finalizing event.");
+        alert("Error finalizing.");
       }
     });
 
@@ -1394,25 +1540,19 @@ function loadEventIntoDashboard(evt) {
     const squareBtn = document.createElement("button");
     squareBtn.textContent = "🔄 Pull Square Sales";
     squareBtn.classList.add("btn-primary");
-    squareBtn.addEventListener("click", async () => {
-      await pullSquareSales(eventID);
-    });
+    squareBtn.addEventListener("click", () => pullSquareSales(eventID));
 
     // Edit Event
     const editBtn = document.createElement("button");
     editBtn.textContent = "✏️ Edit Event";
     editBtn.classList.add("btn-secondary");
-    editBtn.addEventListener("click", () => {
-      editEvent(event);
-    });
+    editBtn.addEventListener("click", () => editEvent(event));
 
-    // Open Post Event Report
+    // Report
     const reportBtn = document.createElement("button");
     reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
-    reportBtn.addEventListener("click", () => {
-      openPostEventReport(event);
-    });
+    reportBtn.addEventListener("click", () => openPostEventReport(event));
 
     buttonContainer.appendChild(finalizeBtn);
     buttonContainer.appendChild(squareBtn);
@@ -1421,23 +1561,39 @@ function loadEventIntoDashboard(evt) {
   }
 
   // -----------------------------
-  // 🗂 EVENT SUMMARY CARD
+  // EVENT SUMMARY CARD
   // -----------------------------
   const summaryData = {
-    EventID: eventID ?? "",
-    Date: eventDate || "",
-    eventLocation: eventLocation || "",
-    Coordinator: coordinator || "",
-    Status: status || "",
+    EventID: eventID,
+    Date: eventDate,
+    Location: eventLocation,
+    Coordinator: coordinator,
+    Status: status,
     EventType: event.eventType || "",
     NumDays: event.numDays ?? "",
   };
 
-  const summaryCard = createCollapsiblecard("Event Summary", summaryData);
-  if (summaryCard) container.appendChild(summaryCard);
+  const summaryCard = createCollapsibleCard(
+    "eventSummaryCard",
+    "Event Summary",
+    `
+    ${Object.entries(summaryData)
+      .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
+      .join("")}
+
+    <div class="event-summary-links" style="margin-top:12px;">
+      <button class="btn-inline" data-target="drinkSalesCard">Drink Sales →</button><br>
+      <button class="btn-inline" data-target="additionalFeesCard">Additional Fees →</button><br>
+      <button class="btn-inline" data-target="discountsCard">Discounts →</button><br>
+      <button class="btn-inline" data-target="tipsCard">Tips →</button><br>
+      <button class="btn-inline" data-target="suppliesCard">Supplies →</button>
+    </div>
+    `
+  );
+  container.appendChild(summaryCard);
 
   // -----------------------------
-  // 🟨 CUSTOM FIELDS CARD
+  // CUSTOM FIELDS
   // -----------------------------
   if (event.customFields) {
     try {
@@ -1447,22 +1603,157 @@ function loadEventIntoDashboard(evt) {
           : event.customFields;
 
       if (parsed && Object.keys(parsed).length) {
-        const customCard = createCollapsiblecard("Custom Fields", parsed);
-        container.appendChild(customCard);
+        container.appendChild(
+          createCollapsibleCard("customFieldsCard", "Custom Fields", parsed)
+        );
       }
     } catch (err) {
-      console.error("❌ Failed to parse customFields:", err);
+      console.error("❌ customFields parse error:", err);
     }
   }
 
   // -----------------------------
-  // 👥 EVENT EMPLOYEES (legacy card)
+  // DRINK SALES (with totals)
+  // -----------------------------
+  let drinkHTML = "";
+  if (!event.drinkSales || event.drinkSales.length === 0) {
+    drinkHTML = "<p>No drink sales recorded.</p>";
+  } else {
+    const totalRevenue = event.drinkSales.reduce(
+      (sum, r) => sum + (Number(r.totalCost) || 0),
+      0
+    );
+    const totalQty = event.drinkSales.reduce(
+      (sum, r) => sum + (Number(r.quantitySold) || 0),
+      0
+    );
+
+    drinkHTML = `
+      <div><strong>Total Drinks Sold:</strong> ${totalQty}</div>
+      <div><strong>Total Drink Revenue:</strong> ${fmt(totalRevenue)}</div>
+      <hr>
+      ${buildTableHTML(event.drinkSales, null, true)}
+    `;
+  }
+  container.appendChild(
+    createCollapsibleCard("drinkSalesCard", "Itemized Drink Sales", drinkHTML)
+  );
+
+  // -----------------------------
+  // ADDITIONAL FEES (with total)
+  // -----------------------------
+  let feeHTML = "";
+  if (!event.additionalFees || event.additionalFees.length === 0) {
+    feeHTML = "<p>No additional fees recorded.</p>";
+  } else {
+    const totalFees = event.additionalFees.reduce(
+      (sum, r) => sum + (Number(r.feeAmount) || 0),
+      0
+    );
+
+    feeHTML = `
+      <div><strong>Total Additional Fees:</strong> ${fmt(totalFees)}</div>
+      <hr>
+      ${buildTableHTML(event.additionalFees, null, true)}
+    `;
+  }
+  container.appendChild(
+    createCollapsibleCard("additionalFeesCard", "Additional Fees", feeHTML)
+  );
+
+  // -----------------------------
+  // DISCOUNTS (with total)
+  // -----------------------------
+  let discHTML = "";
+  if (!event.discounts || event.discounts.length === 0) {
+    discHTML = "<p>No discounts recorded.</p>";
+  } else {
+    const totalDiscounts = event.discounts.reduce(
+      (sum, r) => sum + (Number(r.discountAmount) || 0),
+      0
+    );
+
+    discHTML = `
+      <div><strong>Total Discounts:</strong> ${fmt(totalDiscounts)}</div>
+      <hr>
+      ${buildTableHTML(event.discounts, null, true)}
+    `;
+  }
+  container.appendChild(
+    createCollapsibleCard("discountsCard", "Discounts", discHTML)
+  );
+
+  // -----------------------------
+  // TIPS (with total)
+  // -----------------------------
+  let tipsHTML = "";
+  if (!event.tips || event.tips.length === 0) {
+    tipsHTML = "<p>No tips recorded.</p>";
+  } else {
+    const totalTips = event.tips.reduce(
+      (sum, r) => sum + (Number(r.tipAmount) || 0),
+      0
+    );
+
+    tipsHTML = `
+      <div><strong>Total Tips:</strong> ${fmt(totalTips)}</div>
+      <hr>
+      ${buildTableHTML(event.tips, null, true)}
+    `;
+  }
+  container.appendChild(
+    createCollapsibleCard("tipsCard", "Tips", tipsHTML)
+  );
+
+  // -----------------------------
+  // SUPPLIES (with total)
+  // -----------------------------
+  let suppliesHTML = "";
+  if (!event.supplies || event.supplies.length === 0) {
+    suppliesHTML = "<p>No supplies recorded.</p>";
+  } else {
+    const suppliesTotal = event.supplies.reduce(
+      (sum, r) => sum + (Number(r.totalCost) || 0),
+      0
+    );
+
+    suppliesHTML = `
+      <div><strong>Total Supply Cost:</strong> ${fmt(suppliesTotal)}</div>
+      <hr>
+      ${buildTableHTML(event.supplies, null, true)}
+    `;
+  }
+  container.appendChild(
+    createCollapsibleCard("suppliesCard", "Supplies", suppliesHTML)
+  );
+
+  // -----------------------------
+  // EMPLOYEES (legacy)
   // -----------------------------
   if (Array.isArray(event.eventEmployees) && event.eventEmployees.length) {
-    const empCard = createCollapsiblecard("Employees", event.eventEmployees);
-    if (empCard) container.appendChild(empCard);
+    container.appendChild(
+      createCollapsibleCard("employeesCard", "Employees", event.eventEmployees)
+    );
   }
+
+  // -----------------------------
+  // UNIVERSAL SUMMARY → SECTION NAVIGATION
+  // -----------------------------
+  document
+    .querySelectorAll(".event-summary-links .btn-inline")
+    .forEach(btn => {
+      btn.addEventListener("click", () => {
+        const targetId = btn.getAttribute("data-target");
+        const target = document.getElementById(targetId);
+        if (target) {
+          target.classList.remove("collapsed");
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    });
 }
+
+
 
 
 
@@ -2072,173 +2363,7 @@ async function uploadEventPermits(eventID) {
   console.log("Permit upload result:", result);
 }
 
-function createCollapsiblecard(title, data) {
-  if (!data) return null;
 
-  const isArray = Array.isArray(data);
-  const isObject = !isArray && typeof data === "object";
-
-  // If it's an object, filter out empty/null-ish values
-  let entries = [];
-  if (isObject) {
-    entries = Object.entries(data).filter(([_, v]) => {
-      if (v === null || v === undefined) return false;
-      if (typeof v === "string" && v.trim() === "") return false;
-      if (Array.isArray(v) && v.length === 0) return false;
-      return true;
-    });
-    if (!entries.length) return null;
-  }
-
-  // ---------------------------
-  // Helper: label formatting
-  // ---------------------------
-  const formatLabel = (key) =>
-    String(key)
-      .replace(/([A-Z])/g, " $1")
-      .replace(/_/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/^./, (c) => c.toUpperCase());
-
-  // ---------------------------
-  // Helper: value formatting
-  // ---------------------------
-  const renderValue = (value) => {
-    if (value === null || value === undefined) return "";
-    if (Array.isArray(value)) {
-      // array of primitives
-      if (value.every((v) => typeof v !== "object")) {
-        return value.join(", ");
-      }
-      // array of objects → summarize
-      return value
-        .map((row) =>
-          Object.entries(row || {})
-            .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
-            .join("; ")
-        )
-        .join(" | ");
-    }
-    if (typeof value === "object") {
-      return Object.entries(value)
-        .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
-        .join("; ");
-    }
-    return String(value);
-  };
-
-  // ---------------------------
-  // Card shell
-  // ---------------------------
-  const wrapper = document.createElement("div");
-  wrapper.classList.add("collapsible-card");
-
-  const header = document.createElement("button");
-  header.classList.add("collapsible-header");
-  header.type = "button";
-  header.innerHTML = `
-    <span class="collapsible-title">${title}</span>
-    <span class="collapsible-icon">▼</span>
-  `;
-
-  const content = document.createElement("div");
-  // keep existing class name for CSS compatibility
-  content.classList.add("collapsible-content");
-  content.style.display = "none";
-
-  // ---------------------------
-  // Body content: arrays vs objects
-  // ---------------------------
-  if (isArray) {
-    const arr = data;
-
-    if (!arr.length) {
-      content.textContent = "No data available.";
-    } else if (typeof arr[0] === "object" && arr[0] !== null) {
-      // Array of objects → table
-      const table = document.createElement("table");
-      table.classList.add("lemondrip-table");
-
-      const thead = table.createTHead();
-      const headerRow = thead.insertRow();
-
-      const columns = Object.keys(arr[0]);
-      columns.forEach((key) => {
-        const th = document.createElement("th");
-        th.textContent = formatLabel(key);
-        headerRow.appendChild(th);
-      });
-
-      const tbody = table.createTBody();
-      arr.forEach((row) => {
-        const tr = tbody.insertRow();
-        columns.forEach((key) => {
-          const td = tr.insertCell();
-          const v = row[key];
-
-          if (typeof v === "string" && /^https?:\/\//i.test(v)) {
-            // detect URLs and render as links
-            td.innerHTML = `<a href="${v}" target="_blank">Open</a>`;
-          } else {
-            td.textContent = v ?? "";
-          }
-        });
-      });
-
-      content.appendChild(table);
-    } else {
-      // Array of primitives → list
-      const ul = document.createElement("ul");
-      arr.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = renderValue(item);
-        ul.appendChild(li);
-      });
-      content.appendChild(ul);
-    }
-  } else if (isObject) {
-    const infoList = document.createElement("div");
-    infoList.classList.add("info-list");
-
-    entries.forEach(([key, value]) => {
-      const row = document.createElement("div");
-      row.classList.add("info-row");
-
-      const labelSpan = document.createElement("span");
-      labelSpan.classList.add("info-key");
-      labelSpan.textContent = formatLabel(key);
-
-      const valueSpan = document.createElement("span");
-      valueSpan.classList.add("info-value");
-      valueSpan.textContent = renderValue(value);
-
-      row.appendChild(labelSpan);
-      row.appendChild(valueSpan);
-      infoList.appendChild(row);
-    });
-
-    content.appendChild(infoList);
-  } else {
-    content.textContent = renderValue(data);
-  }
-
-  // ---------------------------
-  // Expand / collapse behavior
-  // ---------------------------
-  header.addEventListener("click", () => {
-    const isOpen = content.style.display === "block";
-    content.style.display = isOpen ? "none" : "block";
-
-    const icon = header.querySelector(".collapsible-icon");
-    if (icon) icon.textContent = isOpen ? "▼" : "▲";
-  });
-
-  wrapper.appendChild(header);
-  wrapper.appendChild(content);
-
-  return wrapper;
-}
 
 
 window.addEventListener("DOMContentLoaded", () => {
