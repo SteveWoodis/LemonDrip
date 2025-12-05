@@ -797,17 +797,21 @@ app.put("/api/events/:id", (req, res) => {
 // -------------------------------
 // PUT /api/square/sales/:eventId  (DST-aware)
 // -------------------------------
+// -------------------------------
+// PUT /api/square/sales/:eventId  (DST-aware + Drink Line Items)
+// -------------------------------
 app.put("/api/square/sales/:eventId", async (req, res) => {
   try {
     const eventId = req.params.eventId;
 
+    // 1️⃣ Look up event date & location
     const ev = db
       .prepare(
         `
-      SELECT eventDate, squareLocationId
-      FROM EventInfo
-      WHERE eventID = ?
-    `
+        SELECT eventDate, squareLocationId
+        FROM EventInfo
+        WHERE eventID = ?
+      `
       )
       .get(eventId);
 
@@ -821,6 +825,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         .json({ error: "Event has no Square Location ID." });
     }
 
+    // 2️⃣ Build local (Utah-ish) day window, then convert to ISO
     const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
     const localEnd = new Date(`${ev.eventDate}T23:59:59-06:00`);
 
@@ -831,13 +836,24 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     console.log("DST-AWARE END  :", endTime);
 
     const accessToken = process.env.SQUARE_ACCESS_TOKEN;
+    if (!accessToken) {
+      return res.status(500).json({
+        error: "SQUARE_ACCESS_TOKEN is not set in the environment.",
+      });
+    }
+
     let cursor = null;
 
+    // Aggregate totals (same as before)
     let gross = 0;
     let refunds = 0;
     let discounts = 0;
     let tips = 0;
 
+    // We'll collect order IDs so we can fetch line items after
+    const orderIds = new Set();
+
+    // 3️⃣ Page through payments
     do {
       const url = new URL("https://connect.squareup.com/v2/payments");
       url.searchParams.set("begin_time", beginTime);
@@ -855,6 +871,8 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       });
 
       if (!response.ok) {
+        const errBody = await response.text().catch(() => "");
+        console.error("Square payments error:", response.status, errBody);
         return res.status(response.status).json({
           error: `Square API error ${response.status}`,
         });
@@ -868,11 +886,16 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         refunds += p.refunded_money?.amount || 0;
         discounts += p.total_discount_money?.amount || 0;
         tips += p.tip_money?.amount || 0;
+
+        if (p.order_id) {
+          orderIds.add(p.order_id);
+        }
       }
 
       cursor = json.cursor || null;
     } while (cursor);
 
+    // Convert cents → dollars
     gross /= 100;
     refunds /= 100;
     discounts /= 100;
@@ -881,6 +904,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     const netSales = gross - refunds - discounts;
     const totalCollected = netSales + tips;
 
+    // 4️⃣ Upsert SalesSummary (same as before)
     db.prepare(`
       INSERT INTO SalesSummary (
         EventID, grossSales, netSales, refunds, discounts, tips, totalCollected
@@ -903,21 +927,93 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       totalCollected
     );
 
+    // 5️⃣ Fetch Orders to build itemized drink sales
+    const drinkMap = new Map(); // key = drinkName, value = { quantitySold, costPerDrink, totalCost }
+
+    for (const orderId of orderIds) {
+      const orderUrl = `https://connect.squareup.com/v2/orders/${orderId}`;
+      const oRes = await fetch(orderUrl, {
+        method: "GET",
+        headers: {
+          "Square-Version": "2025-01-15",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!oRes.ok) {
+        const errBody = await oRes.text().catch(() => "");
+        console.error("Square order error:", oRes.status, errBody);
+        continue; // skip this order but keep going
+      }
+
+      const oJson = await oRes.json();
+      const order = oJson.order;
+      if (!order || !order.line_items) continue;
+
+      for (const li of order.line_items) {
+        const name = li.name || "Unknown Item";
+        const qty = Number(li.quantity || 0);
+        const unitCents = li.base_price_money?.amount ?? 0;
+        const unit = unitCents / 100;
+        const total = unit * qty;
+
+        if (!drinkMap.has(name)) {
+          drinkMap.set(name, {
+            drinkName: name,
+            costPerDrink: unit,
+            quantitySold: 0,
+            totalCost: 0,
+          });
+        }
+
+        const agg = drinkMap.get(name);
+        agg.quantitySold += qty;
+        agg.totalCost += total;
+      }
+    }
+
+    // 6️⃣ Persist DrinkSales table from aggregated map
+    // (assumes table: DrinkSales(eventID, drinkName, costPerDrink, quantitySold, totalCost))
+    const deleteStmt = db.prepare(
+      `DELETE FROM DrinkSales WHERE eventID = ?`
+    );
+    deleteStmt.run(eventId);
+
+    const insertStmt = db.prepare(`
+      INSERT INTO DrinkSales (eventID, drinkName, costPerDrink, quantitySold, totalCost)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    const drinkSales = [];
+    for (const agg of drinkMap.values()) {
+      insertStmt.run(
+        eventId,
+        agg.drinkName,
+        agg.costPerDrink,
+        agg.quantitySold,
+        agg.totalCost
+      );
+      drinkSales.push(agg);
+    }
+
+    // 7️⃣ Respond with both summary + itemized drinks
     res.json({
       success: true,
-      message: "Square data synced (DST-aware).",
+      message: "Square data synced (DST-aware, with itemized drink sales).",
       grossSales: gross,
       refunds,
       discounts,
       netSales,
       tips,
       totalCollected,
+      drinkSales,
     });
   } catch (err) {
     console.error("❌ Square Sales Error:", err);
     res.status(500).json({ error: "Failed pulling Square sales." });
   }
 });
+
 
 function findOrCreateEmployee(squareEmp) {
   const fullName =
@@ -1567,131 +1663,95 @@ function coerceEvent(body) {
 // -------------------------------
 // Unified Post-Event Report builder
 // -------------------------------
-async function buildPostEventReport(eventID) {
+function buildPostEventReport(eventId) {
   const event = db
-    .prepare(`SELECT * FROM EventInfo WHERE eventID = ?`)
-    .get(eventID);
+    .prepare(
+      `SELECT * FROM EventInfo WHERE eventID = ?`
+    )
+    .get(eventId);
 
-  if (!event) throw new Error(`Event not found: id=${eventID}`);
+  if (!event) return null;
 
-  let customFields = {};
-  try {
-    if (event.customFields) {
-      customFields = JSON.parse(event.customFields);
-    }
-  } catch {
-    customFields = {};
-  }
+  // --- Sales Summary ---
+  const sales = db
+    .prepare(`SELECT * FROM SalesSummary WHERE eventID = ?`)
+    .get(eventId) || {
+    grossSales: 0,
+    netSales: 0,
+    refunds: 0,
+    discounts: 0,
+    tips: 0,
+    totalCollected: 0,
+  };
 
-  const summary =
-    db
-      .prepare(`SELECT * FROM SalesSummary WHERE eventID = ?`)
-      .get(eventID) || {};
+  // --- Drink Sales (new!) ---
+  const drinkSales = db
+    .prepare(
+      `SELECT drinkName, costPerDrink, quantitySold, totalCost
+       FROM DrinkSales WHERE eventID = ?`
+    )
+    .all(eventId);
 
-  const gross = summary.grossSales ?? 0;
-  const refunds = summary.refunds ?? 0;
-  const discounts = summary.discounts ?? 0;
-  const tips = summary.tips ?? 0;
-  const net = summary.netSales ?? gross - refunds - discounts;
-  const total = summary.totalCollected ?? net + tips;
+  // --- Additional Fees ---
+  const additionalFees = db
+    .prepare(
+      `SELECT feeName, feeAmount FROM AdditionalFees WHERE eventID = ?`
+    )
+    .all(eventId);
 
-  let employees = db.prepare(`
-  SELECT 
-    ee.employeeID,
-    et.employeeName,
-    ee.hoursWorked AS hours,
-    ee.hourlyRate AS wage,
-    ee.totalPay,
-    ee.startTime AS start,
-    ee.endTime AS end
-  FROM EventEmployees ee
-  JOIN EmployeeTracker et ON et.employeeID = ee.employeeID
-  WHERE ee.eventID = ?
-`).all(eventID);
+  // --- Discounts ---
+  const discounts = db
+    .prepare(
+      `SELECT description, discountAmount FROM Discounts WHERE eventID = ?`
+    )
+    .all(eventId);
 
-	if (!employees.length) {
-	  // No stored labor — fetch from Square
-	  try {
-		employees = await buildEventLabor(eventID);
-	  } catch (err) {
-		console.error("❌ Square Labor Error:", err.message);
-		employees = [];
-	  }
-	}
+  // --- Tips ---
+  const tips = db
+    .prepare(
+      `SELECT tipAmount FROM TipTracker WHERE eventID = ?`
+    )
+    .all(eventId);
 
-	//report.employees = employees;
+  // --- Supplies ---
+  const supplies = db
+    .prepare(
+      `SELECT itemName, unitCost, quantityUsed, totalCost
+       FROM SupplyCosts WHERE eventID = ?`
+    )
+    .all(eventId);
 
+  // --- Labor ---
+  const labor = db
+    .prepare(
+      `SELECT employeeName, hoursWorked, hourlyRate, totalPay
+       FROM EmployeeTracker WHERE eventID = ?`
+    )
+    .all(eventId);
 
-  const laborTotal = employees.reduce((a, e) => a + (e.total ?? 0), 0);
-
-  let supplies = db.prepare(`
-    SELECT itemName, quantityUsed, unitCost, totalCost
-    FROM SupplyCosts
-    WHERE eventID = ?
-    `).all(eventID);
-  
-  const supplyTotal = supplies.reduce(
-    (a, s) => a + (s.totalCost ?? 0),
-    0
-  );
-
-  let discountRows = db.prepare(`
-    SELECT description, discountAmount
-    FROM Discounts WHERE eventID = ?
-  `).all(eventID);
-
-  const discountTotal = discountRows.reduce(
-    (a, d) => a + (d.discountAmount ?? 0),
-    0
-  );
-
-  let discountsList = discountRows.map((d) => ({
-    name: d.description,
-    amount: d.discountAmount,
-  }));
-
-  let tipsList = db.prepare(`
-    SELECT employeeName, tipAmount
-    FROM TipTracker WHERE eventID = ?
-  `).all(eventID);
-
-  const tipTotal = tipsList.reduce(
-    (a, t) => a + (t.tipAmount ?? 0),
-    0
-  );
+  // --- Totals for Profit Summary ---
+  const totals = {
+    drinkRevenue: drinkSales.reduce((sum, r) => sum + r.totalCost, 0),
+    additionalFees: additionalFees.reduce((sum, r) => sum + r.feeAmount, 0),
+    discounts: discounts.reduce((sum, r) => sum + r.discountAmount, 0),
+    tipsTotal: tips.reduce((sum, r) => sum + r.tipAmount, 0),
+    suppliesTotal: supplies.reduce((sum, r) => sum + r.totalCost, 0),
+    laborTotal: labor.reduce((sum, r) => sum + r.totalPay, 0),
+  };
 
   return {
-    eventInfo: {
-      eventName: event.eventName,
-      eventDate: event.eventDate,
-      applicationDate: event.applicationDate,
-      eventType: event.eventType,
-      numDays: event.numDays,
-      location: event.location,
-      coordinator: event.coordinator,
-    },
-    customFields,
-    sales: {
-      gross,
-      refunds,
-      discounts,
-      tips,
-      net,
-      total,
-    },
-    employees,
+    event,
+    sales,
+    drinkSales,
+    additionalFees,
+    discounts,
+    tips,
     supplies,
-    discountsList,
-    tipsList,
-    totals: {
-      laborTotal,
-      supplyTotal,
-      discountTotal,
-      tipTotal,
-      netProfit: total - laborTotal - supplyTotal - discountTotal,
-    },
+    labor,
+    totals,
   };
 }
+
 
 // -------------------------------
 // GET /api/events/:id/report

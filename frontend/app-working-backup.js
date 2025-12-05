@@ -12,8 +12,143 @@ let currentAction = "manage";
 let events = [];
 let formTemplate = { templateName: "Custom Event Form", fields: [] };
 
+
+
+
+
 // ---------------------------
-// 💾 Persistent State (localStorage)
+// 💾 Persistent State (localStorage)// 🔗 Backend base URL
+const API_BASE = "http://localhost:3000";
+
+// ---------------------------
+// 🔄 Event Normalization Helpers
+// ---------------------------
+function normalizeEvent(e) {
+  if (!e) {
+    return {
+      eventID: null,
+      eventName: "",
+      eventDate: "",
+      coordinator: "",
+      eventLocation: "",
+      eventType: "",
+      numDays: "",
+      status: "",
+      isFinalized: 0,
+      finalizedDate: null,
+
+      // Post-event fields (always present)
+      drinkSales: [],
+      additionalFees: [],
+      discounts: [],
+      supplies: [],
+      tips: [],
+      eventEmployees: [],
+      totals: null,
+      sales: null,
+    };
+  }
+
+  // Some APIs wrap event inside EventInfo
+  const info = e.EventInfo ?? e;
+
+  const normalized = {
+    // ------------ BASIC EVENT METADATA ------------
+    eventID:
+      e.eventID ??
+      e.EventID ??
+      info.eventID ??
+      info.EventID ??
+      e["Event ID"] ??
+      null,
+
+    eventName:
+      info.eventName ??
+      info.EventName ??
+      e.eventName ??
+      e.EventName ??
+      "",
+
+    eventDate:
+      info.eventDate ??
+      info.EventDate ??
+      e.eventDate ??
+      e.EventDate ??
+      "",
+
+    coordinator:
+      info.coordinator ??
+      info.Coordinator ??
+      e.coordinator ??
+      "",
+
+    eventLocation:
+      info.eventLocation ??
+      info.EventLocation ??
+      info.location ??
+      e.eventLocation ??
+      "",
+
+    eventType:
+      info.eventType ??
+      info.EventType ??
+      e.eventType ??
+      "",
+
+    numDays:
+      info.numDays ??
+      info.NumDays ??
+      e.numDays ??
+      "",
+
+    status:
+      info.status ??
+      info.EventStatus ??
+      e.status ??
+      "",
+	squareLocationId:
+	  info.squareLocationId ??
+	  info.SquareLocationID ??
+	  e.squareLocationId ??
+	  e.SquareLocationID ??
+	  null,
+
+
+    isFinalized:
+      Number(info.isFinalized ?? info.IsFinalized ?? e.isFinalized ?? 0),
+
+    finalizedDate:
+      info.finalizedDate ??
+      info.FinalizedDate ??
+      e.finalizedDate ??
+      null,
+	customFields:
+	  typeof e.customFields === "string"
+		? JSON.parse(e.customFields || "{}")
+		: e.customFields || {},
+
+
+    // ------------ POST-EVENT REPORT FIELDS ------------
+    drinkSales: Array.isArray(e.drinkSales) ? e.drinkSales : [],
+    additionalFees: Array.isArray(e.additionalFees) ? e.additionalFees : [],
+    discounts: Array.isArray(e.discounts) ? e.discounts : [],
+    supplies: Array.isArray(e.supplies) ? e.supplies : [],
+    tips: Array.isArray(e.tips) ? e.tips : [],
+    eventEmployees: Array.isArray(e.eventEmployees) ? e.eventEmployees : [],
+
+    // Totals & Square Summary
+    totals: e.totals ?? null,
+    sales: e.sales ?? null,
+  };
+
+  return normalized;
+}
+
+
+function getSafeEventID(e) {
+  return normalizeEvent(e).eventID;
+}
+
 //
 // ---------------------------
 function saveAppState() {
@@ -110,18 +245,20 @@ function navigateTo(sectionId) {
 window.navigateTo = navigateTo; // <-- FIX
 
 function formatEvent(e) {
+  const n = normalizeEvent(e);
   return {
-    eventID: e.eventID ?? e.EventID ?? e["Event ID"],
-    eventName: e.eventName ?? e.EventName ?? e["Event Name"],
-    eventDate: e.eventDate ?? e.EventDate ?? e["Event Date"],
-    coordinator: e.coordinator ?? e.EventCoordinator ?? e["Event coordinator"],
-    eventLocation: e.eventLocation ?? e.EventLocation ?? e["Event Location"],
-    squareLocationId: e.squareLocationId ?? e["squareLocationId"] ?? e.squareLocationID,
-    isFinalized: Number(e.isFinalized) === 1 ? 1 : 0,
-    finalizedDate: e.finalizedDate ?? e.FinalizedDate ?? e["finalizedDate"] ?? null,
-    status: e.status ?? e.Status ?? e["Event status"],
+    eventID: n.eventID,
+    eventName: n.eventName,
+    eventDate: n.eventDate,
+    coordinator: n.coordinator,
+    eventLocation: n.eventLocation,
+    squareLocationId: n.squareLocationId,
+    isFinalized: n.isFinalized,
+    finalizedDate: n.finalizedDate,
+    status: n.status,
   };
 }
+
 
 
 // -------------------------------------
@@ -225,10 +362,9 @@ function buildTableHTML(results, containerId = "searchResults") {
 	});
 
 
-    tr.addEventListener("click", async () => {
+        tr.addEventListener("click", async () => {
       try {
         const eventID = getSafeEventID(event);
-
 
         if (!eventID) {
           console.warn("⚠️ No eventID found for clicked row:", event);
@@ -236,24 +372,51 @@ function buildTableHTML(results, containerId = "searchResults") {
           return;
         }
 
-        const res = await fetch(
-          `http://localhost:3000/api/events/${eventID}`
-        );
-        if (!res.ok)
-          throw new Error(`Server responded with ${res.status}`);
 
-        const evtDetail = await res.json();   // <-- FIXED: renamed
+		// ⭐ NEW — load the FULL POST-EVENT REPORT (with drinkSales!)
+		const res = await fetch(`${API_BASE}/api/events/${eventID}/report`);
+		if (!res.ok) throw new Error(`Server responded with ${res.status}`);
 
-		const empRes = await fetch(
-		  `http://localhost:3000/api/events/${eventID}/employees`
-		);
-		const empData = await empRes.json();
+		const report = await res.json();
 
-		evtDetail.eventEmployees = empData;
+		// The report includes:
+		// report.event
+		// report.sales
+		// report.drinkSales
+		// report.supplies
+		// report.discounts
+		// report.additionalFees
+		// report.tips
+		// report.labor
+		// report.totals
 
-		console.log("loadEventIntoDashboard received:", evtDetail);
-		loadEventIntoDashboard(evtDetail);    // <-- FIXED
-				
+		// 🧩 Normalize event core fields
+		const fullEvent = normalizeEvent(report.event);
+
+		// 🧩 Attach all report fields so loadEventIntoDashboard can display them
+		fullEvent.sales = report.sales;
+		fullEvent.drinkSales = report.drinkSales;
+		fullEvent.supplies = report.supplies;
+		fullEvent.discounts = report.discounts;
+		fullEvent.additionalFees = report.additionalFees;
+		fullEvent.tips = report.tips;
+		fullEvent.eventEmployees = report.labor;
+		fullEvent.totals = report.totals;
+
+		console.log("⭐ FULL REPORT EVENT LOADED:", fullEvent);
+
+		loadEventIntoDashboard(fullEvent);
+
+	  } catch (err) {
+		console.error("❌ Error loading event details:", err);
+		alert("Could not load event details.");
+	  }
+	});
+
+		
+		
+		
+		
       } catch (err) {
         console.error("❌ Error loading event details:", err);
         alert("Could not load event details.");
@@ -890,7 +1053,7 @@ async function saveTemplate() {
 
   try {
     const response = await fetch(
-      "http://localhost:3000/api/formtemplates",
+      "http://localhost:3000/api/formTemplates",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -909,6 +1072,25 @@ async function saveTemplate() {
     console.error("Fetch failed:", err);
     alert("Network or server error while saving template.");
   }
+}
+
+function clearManageSearch() {
+  // Clear input fields
+  document.getElementById('manageSearchName').value = '';
+  document.getElementById('manageSearchDate').value = '';
+  document.getElementById('manageSearchID').value = '';
+
+  // Clear results table
+  const container = document.getElementById('manageResults');
+  container.innerHTML = '';
+
+  // Optionally reset filter highlighting (if your UI uses active styles)
+  if (typeof resetFilterButtons === "function") {
+    resetFilterButtons();
+  }
+
+  // Provide user feedback (optional)
+  console.log("Manage search cleared.");
 }
 
 async function loadTemplates() {
@@ -938,7 +1120,7 @@ async function loadTemplates() {
 // 🧩 Load templates into Add Event dropdown
 async function populateTemplateDropdown() {
   try {
-    const res = await fetch("http://localhost:3000/api/formtemplates");
+    const res = await fetch("http://localhost:3000/api/formTemplates");
     let templates = await res.json();
 
     templates = toCamelCaseKeys(templates);
@@ -1175,214 +1357,496 @@ function rebuildAddEventForm(template) {
   formContainer.appendChild(btnContainer);
   formContainer.onsubmit = submitEvent;
 }
+//------------------------
+//Helper Function For Currency
+//------------------------
+function fmt(x) {
+  return Number(x).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+function createCollapsibleCard(id, title, contentData) {
+  if (!contentData) return null;
+
+  // -----------------------------
+  // Card wrapper
+  // -----------------------------
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("collapsible-card");
+  wrapper.id = id;  // ⭐ critical for scroll + anchors
+
+  // -----------------------------
+  // Header
+  // -----------------------------
+  const header = document.createElement("button");
+  header.classList.add("collapsible-header");
+  header.type = "button";
+  header.innerHTML = `
+    <span class="collapsible-title">${title}</span>
+    <span class="collapsible-icon">▼</span>
+  `;
+
+  // -----------------------------
+  // Content container
+  // -----------------------------
+  const content = document.createElement("div");
+  content.classList.add("collapsible-content");
+  content.style.display = "none";
+
+  // Helper: label formatting
+  const formatLabel = (key) =>
+    String(key)
+      .replace(/([A-Z])/g, " $1")
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^./, (c) => c.toUpperCase());
+
+  // Helper: value formatting
+  const renderValue = (value) => {
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object")
+      return Object.entries(value)
+        .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
+        .join("; ");
+    return String(value);
+  };
+
+  // -----------------------------
+  // ⭐ NEW: If contentData is a STRING → treat as preformatted HTML
+  // -----------------------------
+  if (typeof contentData === "string") {
+    content.innerHTML = contentData;
+  }
+
+  // -----------------------------
+  // ⭐ If contentData is ARRAY → table rendering
+  // -----------------------------
+  else if (Array.isArray(contentData)) {
+    if (!contentData.length) {
+      content.textContent = "No data available.";
+    } else if (typeof contentData[0] === "object") {
+      const table = document.createElement("table");
+      table.classList.add("lemondrip-table");
+
+      const columns = Object.keys(contentData[0]);
+
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      columns.forEach((key) => {
+        const th = document.createElement("th");
+        th.textContent = formatLabel(key);
+        headerRow.appendChild(th);
+      });
+
+      const tbody = table.createTBody();
+      contentData.forEach((row) => {
+        const tr = tbody.insertRow();
+        columns.forEach((key) => {
+          const td = tr.insertCell();
+          const val = row[key];
+          td.textContent = val ?? "";
+        });
+      });
+
+      content.appendChild(table);
+    } else {
+      // Array of primitives
+      const ul = document.createElement("ul");
+      contentData.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = renderValue(item);
+        ul.appendChild(li);
+      });
+      content.appendChild(ul);
+    }
+  }
+
+  // -----------------------------
+  // ⭐ Object (key/value list)
+  // -----------------------------
+  else if (typeof contentData === "object") {
+    const entries = Object.entries(contentData).filter(
+      ([_, v]) => v !== null && v !== "" && v !== undefined
+    );
+
+    const infoList = document.createElement("div");
+    infoList.classList.add("info-list");
+
+    entries.forEach(([key, value]) => {
+      const row = document.createElement("div");
+      row.classList.add("info-row");
+
+      const label = document.createElement("span");
+      label.classList.add("info-key");
+      label.textContent = formatLabel(key);
+
+      const val = document.createElement("span");
+      val.classList.add("info-value");
+      val.textContent = renderValue(value);
+
+      row.appendChild(label);
+      row.appendChild(val);
+      infoList.appendChild(row);
+    });
+
+    content.appendChild(infoList);
+  }
+
+  // -----------------------------
+  // Expand / collapse behavior
+  // -----------------------------
+  header.addEventListener("click", () => {
+    const isOpen = content.style.display === "block";
+    content.style.display = isOpen ? "none" : "block";
+
+    const icon = header.querySelector(".collapsible-icon");
+    if (icon) icon.textContent = isOpen ? "▼" : "▲";
+  });
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(content);
+  return wrapper;
+}
+
 
 // ---------------------------
 // 📊 Clean Event Dashboard Loader
 // ---------------------------
-function loadEventIntoDashboard(evt) {
+async function loadEventIntoDashboard(evt) {
   if (!evt) {
     console.warn("⚠️ loadEventIntoDashboard called with no event");
     return;
   }
 
-  // Store globally for Edit / Report / Finalize
-  window.activeEvent = evt;
+  console.log("🚨 DASHBOARD RECEIVED:", evt);
 
-  // -----------------------------
-  // 🔍 Normalize Event Fields
-  // -----------------------------
-  const eventID =
-    evt.eventID ||
-    evt.EventID ||
-    evt["Event ID"];
+  // Normalize core fields
+  const event = normalizeEvent(evt);
+  console.log("🚨 AFTER NORMALIZE:", event);
 
-  const eventName =
-    evt.eventName ||
-    evt.EventName ||
-    evt.EventInfo?.eventName ||
-    "Unnamed Event";
+  window.activeEvent = event;
+  window.currentEventId = event.eventID;
 
-  const eventDate =
-    evt.eventDate ||
-    evt.EventDate ||
-    evt.EventInfo?.eventDate ||
-    "";
+  const eventID = event.eventID;
+  const eventName = event.eventName || "Unnamed Event";
+  const eventDate = event.eventDate || "";
+  const coordinator = event.coordinator || "";
+  const eventLocation = event.eventLocation || "";
+  const status = event.status || "";
 
-  const coordinator =
-    evt.coordinator ||
-    evt.EventCoordinator ||
-    evt.EventInfo?.EventCoordinator ||
-    "";
-
-  const eventLocation =
-    evt.eventLocation ||
-    evt.EventLocation ||
-    evt.EventInfo?.EventLocation ||
-    evt.eventLocation ||
-    "";
-
-  const status =
-    evt.status ||
-    evt.Status ||
-    evt.EventInfo?.Status ||
-    "";
-
-  // -----------------------------
-  // 🧭 Navigate to dashboard
-  // -----------------------------
+  // Navigate UI
   navigateTo("eventDashboardSection");
-  window.currentEventId = getSafeEventID(evt);
 
-
-  // Load Labor UI
-  loadEmployeesForDropdown();
-  loadLaborForEvent(window.currentEventId);
+  // Load employee dropdown + labor
+  if (typeof loadEmployeesForDropdown === "function") loadEmployeesForDropdown();
+  if (typeof loadLaborForEvent === "function") loadLaborForEvent(eventID);
 
   const container = document.getElementById("eventDashboardContainer");
-  if (!container) {
-    console.warn("⚠️ #eventDashboardContainer not found");
-    return;
-  }
+  if (!container) return console.warn("⚠️ #eventDashboardContainer not found");
   container.innerHTML = "";
 
   // -----------------------------
-  // 🏷 HEADER SETUP
+  // HEADER
   // -----------------------------
   const headerTitle = document.getElementById("dashEventName");
   const headerDate = document.getElementById("dashEventDate");
   const finalizedIndicator = document.getElementById("dashFinalizedIndicator");
 
-  headerTitle.textContent = eventName;
-  headerDate.textContent = eventDate;
-  finalizedIndicator.innerHTML = "";
+  if (headerTitle) headerTitle.textContent = eventName;
+  if (headerDate) headerDate.textContent = eventDate;
+  if (finalizedIndicator) finalizedIndicator.innerHTML = "";
 
-  // Finalized badge
-  if (evt.isFinalized === 1) {
-    const finalBadge = document.createElement("div");
-    finalBadge.classList.add("finalized-badge-large");
-    finalBadge.textContent = "FINALIZED";
-    finalizedIndicator.appendChild(finalBadge);
+  if (event.isFinalized === 1) {
+    const badge = document.createElement("div");
+    badge.classList.add("finalized-badge-large");
+    badge.textContent = "FINALIZED";
+    finalizedIndicator.appendChild(badge);
 
-    if (evt.finalizedDate) {
-      const finalDate = document.createElement("div");
-      finalDate.style.fontSize = "0.85rem";
-      finalDate.style.color = "#444";
-      finalDate.style.marginTop = "4px";
-      finalDate.textContent = `Finalized on: ${evt.finalizedDate}`;
-      finalizedIndicator.appendChild(finalDate);
+    if (event.finalizedDate) {
+      const fd = document.createElement("div");
+      fd.style.fontSize = "0.85rem";
+      fd.style.color = "#444";
+      fd.style.marginTop = "4px";
+      fd.textContent = `Finalized on: ${event.finalizedDate}`;
+      finalizedIndicator.appendChild(fd);
     }
   }
 
   // -----------------------------
-  // 🟦 BUTTONS AT TOP OF DASHBOARD
+  // DASHBOARD BUTTONS
   // -----------------------------
   const buttonContainer = document.querySelector(".dashboard-buttons");
-  buttonContainer.innerHTML = ""; // Clear previous
+  if (buttonContainer) {
+    buttonContainer.innerHTML = "";
 
-  // --- Finalize Event ---
-  const finalizeBtn = document.createElement("button");
-  finalizeBtn.textContent = "✔️ Finalize Event";
-  finalizeBtn.classList.add("btn-primary");
-  finalizeBtn.addEventListener("click", async () => {
-    if (!confirm("Finalize this event? This will save all calculations.")) return;
+    // Finalize Event
+    const finalizeBtn = document.createElement("button");
+    finalizeBtn.textContent = "✔️ Finalize Event";
+    finalizeBtn.classList.add("btn-primary");
+    finalizeBtn.addEventListener("click", async () => {
+      if (!confirm("Finalize this event?")) return;
+      const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, { method: "PUT" });
+      const out = await res.json();
+      if (!res.ok) return alert(out.error || "Could not finalize.");
+      alert("Event finalized!");
 
-    try {
-      const res = await fetch(`http://localhost:3000/api/events/${eventID}/finalize`, {
-        method: "PUT"
+      const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`).then(r => r.json());
+      loadEventIntoDashboard(updated.event);
+    });
+
+    // Pull Square Sales
+    const squareBtn = document.createElement("button");
+    squareBtn.textContent = "🔄 Pull Square Sales";
+    squareBtn.classList.add("btn-primary");
+    squareBtn.addEventListener("click", async () => {
+      await pullSquareSales(eventID);
+      const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`).then(r => r.json());
+      loadEventIntoDashboard({
+        ...updated.event,
+        drinkSales: updated.drinkSales,
+        additionalFees: updated.additionalFees,
+        discounts: updated.discounts,
+        tips: updated.tips,
+        supplies: updated.supplies,
+        eventEmployees: updated.labor,
+        totals: updated.totals,
+        sales: updated.sales
       });
-      const data = await res.json();
+    });
 
-      if (!res.ok) {
-        alert(data.error || "Could not finalize event.");
+    // Edit Event
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "✏️ Edit Event";
+    editBtn.classList.add("btn-secondary");
+    editBtn.addEventListener("click", () => editEvent(event));
+
+    // Post-event report
+    const reportBtn = document.createElement("button");
+    reportBtn.textContent = "📊 Open Post-Event Report";
+    reportBtn.classList.add("btn-primary");
+    reportBtn.addEventListener("click", () => openPostEventReport(event));
+
+    buttonContainer.appendChild(finalizeBtn);
+    buttonContainer.appendChild(squareBtn);
+    buttonContainer.appendChild(editBtn);
+    buttonContainer.appendChild(reportBtn);
+  }
+
+  // -----------------------------
+  // EVENT SUMMARY CARD
+  // -----------------------------
+  const summaryData = {
+    EventID: eventID,
+    Date: eventDate,
+    Location: eventLocation,
+    Coordinator: coordinator,
+    Status: status,
+    EventType: event.eventType || "",
+    NumDays: event.numDays ?? "",
+  };
+
+  const summaryHTML = `
+    ${Object.entries(summaryData).map(([k, v]) =>
+      `<div><strong>${k}:</strong> ${v ?? ""}</div>`
+    ).join("")}
+    <div class="event-summary-links" style="margin-top:12px;">
+      <button class="btn-inline" data-target="drinkSalesCard">Drink Sales →</button><br>
+      <button class="btn-inline" data-target="additionalFeesCard">Additional Fees →</button><br>
+      <button class="btn-inline" data-target="discountsCard">Discounts →</button><br>
+      <button class="btn-inline" data-target="tipsCard">Tips →</button><br>
+      <button class="btn-inline" data-target="suppliesCard">Supplies →</button>
+    </div>
+  `;
+
+  container.appendChild(createCollapsibleCard("eventSummaryCard", "Event Summary", summaryHTML));
+
+  // -----------------------------
+  // CUSTOM FIELDS
+  // -----------------------------
+  if (event.customFields) {
+    try {
+      const parsed = typeof event.customFields === "string"
+        ? JSON.parse(event.customFields)
+        : event.customFields;
+
+      if (parsed && Object.keys(parsed).length) {
+        container.appendChild(
+          createCollapsibleCard("customFieldsCard", "Custom Fields", parsed)
+        );
+      }
+    } catch (err) {
+      console.error("❌ customFields parse error:", err);
+    }
+  }
+
+  // -----------------------------
+  // DRINK SALES CARD
+  // -----------------------------
+  let drinkHTML = "";
+  if (!event.drinkSales || event.drinkSales.length === 0) {
+    drinkHTML = "<p>No drink sales recorded.</p>";
+  } else {
+    const totalRevenue = event.drinkSales.reduce((sum, r) => sum + Number(r.totalCost || 0), 0);
+    const totalQty = event.drinkSales.reduce((sum, r) => sum + Number(r.quantitySold || 0), 0);
+
+    drinkHTML = `
+      <div><strong>Total Drinks Sold:</strong> ${totalQty}</div>
+      <div><strong>Total Drink Revenue:</strong> ${fmt(totalRevenue)}</div>
+      <hr>
+      ${buildTableHTMLString(event.drinkSales)}
+    `;
+  }
+
+  container.appendChild(
+    createCollapsibleCard("drinkSalesCard", "Itemized Drink Sales", drinkHTML)
+  );
+
+  // -----------------------------
+  // ADDITIONAL FEES
+  // -----------------------------
+  let feeHTML = "";
+  if (!event.additionalFees || event.additionalFees.length === 0) {
+    feeHTML = "<p>No additional fees recorded.</p>";
+  } else {
+    const totalFees = event.additionalFees.reduce((sum, r) => sum + Number(r.feeAmount || 0), 0);
+    feeHTML = `
+      <div><strong>Total Additional Fees:</strong> ${fmt(totalFees)}</div>
+      <hr>
+      ${buildTableHTMLString(event.additionalFees)}
+    `;
+  }
+
+  container.appendChild(
+    createCollapsibleCard("additionalFeesCard", "Additional Fees", feeHTML)
+  );
+
+  // -----------------------------
+  // DISCOUNTS
+  // -----------------------------
+  let discHTML = "";
+  if (!event.discounts || event.discounts.length === 0) {
+    discHTML = "<p>No discounts recorded.</p>";
+  } else {
+    const totalDiscounts = event.discounts.reduce(
+      (sum, r) => sum + Number(r.discountAmount || 0), 0
+    );
+
+    discHTML = `
+      <div><strong>Total Discounts:</strong> ${fmt(totalDiscounts)}</div>
+      <hr>
+      ${buildTableHTMLString(event.discounts)}
+    `;
+  }
+
+  container.appendChild(
+    createCollapsibleCard("discountsCard", "Discounts", discHTML)
+  );
+
+  // -----------------------------
+  // TIPS
+  // -----------------------------
+  let tipsHTML = "";
+  if (!event.tips || event.tips.length === 0) {
+    tipsHTML = "<p>No tips recorded.</p>";
+  } else {
+    const totalTips = event.tips.reduce((sum, r) => sum + Number(r.tipAmount || 0), 0);
+    tipsHTML = `
+      <div><strong>Total Tips:</strong> ${fmt(totalTips)}</div>
+      <hr>
+      ${buildTableHTMLString(event.tips)}
+    `;
+  }
+
+  container.appendChild(
+    createCollapsibleCard("tipsCard", "Tips", tipsHTML)
+  );
+
+  // -----------------------------
+  // SUPPLIES
+  // -----------------------------
+  let suppliesHTML = "";
+  if (!event.supplies || event.supplies.length === 0) {
+    suppliesHTML = "<p>No supplies recorded.</p>";
+  } else {
+    const suppliesTotal = event.supplies.reduce((sum, r) => sum + Number(r.totalCost || 0), 0);
+    suppliesHTML = `
+      <div><strong>Total Supply Cost:</strong> ${fmt(suppliesTotal)}</div>
+      <hr>
+      ${buildTableHTMLString(event.supplies)}
+    `;
+  }
+
+  container.appendChild(
+    createCollapsibleCard("suppliesCard", "Supplies", suppliesHTML)
+  );
+
+  // -----------------------------
+  // EMPLOYEES
+  // -----------------------------
+  if (event.eventEmployees && event.eventEmployees.length) {
+    container.appendChild(
+      createCollapsibleCard("employeesCard", "Employees", event.eventEmployees)
+    );
+  }
+
+  // -----------------------------
+  // PROFIT SUMMARY
+  // -----------------------------
+  if (event.totals) {
+    const t = event.totals;
+    const profit = t.drinkRevenue + t.tipsTotal - t.suppliesTotal - t.additionalFees - t.discounts - t.laborTotal;
+
+    const profitHTML = `
+      <div><strong>Drink Revenue:</strong> ${fmt(t.drinkRevenue)}</div>
+      <div><strong>Tips:</strong> ${fmt(t.tipsTotal)}</div>
+      <div><strong>Supplies:</strong> -${fmt(t.suppliesTotal)}</div>
+      <div><strong>Additional Fees:</strong> -${fmt(t.additionalFees)}</div>
+      <div><strong>Discounts:</strong> -${fmt(t.discounts)}</div>
+      <div><strong>Labor:</strong> -${fmt(t.laborTotal)}</div>
+      <hr>
+      <div style="font-size:1.2rem;">
+        <strong>NET PROFIT:</strong>
+        <span style="color:${profit >= 0 ? "green" : "red"};">
+          ${fmt(profit)}
+        </span>
+      </div>
+    `;
+
+    container.appendChild(
+      createCollapsibleCard("profitSummaryCard", "Profit Summary", profitHTML)
+    );
+  }
+
+  // -----------------------------
+  // SAFE NAV LINKS
+  // -----------------------------
+  document.querySelectorAll(".event-summary-links .btn-inline").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const targetId = btn.dataset.target;
+      const target = document.getElementById(targetId);
+
+      if (!target) {
+        console.warn("Navigation target not found:", targetId);
         return;
       }
 
-      alert("Event is finalized!");
+      const content = target.querySelector(".collapsible-content");
+      if (content) content.style.display = "block";
 
-      const updatedEventRes = await fetch(
-        `http://localhost:3000/api/events/${eventID}`
-      );
-      const updatedEvent = await updatedEventRes.json();
-      loadEventIntoDashboard(updatedEvent);
-    } catch (err) {
-      console.error("Finalize error:", err);
-      alert("Error finalizing event.");
-    }
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
-
-  // --- Pull Square Sales ---
-  const squareBtn = document.createElement("button");
-  squareBtn.textContent = "🔄 Pull Square Sales";
-  squareBtn.classList.add("btn-primary");
-  squareBtn.addEventListener("click", async () => {
-    await pullSquareSales(eventID);
-  });
-
-  // --- Edit Event ---
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "✏️ Edit Event";
-  editBtn.classList.add("btn-secondary");
-  editBtn.addEventListener("click", () => {
-    editEvent(evt);
-  });
-
-  // --- Open Post Event Report ---
-  const reportBtn = document.createElement("button");
-  reportBtn.textContent = "📊 Open Post-Event Report";
-  reportBtn.classList.add("btn-primary");
-  reportBtn.addEventListener("click", () => {
-    openPostEventReport(evt);
-  });
-
-  // Append buttons in order
-  buttonContainer.appendChild(finalizeBtn);
-  buttonContainer.appendChild(squareBtn);
-  buttonContainer.appendChild(editBtn);
-  buttonContainer.appendChild(reportBtn);
-
-  // -----------------------------
-  // 🗂 EVENT SUMMARY CARD
-  // -----------------------------
-  const summaryData = {
-    EventID: eventID ?? "",
-    Date: eventDate || "",
-    Location: eventLocation || "",
-    Coordinator: coordinator || "",
-    Status: status || "",
-    EventType: evt.eventType || evt.EventType || "",
-    NumDays: evt.numDays ?? evt.NumDays ?? ""
-  };
-
-  const summaryCard = createCollapsiblecard("Event Summary", summaryData);
-  if (summaryCard) container.appendChild(summaryCard);
-
-  // -----------------------------
-  // 🟨 CUSTOM FIELDS CARD
-  // -----------------------------
-  if (evt.customFields) {
-    try {
-      const parsed =
-        typeof evt.customFields === "string"
-          ? JSON.parse(evt.customFields)
-          : evt.customFields;
-
-      if (parsed && Object.keys(parsed).length) {
-        const customCard = createCollapsiblecard("Custom Fields", parsed);
-        container.appendChild(customCard);
-      }
-    } catch (err) {
-      console.error("❌ Failed to parse customFields:", err);
-    }
-  }
-
-  // -----------------------------
-  // 👥 EVENT EMPLOYEES (legacy)
-  // -----------------------------
-  if (Array.isArray(evt.eventEmployees) && evt.eventEmployees.length) {
-    const empCard = createCollapsiblecard("Employees", evt.eventEmployees);
-    if (empCard) container.appendChild(empCard);
-  }
 }
+
+
+
+
 
 
 async function pullSquareSales(eventID) {
@@ -1425,6 +1889,8 @@ async function pullSquareSales(eventID) {
 // ---------------------------
 async function openPostEventReport(eventData) {
   try {
+    eventData = normalizeEvent(eventData);
+
     const eventID =
       eventData.eventID ||
       eventData.EventID ||
@@ -1437,7 +1903,7 @@ async function openPostEventReport(eventData) {
     }
 
     const res = await fetch(
-      `http://localhost:3000/api/events/${eventID}/report`
+      `${API_BASE}/api/events/${eventID}/report`
     );
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1446,19 +1912,19 @@ async function openPostEventReport(eventData) {
 
     const report = await res.json();
     window.currentPostEventReport = report;
-	
-    // ⭐ NEW: populate UI correctly
+
+    // ⭐ populate UI correctly
     document.getElementById("postEventTitle").textContent =
       report.eventInfo.eventName || "Post Event Report";
-	  
+
     renderPostEventReport(report);
     navigateTo("postEventReportSection");
   } catch (err) {
-    console.error(
-      "❌ Error loading post-event report:", err);
+    console.error("❌ Error loading post-event report:", err);
     alert("Failed to load post-event report. Check console for details.");
   }
 }
+
 /* ============================================================
    🟢 FINAL — Option B
    Unified Post-Event Report Loader + Renderer
@@ -1750,6 +2216,26 @@ async function deleteLaborShift(shiftID) {
 //---------------------------------------------------
 // Helper Functions
 //-----------------------------------------------------
+function buildTableHTMLString(rows) {
+  if (!rows || rows.length === 0) {
+    return "<p>No data available.</p>";
+  }
+
+  const cols = Object.keys(rows[0]);
+  let html = `<table class="lemondrip-table"><thead><tr>`;
+
+  html += cols.map(col => `<th>${col}</th>`).join("");
+  html += `</tr></thead><tbody>`;
+
+  for (const row of rows) {
+    html += "<tr>";
+    html += cols.map(col => `<td>${row[col] ?? ""}</td>`).join("");
+    html += "</tr>";
+  }
+
+  html += "</tbody></table>";
+  return html;
+}
 
 function buildCustomFieldsTable(custom) {
   if (!custom || typeof custom !== "object" || !Object.keys(custom).length) {
@@ -1989,173 +2475,7 @@ async function uploadEventPermits(eventID) {
   console.log("Permit upload result:", result);
 }
 
-function createCollapsiblecard(title, data) {
-  if (!data) return null;
 
-  const isArray = Array.isArray(data);
-  const isObject = !isArray && typeof data === "object";
-
-  // If it's an object, filter out empty/null-ish values
-  let entries = [];
-  if (isObject) {
-    entries = Object.entries(data).filter(([_, v]) => {
-      if (v === null || v === undefined) return false;
-      if (typeof v === "string" && v.trim() === "") return false;
-      if (Array.isArray(v) && v.length === 0) return false;
-      return true;
-    });
-    if (!entries.length) return null;
-  }
-
-  // ---------------------------
-  // Helper: label formatting
-  // ---------------------------
-  const formatLabel = (key) =>
-    String(key)
-      .replace(/([A-Z])/g, " $1")
-      .replace(/_/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/^./, (c) => c.toUpperCase());
-
-  // ---------------------------
-  // Helper: value formatting
-  // ---------------------------
-  const renderValue = (value) => {
-    if (value === null || value === undefined) return "";
-    if (Array.isArray(value)) {
-      // array of primitives
-      if (value.every((v) => typeof v !== "object")) {
-        return value.join(", ");
-      }
-      // array of objects → summarize
-      return value
-        .map((row) =>
-          Object.entries(row || {})
-            .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
-            .join("; ")
-        )
-        .join(" | ");
-    }
-    if (typeof value === "object") {
-      return Object.entries(value)
-        .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
-        .join("; ");
-    }
-    return String(value);
-  };
-
-  // ---------------------------
-  // Card shell
-  // ---------------------------
-  const wrapper = document.createElement("div");
-  wrapper.classList.add("collapsible-card");
-
-  const header = document.createElement("button");
-  header.classList.add("collapsible-header");
-  header.type = "button";
-  header.innerHTML = `
-    <span class="collapsible-title">${title}</span>
-    <span class="collapsible-icon">▼</span>
-  `;
-
-  const content = document.createElement("div");
-  // keep existing class name for CSS compatibility
-  content.classList.add("collapsible-content");
-  content.style.display = "none";
-
-  // ---------------------------
-  // Body content: arrays vs objects
-  // ---------------------------
-  if (isArray) {
-    const arr = data;
-
-    if (!arr.length) {
-      content.textContent = "No data available.";
-    } else if (typeof arr[0] === "object" && arr[0] !== null) {
-      // Array of objects → table
-      const table = document.createElement("table");
-      table.classList.add("lemondrip-table");
-
-      const thead = table.createTHead();
-      const headerRow = thead.insertRow();
-
-      const columns = Object.keys(arr[0]);
-      columns.forEach((key) => {
-        const th = document.createElement("th");
-        th.textContent = formatLabel(key);
-        headerRow.appendChild(th);
-      });
-
-      const tbody = table.createTBody();
-      arr.forEach((row) => {
-        const tr = tbody.insertRow();
-        columns.forEach((key) => {
-          const td = tr.insertCell();
-          const v = row[key];
-
-          if (typeof v === "string" && /^https?:\/\//i.test(v)) {
-            // detect URLs and render as links
-            td.innerHTML = `<a href="${v}" target="_blank">Open</a>`;
-          } else {
-            td.textContent = v ?? "";
-          }
-        });
-      });
-
-      content.appendChild(table);
-    } else {
-      // Array of primitives → list
-      const ul = document.createElement("ul");
-      arr.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = renderValue(item);
-        ul.appendChild(li);
-      });
-      content.appendChild(ul);
-    }
-  } else if (isObject) {
-    const infoList = document.createElement("div");
-    infoList.classList.add("info-list");
-
-    entries.forEach(([key, value]) => {
-      const row = document.createElement("div");
-      row.classList.add("info-row");
-
-      const labelSpan = document.createElement("span");
-      labelSpan.classList.add("info-key");
-      labelSpan.textContent = formatLabel(key);
-
-      const valueSpan = document.createElement("span");
-      valueSpan.classList.add("info-value");
-      valueSpan.textContent = renderValue(value);
-
-      row.appendChild(labelSpan);
-      row.appendChild(valueSpan);
-      infoList.appendChild(row);
-    });
-
-    content.appendChild(infoList);
-  } else {
-    content.textContent = renderValue(data);
-  }
-
-  // ---------------------------
-  // Expand / collapse behavior
-  // ---------------------------
-  header.addEventListener("click", () => {
-    const isOpen = content.style.display === "block";
-    content.style.display = isOpen ? "none" : "block";
-
-    const icon = header.querySelector(".collapsible-icon");
-    if (icon) icon.textContent = isOpen ? "▼" : "▲";
-  });
-
-  wrapper.appendChild(header);
-  wrapper.appendChild(content);
-
-  return wrapper;
-}
 
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -2176,3 +2496,168 @@ document
         ? "block"
         : "none";
   });
+// -----------------------------
+// 👷 Labor / Employee Hours Module
+// -----------------------------
+
+async function loadEmployeesForDropdown() {
+  const select = document.getElementById("laborEmployeeSelect");
+  if (!select) return;
+
+  select.innerHTML = '<option value="">Select employee...</option>';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/employees`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const rows = Array.isArray(data) ? data : (data.employees || []);
+    rows.forEach(emp => {
+      const opt = document.createElement("option");
+      opt.value = emp.EmployeeID || emp.employeeID;
+      opt.textContent = emp.EmployeeName || emp.name;
+      if (emp.defaultWage || emp.DefaultWage) {
+        opt.dataset.wage = emp.defaultWage || emp.DefaultWage;
+      }
+      select.appendChild(opt);
+    });
+  } catch (err) {
+    console.error("❌ loadEmployeesForDropdown error:", err);
+  }
+}
+
+async function loadLaborForEvent(eventID) {
+  const container = document.getElementById("laborTableContainer");
+  if (!container || !eventID) return;
+
+  container.innerHTML = "Loading labor...";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/employees`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+
+    if (!rows || !rows.length) {
+      container.innerHTML = "<p>No shifts recorded.</p>";
+      return;
+    }
+
+    let html = `
+      <table class="lemondrip-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Role</th>
+            <th>Hours</th>
+            <th>Wage</th>
+            <th>Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    rows.forEach(r => {
+      html += `
+        <tr>
+          <td>${r.employeeName || r.EmployeeName || ""}</td>
+          <td>${r.role || ""}</td>
+          <td>${r.hoursWorked ?? ""}</td>
+          <td>${r.hourlyRate ?? ""}</td>
+          <td>${r.totalPay ?? ""}</td>
+          <td>
+            <button class="delete-btn" onclick="deleteLaborShift(${r.eventEmployeeID})">✕</button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (err) {
+    console.error("❌ loadLaborForEvent error:", err);
+    container.innerHTML = "<p>Error loading labor data.</p>";
+  }
+}
+
+function updateLaborTotal() {
+  const hoursEl = document.getElementById("laborHours");
+  const wageEl = document.getElementById("laborWage");
+  const totalEl = document.getElementById("laborTotal");
+  if (!hoursEl || !wageEl || !totalEl) return;
+
+  const hrs = Number(hoursEl.value) || 0;
+  const wage = Number(wageEl.value) || 0;
+  totalEl.value = (hrs * wage).toFixed(2);
+}
+
+async function saveLaborShift() {
+  const eventID = window.currentEventId;
+  if (!eventID) {
+    alert("No active event selected.");
+    return;
+  }
+
+  const employeeSelect = document.getElementById("laborEmployeeSelect");
+  const hoursEl = document.getElementById("laborHours");
+  const wageEl = document.getElementById("laborWage");
+  const roleEl = document.getElementById("laborRole");
+  const notesEl = document.getElementById("laborNotes");
+
+  if (!employeeSelect || !hoursEl) return;
+
+  const payload = {
+    employeeID: employeeSelect.value,
+    hoursWorked: hoursEl.value,
+    hourlyRate: wageEl ? wageEl.value : 0,
+    role: roleEl ? roleEl.value : "",
+    notes: notesEl ? notesEl.value : ""
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/employees`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // reset inputs
+    hoursEl.value = "";
+    if (wageEl) wageEl.value = "";
+    if (roleEl) roleEl.value = "";
+    if (notesEl) notesEl.value = "";
+    updateLaborTotal();
+
+    await loadLaborForEvent(eventID);
+  } catch (err) {
+    console.error("❌ saveLaborShift error:", err);
+    alert("Could not save labor shift.");
+  }
+}
+
+async function deleteLaborShift(shiftID) {
+  const eventID = window.currentEventId;
+  if (!eventID || !shiftID) return;
+
+  if (!confirm("Delete this shift?")) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/employees/${shiftID}`, {
+      method: "DELETE"
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadLaborForEvent(eventID);
+  } catch (err) {
+    console.error("❌ deleteLaborShift error:", err);
+    alert("Could not delete shift.");
+  }
+}
+
+// Wire up labor total auto-update if fields exist
+window.addEventListener("DOMContentLoaded", () => {
+  const hoursEl = document.getElementById("laborHours");
+  const wageEl = document.getElementById("laborWage");
+  if (hoursEl) hoursEl.addEventListener("input", updateLaborTotal);
+  if (wageEl) wageEl.addEventListener("input", updateLaborTotal);
+});

@@ -11,7 +11,7 @@ let activeEvent = null;
 let currentAction = "manage";
 let events = [];
 let formTemplate = { templateName: "Custom Event Form", fields: [] };
-
+let lastLoadedEvents = [];
 
 
 
@@ -36,78 +36,114 @@ function normalizeEvent(e) {
       status: "",
       isFinalized: 0,
       finalizedDate: null,
+
+      // Post-event fields (always present)
+      drinkSales: [],
+      additionalFees: [],
+      discounts: [],
+      supplies: [],
+      tips: [],
+      eventEmployees: [],
+      totals: null,
+      sales: null,
+      customFields: {},
+      squareLocationId: null,
     };
   }
 
-  const info = e.EventInfo || e;
+  const info = e.EventInfo ?? e;
 
   const normalized = {
+    // ------------ BASIC EVENT METADATA ------------
     eventID:
       e.eventID ??
       e.EventID ??
-      e["Event ID"] ??
       info.eventID ??
       info.EventID ??
+      e["Event ID"] ??
       null,
 
     eventName:
       info.eventName ??
       info.EventName ??
-      info["Event Name"] ??
+      e.eventName ??
+      e.EventName ??
       "",
 
     eventDate:
       info.eventDate ??
       info.EventDate ??
-      info["Event Date"] ??
+      e.eventDate ??
+      e.EventDate ??
       "",
 
     coordinator:
       info.coordinator ??
-      info.EventCoordinator ??
-      info["Event coordinator"] ??
+      info.Coordinator ??
+      e.coordinator ??
       "",
 
     eventLocation:
       info.eventLocation ??
       info.EventLocation ??
-      info["Event Location"] ??
+      info.location ??
+      e.eventLocation ??
       "",
 
     eventType:
       info.eventType ??
       info.EventType ??
+      e.eventType ??
       "",
 
     numDays:
       info.numDays ??
       info.NumDays ??
+      e.numDays ??
       "",
 
     status:
       info.status ??
-      info.Status ??
-      info["Event status"] ??
+      info.EventStatus ??
+      e.status ??
       "",
 
-    isFinalized: Number(info.isFinalized) === 1 ? 1 : 0,
+    isFinalized:
+      Number(info.isFinalized ?? info.IsFinalized ?? e.isFinalized ?? 0),
 
     finalizedDate:
       info.finalizedDate ??
       info.FinalizedDate ??
-      info["finalizedDate"] ??
+      e.finalizedDate ??
       null,
 
     squareLocationId:
       info.squareLocationId ??
       info.SquareLocationID ??
-      info["squareLocationId"] ??
+      e.squareLocationId ??
+      e.SquareLocationID ??
       null,
+
+    // ------------ POST-EVENT REPORT FIELDS ------------
+    drinkSales: Array.isArray(e.drinkSales) ? e.drinkSales : [],
+    additionalFees: Array.isArray(e.additionalFees) ? e.additionalFees : [],
+    discounts: Array.isArray(e.discounts) ? e.discounts : [],
+    supplies: Array.isArray(e.supplies) ? e.supplies : [],
+    tips: Array.isArray(e.tips) ? e.tips : [],
+    eventEmployees: Array.isArray(e.eventEmployees) ? e.eventEmployees : [],
+
+    totals: e.totals ?? null,
+    sales: e.sales ?? null,
+
+    customFields:
+      typeof e.customFields === "string"
+        ? (JSON.parse(e.customFields || "{}") || {})
+        : e.customFields || {},
   };
 
-  // keep all original properties as well
-  return { ...e, ...normalized };
+  return normalized;
 }
+
 
 function getSafeEventID(e) {
   return normalizeEvent(e).eventID;
@@ -268,20 +304,19 @@ function createStarRating(name, currentValue = 0, editable = true) {
 // modified 10-17-25 8:30 am.
 // ---------------------------
 function buildTableHTML(results, containerId = "searchResults") {
-	
   results = results.map(ev => {
-  if (ev.customFields && typeof ev.customFields === "string") {
-    try {
-      const parsed = JSON.parse(ev.customFields);
-      ev.customFields = Object.entries(parsed)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("; ");
-    } catch {
-      // leave as-is
+    if (ev.customFields && typeof ev.customFields === "string") {
+      try {
+        const parsed = JSON.parse(ev.customFields);
+        ev.customFields = Object.entries(parsed)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("; ");
+      } catch {
+        // leave as-is
+      }
     }
-  }
-  return ev;
-	});
+    return ev;
+  });
 
   const container = document.getElementById(containerId) || document.body;
   container.innerHTML = "";
@@ -296,6 +331,7 @@ function buildTableHTML(results, containerId = "searchResults") {
 
   const header = table.createTHead();
   const headerRow = header.insertRow();
+
   Object.keys(results[0]).forEach((key) => {
     const th = document.createElement("th");
     th.textContent = key;
@@ -303,30 +339,30 @@ function buildTableHTML(results, containerId = "searchResults") {
   });
 
   const body = table.createTBody();
+
   results.forEach((event) => {
     const tr = body.insertRow();
+
     Object.keys(results[0]).forEach((key, colIndex) => {
-    const td = tr.insertCell();
-    let val = event[key] ?? "";
+      const td = tr.insertCell();
+      let val = event[key] ?? "";
 
-    // If this is the Event Name column, attach finalized badge
-    if (colIndex === 0 && event.isFinalized) {
-      const spanName = document.createElement("span");
-      spanName.textContent = val;
+      if (colIndex === 0 && event.isFinalized) {
+        const spanName = document.createElement("span");
+        spanName.textContent = val;
 
-      const badge = document.createElement("span");
-      badge.textContent = "FINALIZED";
-      badge.className = "finalized-badge";
+        const badge = document.createElement("span");
+        badge.textContent = "FINALIZED";
+        badge.className = "finalized-badge";
 
-      td.appendChild(spanName);
-      td.appendChild(badge);
-    } else {
-      td.textContent = val ?? "";
-    }
-	});
+        td.appendChild(spanName);
+        td.appendChild(badge);
+      } else {
+        td.textContent = val ?? "";
+      }
+    });
 
-
-        tr.addEventListener("click", async () => {
+    tr.addEventListener("click", async () => {
       try {
         const eventID = getSafeEventID(event);
 
@@ -336,18 +372,24 @@ function buildTableHTML(results, containerId = "searchResults") {
           return;
         }
 
-        const res = await fetch(`${API_BASE}/api/events/${eventID}`);
+        const res = await fetch(`${API_BASE}/api/events/${eventID}/report`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
 
-        const fullEventRaw = await res.json();
-        const fullEvent = normalizeEvent(fullEventRaw);
+        const report = await res.json();
 
-        const empRes = await fetch(`${API_BASE}/api/events/${eventID}/employees`);
-        const empData = await empRes.json();
+        const fullEvent = normalizeEvent({
+          ...report.event,
+          drinkSales: report.drinkSales,
+          additionalFees: report.additionalFees,
+          discounts: report.discounts,
+          tips: report.tips,
+          supplies: report.supplies,
+          eventEmployees: report.labor,
+          totals: report.totals,
+          sales: report.sales,
+        });
 
-        fullEvent.eventEmployees = empData;
-
-        console.log("FullEvent is:", fullEvent);
+        console.log("⭐ FULL REPORT EVENT LOADED:", fullEvent);
         loadEventIntoDashboard(fullEvent);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
@@ -356,9 +398,12 @@ function buildTableHTML(results, containerId = "searchResults") {
     });
   });
 
+  // ⭐ FIXED: OUTSIDE THE LOOP
   container.appendChild(table);
-}
-let lastLoadedEvents = [];
+} // ⭐ FIXED: PROPER CLOSING BRACE
+
+
+
 
 async function filterEvents(mode) {
   const events = lastLoadedEvents;
@@ -1293,38 +1338,35 @@ function rebuildAddEventForm(template) {
 //Helper Function For Currency
 //------------------------
 function fmt(x) {
-  return Number(x).toLocaleString("en-US", {
+  return Number(x || 0).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
   });
 }
 function createCollapsibleCard(id, title, contentData) {
-  if (!contentData) return null;
+  if (!contentData && contentData !== "") return null;
 
-  // -----------------------------
-  // Card wrapper
-  // -----------------------------
-  const wrapper = document.createElement("div");
-  wrapper.classList.add("collapsible-card");
-  wrapper.id = id;  // ⭐ critical for scroll + anchors
+  // Wrapper
+  const wrapper = document.createElement("section");
+  wrapper.classList.add("collapsible-card", "ios-card");
+  if (id) wrapper.id = id;
 
-  // -----------------------------
-  // Header
-  // -----------------------------
+  // Header (iOS-like)
   const header = document.createElement("button");
-  header.classList.add("collapsible-header");
   header.type = "button";
+  header.classList.add("collapsible-header", "ios-card-header");
   header.innerHTML = `
-    <span class="collapsible-title">${title}</span>
-    <span class="collapsible-icon">▼</span>
+    <div class="ios-card-header-main">
+      <span class="ios-card-title">${title}</span>
+    </div>
+    <div class="ios-card-chevron">
+      <span class="chevron-icon">⌄</span>
+    </div>
   `;
 
-  // -----------------------------
-  // Content container
-  // -----------------------------
+  // Content
   const content = document.createElement("div");
-  content.classList.add("collapsible-content");
-  content.style.display = "none";
+  content.classList.add("collapsible-content", "ios-card-content");
 
   // Helper: label formatting
   const formatLabel = (key) =>
@@ -1335,107 +1377,76 @@ function createCollapsibleCard(id, title, contentData) {
       .trim()
       .replace(/^./, (c) => c.toUpperCase());
 
-  // Helper: value formatting
-  const renderValue = (value) => {
-    if (value === null || value === undefined) return "";
-    if (Array.isArray(value)) return value.join(", ");
-    if (typeof value === "object")
-      return Object.entries(value)
-        .map(([k, v]) => `${formatLabel(k)}: ${v ?? ""}`)
-        .join("; ");
-    return String(value);
+  // Helper: object/array rendering (for non-string content)
+  const renderObjectOrArray = (data) => {
+    if (typeof data === "string") {
+      const div = document.createElement("div");
+      div.innerHTML = data;
+      return div;
+    }
+
+    if (Array.isArray(data)) {
+      const html = buildTableHTMLString(data);
+      const div = document.createElement("div");
+      div.innerHTML = html;
+      return div;
+    }
+
+    if (typeof data === "object") {
+      const infoList = document.createElement("div");
+      infoList.classList.add("info-list");
+      Object.entries(data)
+        .filter(([, v]) => v !== null && v !== undefined && v !== "")
+        .forEach(([k, v]) => {
+          const row = document.createElement("div");
+          row.classList.add("info-row");
+
+          const labelSpan = document.createElement("span");
+          labelSpan.classList.add("info-key");
+          labelSpan.textContent = formatLabel(k);
+
+          const valueSpan = document.createElement("span");
+          valueSpan.classList.add("info-value");
+          valueSpan.textContent = String(v);
+
+          row.appendChild(labelSpan);
+          row.appendChild(valueSpan);
+          infoList.appendChild(row);
+        });
+      return infoList;
+    }
+
+    const div = document.createElement("div");
+    div.textContent = String(data ?? "");
+    return div;
   };
 
-  // -----------------------------
-  // ⭐ NEW: If contentData is a STRING → treat as preformatted HTML
-  // -----------------------------
+  // If it's a string of HTML, just inject
   if (typeof contentData === "string") {
     content.innerHTML = contentData;
+  } else {
+    content.appendChild(renderObjectOrArray(contentData));
   }
 
-  // -----------------------------
-  // ⭐ If contentData is ARRAY → table rendering
-  // -----------------------------
-  else if (Array.isArray(contentData)) {
-    if (!contentData.length) {
-      content.textContent = "No data available.";
-    } else if (typeof contentData[0] === "object") {
-      const table = document.createElement("table");
-      table.classList.add("lemondrip-table");
+  // Start collapsed
+  wrapper.classList.remove("card-open");
+  content.style.maxHeight = "0px";
+  content.style.opacity = "0";
 
-      const columns = Object.keys(contentData[0]);
-
-      const thead = table.createTHead();
-      const headerRow = thead.insertRow();
-      columns.forEach((key) => {
-        const th = document.createElement("th");
-        th.textContent = formatLabel(key);
-        headerRow.appendChild(th);
-      });
-
-      const tbody = table.createTBody();
-      contentData.forEach((row) => {
-        const tr = tbody.insertRow();
-        columns.forEach((key) => {
-          const td = tr.insertCell();
-          const val = row[key];
-          td.textContent = val ?? "";
-        });
-      });
-
-      content.appendChild(table);
-    } else {
-      // Array of primitives
-      const ul = document.createElement("ul");
-      contentData.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = renderValue(item);
-        ul.appendChild(li);
-      });
-      content.appendChild(ul);
-    }
-  }
-
-  // -----------------------------
-  // ⭐ Object (key/value list)
-  // -----------------------------
-  else if (typeof contentData === "object") {
-    const entries = Object.entries(contentData).filter(
-      ([_, v]) => v !== null && v !== "" && v !== undefined
-    );
-
-    const infoList = document.createElement("div");
-    infoList.classList.add("info-list");
-
-    entries.forEach(([key, value]) => {
-      const row = document.createElement("div");
-      row.classList.add("info-row");
-
-      const label = document.createElement("span");
-      label.classList.add("info-key");
-      label.textContent = formatLabel(key);
-
-      const val = document.createElement("span");
-      val.classList.add("info-value");
-      val.textContent = renderValue(value);
-
-      row.appendChild(label);
-      row.appendChild(val);
-      infoList.appendChild(row);
-    });
-
-    content.appendChild(infoList);
-  }
-
-  // -----------------------------
-  // Expand / collapse behavior
-  // -----------------------------
   header.addEventListener("click", () => {
-    const isOpen = content.style.display === "block";
-    content.style.display = isOpen ? "none" : "block";
+    const isOpen = wrapper.classList.toggle("card-open");
+    const chevron = header.querySelector(".chevron-icon");
 
-    const icon = header.querySelector(".collapsible-icon");
-    if (icon) icon.textContent = isOpen ? "▼" : "▲";
+    if (isOpen) {
+      const scrollHeight = content.scrollHeight;
+      content.style.maxHeight = scrollHeight + "px";
+      content.style.opacity = "1";
+      if (chevron) chevron.style.transform = "rotate(180deg)";
+    } else {
+      content.style.maxHeight = "0px";
+      content.style.opacity = "0";
+      if (chevron) chevron.style.transform = "rotate(0deg)";
+    }
   });
 
   wrapper.appendChild(header);
@@ -1447,18 +1458,16 @@ function createCollapsibleCard(id, title, contentData) {
 // ---------------------------
 // 📊 Clean Event Dashboard Loader
 // ---------------------------
-function loadEventIntoDashboard(evt) {
+async function loadEventIntoDashboard(evt) {
   if (!evt) {
     console.warn("⚠️ loadEventIntoDashboard called with no event");
     return;
   }
 
-  // Normalize shape
   const event = normalizeEvent(evt);
   window.activeEvent = event;
   window.currentEventId = event.eventID;
 
-  // Convenience
   const eventID = event.eventID;
   const eventName = event.eventName || "Unnamed Event";
   const eventDate = event.eventDate || "";
@@ -1467,20 +1476,22 @@ function loadEventIntoDashboard(evt) {
   const status = event.status || "";
 
   // Navigate to dashboard
-  navigateTo("eventDashboardSection");
+  if (typeof navigateTo === "function") {
+    navigateTo("eventDashboardSection");
+  }
 
-  // Load labor data if available
+  // Load labor UI if available
   if (typeof loadEmployeesForDropdown === "function") loadEmployeesForDropdown();
   if (typeof loadLaborForEvent === "function") loadLaborForEvent(eventID);
 
-  // Dashboard container
   const container = document.getElementById("eventDashboardContainer");
-  if (!container) return console.warn("⚠️ #eventDashboardContainer not found");
+  if (!container) {
+    console.warn("⚠️ #eventDashboardContainer not found");
+    return;
+  }
   container.innerHTML = "";
 
-  // -----------------------------
   // HEADER
-  // -----------------------------
   const headerTitle = document.getElementById("dashEventName");
   const headerDate = document.getElementById("dashEventDate");
   const finalizedIndicator = document.getElementById("dashFinalizedIndicator");
@@ -1497,22 +1508,17 @@ function loadEventIntoDashboard(evt) {
 
     if (event.finalizedDate) {
       const fd = document.createElement("div");
-      fd.style.fontSize = "0.85rem";
-      fd.style.color = "#444";
-      fd.style.marginTop = "4px";
+      fd.classList.add("finalized-date-label");
       fd.textContent = `Finalized on: ${event.finalizedDate}`;
       finalizedIndicator.appendChild(fd);
     }
   }
 
-  // -----------------------------
   // DASHBOARD BUTTONS
-  // -----------------------------
   const buttonContainer = document.querySelector(".dashboard-buttons");
   if (buttonContainer) {
     buttonContainer.innerHTML = "";
 
-    // Finalize Event
     const finalizeBtn = document.createElement("button");
     finalizeBtn.textContent = "✔️ Finalize Event";
     finalizeBtn.classList.add("btn-primary");
@@ -1525,30 +1531,61 @@ function loadEventIntoDashboard(evt) {
         });
         const out = await res.json();
         if (!res.ok) return alert(out.error || "Could not finalize.");
-
         alert("Event finalized!");
 
-        const updated = await fetch(`${API_BASE}/api/events/${eventID}`).then(r => r.json());
-        loadEventIntoDashboard(updated);
+        const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`).then(r => r.json());
+
+        const refreshed = normalizeEvent({
+          ...updated.event,
+          drinkSales: updated.drinkSales,
+          additionalFees: updated.additionalFees,
+          discounts: updated.discounts,
+          tips: updated.tips,
+          supplies: updated.supplies,
+          eventEmployees: updated.labor,
+          totals: updated.totals,
+          sales: updated.sales,
+        });
+
+        loadEventIntoDashboard(refreshed);
       } catch (err) {
         console.error("Finalize error:", err);
-        alert("Error finalizing.");
+        alert("Error finalizing event.");
       }
     });
 
-    // Pull Square Sales
     const squareBtn = document.createElement("button");
     squareBtn.textContent = "🔄 Pull Square Sales";
     squareBtn.classList.add("btn-primary");
-    squareBtn.addEventListener("click", () => pullSquareSales(eventID));
+    squareBtn.addEventListener("click", async () => {
+      try {
+        await pullSquareSales(eventID);
+        const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`).then(r => r.json());
 
-    // Edit Event
+        const refreshed = normalizeEvent({
+          ...updated.event,
+          drinkSales: updated.drinkSales,
+          additionalFees: updated.additionalFees,
+          discounts: updated.discounts,
+          tips: updated.tips,
+          supplies: updated.supplies,
+          eventEmployees: updated.labor,
+          totals: updated.totals,
+          sales: updated.sales,
+        });
+
+        loadEventIntoDashboard(refreshed);
+      } catch (err) {
+        console.error("Square pull error:", err);
+        alert("Failed to pull Square sales.");
+      }
+    });
+
     const editBtn = document.createElement("button");
     editBtn.textContent = "✏️ Edit Event";
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
-    // Report
     const reportBtn = document.createElement("button");
     reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
@@ -1560,9 +1597,7 @@ function loadEventIntoDashboard(evt) {
     buttonContainer.appendChild(reportBtn);
   }
 
-  // -----------------------------
   // EVENT SUMMARY CARD
-  // -----------------------------
   const summaryData = {
     EventID: eventID,
     Date: eventDate,
@@ -1573,14 +1608,10 @@ function loadEventIntoDashboard(evt) {
     NumDays: event.numDays ?? "",
   };
 
-  const summaryCard = createCollapsibleCard(
-    "eventSummaryCard",
-    "Event Summary",
-    `
+  const summaryHTML = `
     ${Object.entries(summaryData)
       .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
       .join("")}
-
     <div class="event-summary-links" style="margin-top:12px;">
       <button class="btn-inline" data-target="drinkSalesCard">Drink Sales →</button><br>
       <button class="btn-inline" data-target="additionalFeesCard">Additional Fees →</button><br>
@@ -1588,33 +1619,20 @@ function loadEventIntoDashboard(evt) {
       <button class="btn-inline" data-target="tipsCard">Tips →</button><br>
       <button class="btn-inline" data-target="suppliesCard">Supplies →</button>
     </div>
-    `
+  `;
+
+  container.appendChild(
+    createCollapsibleCard("eventSummaryCard", "Event Summary", summaryHTML)
   );
-  container.appendChild(summaryCard);
 
-  // -----------------------------
   // CUSTOM FIELDS
-  // -----------------------------
-  if (event.customFields) {
-    try {
-      const parsed =
-        typeof event.customFields === "string"
-          ? JSON.parse(event.customFields)
-          : event.customFields;
-
-      if (parsed && Object.keys(parsed).length) {
-        container.appendChild(
-          createCollapsibleCard("customFieldsCard", "Custom Fields", parsed)
-        );
-      }
-    } catch (err) {
-      console.error("❌ customFields parse error:", err);
-    }
+  if (event.customFields && Object.keys(event.customFields).length) {
+    container.appendChild(
+      createCollapsibleCard("customFieldsCard", "Custom Fields", event.customFields)
+    );
   }
 
-  // -----------------------------
-  // DRINK SALES (with totals)
-  // -----------------------------
+  // DRINK SALES
   let drinkHTML = "";
   if (!event.drinkSales || event.drinkSales.length === 0) {
     drinkHTML = "<p>No drink sales recorded.</p>";
@@ -1632,16 +1650,14 @@ function loadEventIntoDashboard(evt) {
       <div><strong>Total Drinks Sold:</strong> ${totalQty}</div>
       <div><strong>Total Drink Revenue:</strong> ${fmt(totalRevenue)}</div>
       <hr>
-      ${buildTableHTML(event.drinkSales, null, true)}
+      ${buildTableHTMLString(event.drinkSales)}
     `;
   }
   container.appendChild(
     createCollapsibleCard("drinkSalesCard", "Itemized Drink Sales", drinkHTML)
   );
 
-  // -----------------------------
-  // ADDITIONAL FEES (with total)
-  // -----------------------------
+  // ADDITIONAL FEES
   let feeHTML = "";
   if (!event.additionalFees || event.additionalFees.length === 0) {
     feeHTML = "<p>No additional fees recorded.</p>";
@@ -1650,20 +1666,17 @@ function loadEventIntoDashboard(evt) {
       (sum, r) => sum + (Number(r.feeAmount) || 0),
       0
     );
-
     feeHTML = `
       <div><strong>Total Additional Fees:</strong> ${fmt(totalFees)}</div>
       <hr>
-      ${buildTableHTML(event.additionalFees, null, true)}
+      ${buildTableHTMLString(event.additionalFees)}
     `;
   }
   container.appendChild(
     createCollapsibleCard("additionalFeesCard", "Additional Fees", feeHTML)
   );
 
-  // -----------------------------
-  // DISCOUNTS (with total)
-  // -----------------------------
+  // DISCOUNTS
   let discHTML = "";
   if (!event.discounts || event.discounts.length === 0) {
     discHTML = "<p>No discounts recorded.</p>";
@@ -1672,20 +1685,17 @@ function loadEventIntoDashboard(evt) {
       (sum, r) => sum + (Number(r.discountAmount) || 0),
       0
     );
-
     discHTML = `
       <div><strong>Total Discounts:</strong> ${fmt(totalDiscounts)}</div>
       <hr>
-      ${buildTableHTML(event.discounts, null, true)}
+      ${buildTableHTMLString(event.discounts)}
     `;
   }
   container.appendChild(
     createCollapsibleCard("discountsCard", "Discounts", discHTML)
   );
 
-  // -----------------------------
-  // TIPS (with total)
-  // -----------------------------
+  // TIPS
   let tipsHTML = "";
   if (!event.tips || event.tips.length === 0) {
     tipsHTML = "<p>No tips recorded.</p>";
@@ -1694,20 +1704,17 @@ function loadEventIntoDashboard(evt) {
       (sum, r) => sum + (Number(r.tipAmount) || 0),
       0
     );
-
     tipsHTML = `
       <div><strong>Total Tips:</strong> ${fmt(totalTips)}</div>
       <hr>
-      ${buildTableHTML(event.tips, null, true)}
+      ${buildTableHTMLString(event.tips)}
     `;
   }
   container.appendChild(
     createCollapsibleCard("tipsCard", "Tips", tipsHTML)
   );
 
-  // -----------------------------
-  // SUPPLIES (with total)
-  // -----------------------------
+  // SUPPLIES
   let suppliesHTML = "";
   if (!event.supplies || event.supplies.length === 0) {
     suppliesHTML = "<p>No supplies recorded.</p>";
@@ -1716,42 +1723,82 @@ function loadEventIntoDashboard(evt) {
       (sum, r) => sum + (Number(r.totalCost) || 0),
       0
     );
-
     suppliesHTML = `
       <div><strong>Total Supply Cost:</strong> ${fmt(suppliesTotal)}</div>
       <hr>
-      ${buildTableHTML(event.supplies, null, true)}
+      ${buildTableHTMLString(event.supplies)}
     `;
   }
   container.appendChild(
     createCollapsibleCard("suppliesCard", "Supplies", suppliesHTML)
   );
 
-  // -----------------------------
-  // EMPLOYEES (legacy)
-  // -----------------------------
-  if (Array.isArray(event.eventEmployees) && event.eventEmployees.length) {
+  // EMPLOYEES
+  if (event.eventEmployees && event.eventEmployees.length) {
     container.appendChild(
       createCollapsibleCard("employeesCard", "Employees", event.eventEmployees)
     );
   }
 
-  // -----------------------------
-  // UNIVERSAL SUMMARY → SECTION NAVIGATION
-  // -----------------------------
+  // PROFIT SUMMARY
+  if (event.totals) {
+    const t = event.totals;
+    const profit =
+      t.drinkRevenue +
+      t.tipsTotal -
+      t.suppliesTotal -
+      t.additionalFees -
+      t.discounts -
+      t.laborTotal;
+
+    const profitHTML = `
+      <div><strong>Drink Revenue:</strong> ${fmt(t.drinkRevenue)}</div>
+      <div><strong>Tips:</strong> ${fmt(t.tipsTotal)}</div>
+      <div><strong>Supplies:</strong> -${fmt(t.suppliesTotal)}</div>
+      <div><strong>Additional Fees:</strong> -${fmt(t.additionalFees)}</div>
+      <div><strong>Discounts:</strong> -${fmt(t.discounts)}</div>
+      <div><strong>Labor:</strong> -${fmt(t.laborTotal)}</div>
+      <hr>
+      <div style="font-size:1.2rem;">
+        <strong>NET PROFIT:</strong>
+        <span style="color:${profit >= 0 ? "green" : "red"};">
+          ${fmt(profit)}
+        </span>
+      </div>
+    `;
+    container.appendChild(
+      createCollapsibleCard("profitSummaryCard", "Profit Summary", profitHTML)
+    );
+  }
+
+  // SUMMARY → SECTION NAVIGATION (safe)
   document
     .querySelectorAll(".event-summary-links .btn-inline")
-    .forEach(btn => {
-      btn.addEventListener("click", () => {
-        const targetId = btn.getAttribute("data-target");
+    .forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const targetId = btn.dataset.target;
         const target = document.getElementById(targetId);
-        if (target) {
-          target.classList.remove("collapsed");
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (!target) {
+          console.warn("Navigation target not found:", targetId);
+          return;
         }
+
+        const content = target.querySelector(".collapsible-content");
+        if (content) {
+          target.classList.add("card-open");
+          content.style.maxHeight = content.scrollHeight + "px";
+          content.style.opacity = "1";
+        }
+
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });
 }
+
+
 
 
 
@@ -2124,6 +2171,27 @@ async function deleteLaborShift(shiftID) {
 //---------------------------------------------------
 // Helper Functions
 //-----------------------------------------------------
+// Pure HTML table builder for dashboard cards (DOES NOT touch the DOM)
+function buildTableHTMLString(rows) {
+  if (!rows || rows.length === 0) {
+    return "<p>No data available.</p>";
+  }
+
+  const cols = Object.keys(rows[0]);
+  let html = `<table class="lemondrip-table card-table"><thead><tr>`;
+
+  html += cols.map(col => `<th>${col}</th>`).join("");
+  html += `</tr></thead><tbody>`;
+
+  for (const row of rows) {
+    html += "<tr>";
+    html += cols.map(col => `<td>${row[col] ?? ""}</td>`).join("");
+    html += "</tr>";
+  }
+
+  html += "</tbody></table>";
+  return html;
+}
 
 function buildCustomFieldsTable(custom) {
   if (!custom || typeof custom !== "object" || !Object.keys(custom).length) {
