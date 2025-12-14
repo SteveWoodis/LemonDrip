@@ -978,3 +978,62 @@ select:focus {
     flex-wrap: wrap;
   }
 }
+/* ---------------------------------
+   Modern Sheet Cards
+----------------------------------*/
+.sheet-card {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin: 16px 0;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sheet-card:hover {
+  box-shadow: 0 3px 14px rgba(0,0,0,0.12);
+}
+
+/* Header */
+.sheet-header {
+  width: 100%;
+  background: #ffffff;
+  padding: 16px 20px;
+  border: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: #222;
+  transition: background 0.2s ease;
+}
+
+.sheet-header:hover {
+  background: #f5f5f5;
+}
+
+.sheet-header .arrow {
+  font-size: 18px;
+  transition: transform 0.25s ease;
+}
+
+/* Content */
+.sheet-content {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0 20px;
+  transition: max-height 0.35s ease, opacity 0.35s ease, padding 0.35s ease;
+}
+
+.sheet-content.expanded {
+  max-height: 1000px;   /* enough for large lists */
+  opacity: 1;
+  padding: 16px 20px 24px;
+}
+
+.sheet-content.collapsed {
+  padding: 0 20px;
+}

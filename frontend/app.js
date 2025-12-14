@@ -24,6 +24,7 @@ const API_BASE = "http://localhost:3000";
 // 🔄 Event Normalization Helpers
 // ---------------------------
 function normalizeEvent(e) {
+	const n = (v) => Number(v || 0);
   if (!e) {
     return {
       eventID: null,
@@ -132,8 +133,16 @@ function normalizeEvent(e) {
     tips: Array.isArray(e.tips) ? e.tips : [],
     eventEmployees: Array.isArray(e.eventEmployees) ? e.eventEmployees : [],
 
-    totals: e.totals ?? null,
-    sales: e.sales ?? null,
+        totals: e.totals ?? null,
+    sales: {
+	  ...e.sales,
+	  grossSales: e.sales?.grossSales ?? 0,
+	  netSales: e.sales?.netSales ?? 0,
+	  discounts: e.sales?.discounts ?? 0,
+	  refunds: e.sales?.refunds ?? 0,
+	  tips: e.sales?.tips ?? 0,
+	  totalCollected: e.sales?.totalCollected ?? 0
+	},
 
     customFields:
       typeof e.customFields === "string"
@@ -141,13 +150,37 @@ function normalizeEvent(e) {
         : e.customFields || {},
   };
 
+  // 🔹 Profit-related event-level fields
+  normalized.healthDeptFee        = n(e.healthDeptFee);
+  normalized.mileageReimbursement = n(e.mileageReimbursement);
+  normalized.eventRunnerFees      = n(e.eventRunnerFees);
+
+  normalized.giftCardSales = n(e.giftCardSales);
+
+   normalized.taxOverride = e.taxOverride ?? null;
+
+  // 🔹 Attach Square tax/fees safely (works for both list + report payloads)
+  const srcSales = e.sales || {};
+  if (!normalized.sales || typeof normalized.sales !== "object") {
+    normalized.sales = {};
+  }
+
+  normalized.sales.squareReportedTax = n(
+    srcSales.squareReportedTax ?? e.squareReportedTax
+  );
+  normalized.sales.squareFees = n(
+    srcSales.squareFees ?? e.squareFees
+  );
+
   return normalized;
 }
 
 
-function getSafeEventID(e) {
-  return normalizeEvent(e).eventID;
-}
+
+
+//function getSafeEventID(e) {
+//  return normalizeEvent(e).eventID;
+//}
 
 //
 // ---------------------------
@@ -741,6 +774,21 @@ function coerceForApi(obj) {
   obj["netSales"] = num("netSales");
   obj["totalSales"] = num("totalSales");
   obj["isFinalized"] = bool("isFinalized");
+  obj["healthDeptFee"] = bool("healthDeptFee");
+  obj["mileageReimbursement"] = bool("mileageReimbursement");
+  obj["eventRunnerFees"] = bool("eventRunnerFees");
+  obj["giftCardSales"] = bool("giftCardSales");
+  obj["cash"] = bool("cash");
+  obj["card"] = bool("card");
+  obj["venmo"] = bool("venmo");
+  obj["other"] = bool("other");
+  obj["cashApp"] = bool("cashApp");
+  obj["taxOverride"] = bool("taxOverride");
+  
+  forEach((k) => {
+    if (k in obj) obj[k] = num(k);
+  });
+
   return obj;
 }
 
@@ -748,147 +796,142 @@ async function submitEvent(e) {
   if (e) e.preventDefault();
 
   const formEl = document.getElementById("eventForm");
-  const inputs = formEl.querySelectorAll("input, select, textarea");
+  if (!formEl) {
+    alert("Form not found.");
+    return;
+  }
 
-  // 1️⃣ Load the active template (required for canonical/custom separation)
+  // 1️⃣ Load active template
   const templateName = document.getElementById("templateSelect")?.value;
   const template = window.availableTemplates?.find(t => t.templateName === templateName);
 
   if (!template || !Array.isArray(template.fields)) {
-    alert("Template not found or invalid. Please load a template first.");
+    alert("Template is missing or invalid.");
     return;
   }
 
-  // 2️⃣ Build raw values from the DOM
-  const rawValues = {};
-  inputs.forEach((input) => {
-    const id = input.id || "";
-    if (!id.startsWith("form_")) return;
+  // 2️⃣ Read all form values
+  const inputs = formEl.querySelectorAll("input, select, textarea");
+  const raw = {};
 
-    const formKey = id.replace(/^form_/, ""); // e.g. "Event_Name"
+  inputs.forEach(input => {
+    if (!input.id.startsWith("form_")) return;
+
+    const key = input.id.replace(/^form_/, "");
+
     if (input.multiple) {
-      rawValues[formKey] = Array.from(input.selectedOptions).map(o => o.value);
+      raw[key] = [...input.selectedOptions].map(o => o.value);
     } else {
-      rawValues[formKey] = input.value.trim();
+      raw[key] = input.value.trim();
     }
   });
 
-  // Square Location (optional)
-  const sq = document.getElementById("form_squareLocationId");
-  if (sq) rawValues.squareLocationId = sq.value || null;
-
-  // 3️⃣ Known canonical fields in your database schema
-  const CANONICAL_KEYS = new Set([
-    "eventName",
-    "eventDate",
-    "applicationDate",
-    "finalizedDate",
-    "eventFee",
-    "squareLocationId",
-    "time",
-    "employees",
-    "eventRating",
-    "eventHost",
-    "notes",
-    "status",
-    "eventType",
-    "numDays",
-    "coordinator",
-    "grossSales",
-    "tips",
-    "netSales",
-    "totalSales",
-    "isFinalized"
-  ]);
-
-  // 4️⃣ Split rawValues → canonical + custom using template
+  // 3️⃣ Build canonical object EXACTLY from template dbKeys
   const canonical = {};
-  const custom = {};
+  const customFields = {};
 
-  template.fields.forEach((field) => {
-    // normalize template field identifier
-    const safeKey = String(field.label)
-      .replace(/\s+/g, "_")
-      .replace(/[^a-zA-Z0-9_]/g, "");
+  template.fields.forEach(field => {
+    const id = field.id;
+    if (!id) return;
 
-    const value = rawValues[safeKey];
+    const rawValue = raw[id];
 
-    // If the template explicitly mapped dbKey (future extension)
-    if (field.dbKey && CANONICAL_KEYS.has(field.dbKey)) {
-      canonical[field.dbKey] = value ?? null;
+    // Explicit dbKey → canonical DB field
+    if (field.dbKey) {
+      canonical[field.dbKey] = rawValue ?? null;
       return;
     }
 
-    // If the label *itself* matches a canonical DB column (current behavior)
-    const lower = field.label.toLowerCase().replace(/\s+/g, "");
-    const matches = [...CANONICAL_KEYS].find(k => k.toLowerCase() === lower);
-
-    if (matches) {
-      canonical[matches] = value ?? null;
-    } else {
-      // Otherwise treat as vendor-custom field
-      custom[field.label] = value ?? null;
-    }
+    // No dbKey → treat as vendor-custom field
+    customFields[field.label] = rawValue ?? null;
   });
 
-  // Attach custom fields object
-  canonical.customFields = Object.keys(custom).length ? custom : null;
+  // 4️⃣ Special additional fields
+  const sq = document.getElementById("form_squareLocationId");
+  if (sq) canonical.squareLocationId = sq.value || null;
 
-  // 5️⃣ Validation (eventName + eventDate are required)
+  // 5️⃣ Attach customFields only if present
+  canonical.customFields =
+    Object.keys(customFields).length > 0 ? customFields : null;
+
+  // 6️⃣ Required fields
   if (!canonical.eventName || !canonical.eventDate) {
-    alert("Please provide at least an event name and date.");
+    alert("Event Name and Event Date are required.");
     return;
   }
 
-  // 6️⃣ Type coercion (uses your existing helper)
+  // 7️⃣ Numeric coercion for profit fields
+  const NUMERIC_KEYS = [
+    "eventFee",
+    "healthDeptFee",
+    "mileageReimbursement",
+    "eventRunnerFees",
+    "giftCardSales",
+    "cash",
+    "card",
+    "venmo",
+    "other",
+    "cashApp",
+    "taxOverride",
+    "grossSales",
+    "tips",
+    "netSales",
+    "totalSales"
+  ];
+
+  NUMERIC_KEYS.forEach(k => {
+    if (canonical[k] !== undefined && canonical[k] !== null && canonical[k] !== "") {
+      canonical[k] = Number(canonical[k]);
+    }
+  });
+
+  // 8️⃣ Build payload for API
   const payload = coerceForApi(canonical);
 
-  // 7️⃣ Determine POST vs PUT
+  // 9️⃣ Determine POST vs PUT
   const isEditing = window.isEditing === true && window.activeeventID;
   const url = isEditing
-    ? `http://localhost:3000/api/events/${window.activeeventID}`
-    : "http://localhost:3000/api/events";
+    ? `${API_BASE}/api/events/${window.activeeventID}`
+    : `${API_BASE}/api/events`;
 
   const method = isEditing ? "PUT" : "POST";
 
-  console.log("📨 Final Submit Payload:", { method, url, payload });
+  console.log("📨 Final Submit Payload:", payload);
 
-  // 8️⃣ Send to backend
+  // 🔟 Submit to backend
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
-  const responseJSON = await res.json();
+  const json = await res.json();
 
   if (!res.ok) {
-    console.error("🚨 Backend error:", responseJSON);
-    alert(responseJSON.error || "Error saving event.");
+    console.error("🚨 Backend error:", json);
+    alert(json.error || "Error saving event.");
     return;
   }
 
-  // Determine eventID
-  const savedID = isEditing
+  // 1️⃣1️⃣ Determine event ID
+  const eventID = isEditing
     ? window.activeeventID
-    : responseJSON.eventID || responseJSON.EventID;
+    : json.eventID || json.EventID;
 
-  if (!savedID) {
+  if (!eventID) {
     alert("Could not determine EventID from server response.");
     return;
   }
 
-  // 9️⃣ Upload permits if any
-  await uploadEventPermits(savedID);
+  // 1️⃣2️⃣ Upload permits
+  await uploadEventPermits(eventID);
 
   alert(isEditing ? "Event updated!" : "Event created!");
 
-  // Reset editing globals
   window.isEditing = false;
   window.activeeventID = null;
   window.activeEvent = null;
 
-  // Navigate back & refresh
   navigateTo("manageSection");
   await loadAllEvents();
 }
@@ -1343,109 +1386,39 @@ function fmt(x) {
     currency: "USD",
   });
 }
-function createCollapsibleCard(id, title, contentData) {
-  if (!contentData && contentData !== "") return null;
+// -----------------------------
+// Modern Sheet-Style Collapsible Card
+// -----------------------------
+// -----------------------------
+// Modern Sheet-Style Collapsible Card
+// -----------------------------
+function createCollapsibleCard(title, contentHTML = "") {
+  const wrapper = document.createElement("div");
+  wrapper.className = "sheet-card";
 
-  // Wrapper
-  const wrapper = document.createElement("section");
-  wrapper.classList.add("collapsible-card", "ios-card");
-  if (id) wrapper.id = id;
-
-  // Header (iOS-like)
+  // Header Button
   const header = document.createElement("button");
+  header.className = "sheet-header";
   header.type = "button";
-  header.classList.add("collapsible-header", "ios-card-header");
   header.innerHTML = `
-    <div class="ios-card-header-main">
-      <span class="ios-card-title">${title}</span>
-    </div>
-    <div class="ios-card-chevron">
-      <span class="chevron-icon">⌄</span>
-    </div>
+      <span>${title}</span>
+      <span class="arrow">▾</span>
   `;
 
-  // Content
+  // Content Container
   const content = document.createElement("div");
-  content.classList.add("collapsible-content", "ios-card-content");
+  content.className = "sheet-content collapsed";
+  content.innerHTML = contentHTML;
 
-  // Helper: label formatting
-  const formatLabel = (key) =>
-    String(key)
-      .replace(/([A-Z])/g, " $1")
-      .replace(/_/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/^./, (c) => c.toUpperCase());
-
-  // Helper: object/array rendering (for non-string content)
-  const renderObjectOrArray = (data) => {
-    if (typeof data === "string") {
-      const div = document.createElement("div");
-      div.innerHTML = data;
-      return div;
-    }
-
-    if (Array.isArray(data)) {
-      const html = buildTableHTMLString(data);
-      const div = document.createElement("div");
-      div.innerHTML = html;
-      return div;
-    }
-
-    if (typeof data === "object") {
-      const infoList = document.createElement("div");
-      infoList.classList.add("info-list");
-      Object.entries(data)
-        .filter(([, v]) => v !== null && v !== undefined && v !== "")
-        .forEach(([k, v]) => {
-          const row = document.createElement("div");
-          row.classList.add("info-row");
-
-          const labelSpan = document.createElement("span");
-          labelSpan.classList.add("info-key");
-          labelSpan.textContent = formatLabel(k);
-
-          const valueSpan = document.createElement("span");
-          valueSpan.classList.add("info-value");
-          valueSpan.textContent = String(v);
-
-          row.appendChild(labelSpan);
-          row.appendChild(valueSpan);
-          infoList.appendChild(row);
-        });
-      return infoList;
-    }
-
-    const div = document.createElement("div");
-    div.textContent = String(data ?? "");
-    return div;
-  };
-
-  // If it's a string of HTML, just inject
-  if (typeof contentData === "string") {
-    content.innerHTML = contentData;
-  } else {
-    content.appendChild(renderObjectOrArray(contentData));
-  }
-
-  // Start collapsed
-  wrapper.classList.remove("card-open");
-  content.style.maxHeight = "0px";
-  content.style.opacity = "0";
-
+  // Toggle behavior
   header.addEventListener("click", () => {
-    const isOpen = wrapper.classList.toggle("card-open");
-    const chevron = header.querySelector(".chevron-icon");
+    const isExpanded = content.classList.contains("expanded");
+    content.classList.toggle("expanded", !isExpanded);
+    content.classList.toggle("collapsed", isExpanded);
 
-    if (isOpen) {
-      const scrollHeight = content.scrollHeight;
-      content.style.maxHeight = scrollHeight + "px";
-      content.style.opacity = "1";
-      if (chevron) chevron.style.transform = "rotate(180deg)";
-    } else {
-      content.style.maxHeight = "0px";
-      content.style.opacity = "0";
-      if (chevron) chevron.style.transform = "rotate(0deg)";
+    const arrow = header.querySelector(".arrow");
+    if (arrow) {
+      arrow.style.transform = !isExpanded ? "rotate(180deg)" : "rotate(0deg)";
     }
   });
 
@@ -1454,9 +1427,490 @@ function createCollapsibleCard(id, title, contentData) {
   return wrapper;
 }
 
+function feeRowHTML(name = "", amount = "") {
+  return `
+    <tr class="fee-row">
+      <td>
+        <input type="text"
+               class="fee-name"
+               placeholder="e.g. Booth Rental"
+               value="${name ?? ""}">
+      </td>
+      <td>
+        <input type="number"
+               step="0.01"
+               class="fee-amount"
+               value="${amount ?? ""}">
+      </td>
+      <td>
+        <button type="button"
+                class="delete-btn"
+                onclick="this.closest('tr').remove()">✕</button>
+      </td>
+    </tr>
+  `;
+}
+
+function addFeeRow() {
+  const tbody = document.querySelector("#feesEditor tbody");
+  if (!tbody) return;
+
+  tbody.insertAdjacentHTML("beforeend", feeRowHTML());
+}
+
+function collectFeesFromUI() {
+  const rows = document.querySelectorAll(".fee-row");
+  const fees = [];
+
+  rows.forEach(row => {
+    const name = row.querySelector(".fee-name")?.value.trim();
+    const amt  = Number(row.querySelector(".fee-amount")?.value);
+
+    if (name && !Number.isNaN(amt)) {
+      fees.push({
+        feeName: name,
+        feeAmount: amt
+      });
+    }
+  });
+
+  return fees;
+}
+
+async function saveFees() {
+  const eventID = window.currentEventId;
+  if (!eventID) {
+    alert("No active event.");
+    return;
+  }
+
+  const additionalFees = collectFeesFromUI();
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/adjustments`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ additionalFees })
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Save fees error:", json);
+      alert(json.error || "Failed to save fees.");
+      return;
+    }
+
+    alert("Fees saved!");
+
+    // 🔄 Reload dashboard
+    const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`)
+      .then(r => r.json());
+
+    const refreshed = normalizeEvent({
+      ...updated.event,
+      drinkSales: updated.drinkSales,
+      additionalFees: updated.additionalFees,
+      discounts: updated.discounts,
+      tips: updated.tips,
+      supplies: updated.supplies,
+      eventEmployees: updated.labor,
+      totals: updated.totals,
+      sales: updated.sales
+    });
+
+    loadEventIntoDashboard(refreshed);
+
+  } catch (err) {
+    console.error("❌ saveFees error:", err);
+    alert("Network error saving fees.");
+  }
+}
+
+// --------------------------------------------
+// 💰 Build Editable Fees Card
+// --------------------------------------------
+function buildFeesEditor(event) {
+  const rows = event.additionalFees || [];
+
+  let html = `
+    <table class="lemondrip-table" id="feesEditor">
+      <thead>
+        <tr>
+          <th>Fee Name</th>
+          <th>Amount</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  rows.forEach(f => {
+    html += feeRowHTML(f.feeName, f.feeAmount);
+  });
+
+  html += `
+      </tbody>
+    </table>
+
+    <div class="editor-actions">
+      <button type="button" class="btn-secondary" onclick="addFeeRow()">➕ Add Fee</button>
+      <button type="button" class="btn-primary" onclick="saveFees()">💾 Save Fees</button>
+    </div>
+  `;
+
+  return html;
+}
+
+// --------------------------------------------
+// 💵 Build Editable Tips Card (Event-Level)
+// --------------------------------------------
+function buildTipsEditor(event) {
+  const rows = event.tips || [];
+
+  let html = `
+    <table class="lemondrip-table" id="tipsEditor">
+      <thead>
+        <tr>
+          <th>Tip Amount</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  rows.forEach(t => {
+    html += tipRowHTML(t.tipAmount);
+  });
+
+  html += `
+      </tbody>
+    </table>
+
+    <div class="editor-actions">
+      <button type="button" class="btn-secondary" onclick="addTipRow()">➕ Add Tip</button>
+      <button type="button" class="btn-primary" onclick="saveTips()">💾 Save Tips</button>
+    </div>
+  `;
+
+  return html;
+}
+
+function tipRowHTML(amount = "") {
+  return `
+    <tr class="tip-row">
+      <td>
+        <input type="number"
+               step="0.01"
+               class="tip-amount"
+               placeholder="e.g. 5.00"
+               value="${amount ?? ""}">
+      </td>
+      <td>
+        <button type="button"
+                class="delete-btn"
+                onclick="this.closest('tr').remove()">✕</button>
+      </td>
+    </tr>
+  `;
+}
+
+function addTipRow() {
+  const tbody = document.querySelector("#tipsEditor tbody");
+  if (!tbody) return;
+
+  tbody.insertAdjacentHTML("beforeend", tipRowHTML());
+}
+
+function collectTipsFromUI() {
+  const rows = document.querySelectorAll(".tip-row");
+  const tips = [];
+
+  rows.forEach(row => {
+    const amt = Number(row.querySelector(".tip-amount")?.value);
+    if (!Number.isNaN(amt) && amt > 0) {
+      tips.push({ tipAmount: amt });
+    }
+  });
+
+  return tips;
+}
+async function saveTips() {
+  const eventID = window.currentEventId;
+  if (!eventID) {
+    alert("No active event.");
+    return;
+  }
+
+  const tips = collectTipsFromUI();
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/adjustments`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tips })
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Save tips error:", json);
+      alert(json.error || "Failed to save tips.");
+      return;
+    }
+
+    alert("Tips saved!");
+
+    // 🔄 Reload dashboard
+    const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`)
+      .then(r => r.json());
+
+    const refreshed = normalizeEvent({
+      ...updated.event,
+      drinkSales: updated.drinkSales,
+      additionalFees: updated.additionalFees,
+      discounts: updated.discounts,
+      tips: updated.tips,
+      supplies: updated.supplies,
+      eventEmployees: updated.labor,
+      totals: updated.totals,
+      sales: updated.sales
+    });
+
+    loadEventIntoDashboard(refreshed);
+
+  } catch (err) {
+    console.error("❌ saveTips error:", err);
+    alert("Network error saving tips.");
+  }
+}
+
+
+// --------------------------------------------
+// 🧾 Build Editable Discounts Card
+// --------------------------------------------
+function buildDiscountsEditor(event) {
+  const rows = event.discounts || [];
+
+  let html = `
+    <table class="lemondrip-table" id="discountsEditor">
+      <thead>
+        <tr>
+          <th>Discount Name</th>
+          <th>Amount</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  rows.forEach(d => {
+    html += discountRowHTML(d.discountName, d.discountAmount);
+  });
+
+  html += `
+      </tbody>
+    </table>
+
+    <div class="editor-actions">
+      <button type="button" class="btn-secondary" onclick="addDiscountRow()">➕ Add Discount</button>
+      <button type="button" class="btn-primary" onclick="saveDiscounts()">💾 Save Discounts</button>
+    </div>
+  `;
+
+  return html;
+}
+
+function discountRowHTML(name = "", amount = "") {
+  return `
+    <tr class="discount-row">
+      <td>
+        <input type="text"
+               class="discount-name"
+               placeholder="e.g. Team Discount"
+               value="${name ?? ""}">
+      </td>
+      <td>
+        <input type="number"
+               step="0.01"
+               class="discount-amount"
+               value="${amount ?? ""}">
+      </td>
+      <td>
+        <button type="button"
+                class="delete-btn"
+                onclick="this.closest('tr').remove()">✕</button>
+      </td>
+    </tr>
+  `;
+}
+
+function addDiscountRow() {
+  const tbody = document.querySelector("#discountsEditor tbody");
+  if (!tbody) return;
+
+  tbody.insertAdjacentHTML("beforeend", discountRowHTML());
+}
+function collectDiscountsFromUI() {
+  const rows = document.querySelectorAll(".discount-row");
+  const discounts = [];
+
+  rows.forEach(row => {
+    const name = row.querySelector(".discount-name")?.value.trim();
+    const amt  = Number(row.querySelector(".discount-amount")?.value);
+
+    if (name && !Number.isNaN(amt)) {
+      discounts.push({
+        discountName: name,
+        discountAmount: amt
+      });
+    }
+  });
+
+  return discounts;
+}
+
+async function saveDiscounts() {
+  const eventID = window.currentEventId;
+  if (!eventID) {
+    alert("No active event.");
+    return;
+  }
+
+  const discounts = collectDiscountsFromUI();
+
+  const payload = { discounts };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/adjustments`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Save discounts error:", json);
+      alert(json.error || "Failed to save discounts.");
+      return;
+    }
+
+    alert("Discounts saved!");
+
+    // 🔄 Reload dashboard with fresh data
+    const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`)
+      .then(r => r.json());
+
+    const refreshed = normalizeEvent({
+      ...updated.event,
+      drinkSales: updated.drinkSales,
+      additionalFees: updated.additionalFees,
+      discounts: updated.discounts,
+      tips: updated.tips,
+      supplies: updated.supplies,
+      eventEmployees: updated.labor,
+      totals: updated.totals,
+      sales: updated.sales
+    });
+
+    loadEventIntoDashboard(refreshed);
+
+  } catch (err) {
+    console.error("❌ saveDiscounts error:", err);
+    alert("Network error saving discounts.");
+  }
+}
+
+
+function addDiscountRow(name = "", amount = "") {
+  const tbody = document.querySelector("#discountsEditor tbody");
+  if (!tbody) return;
+
+  const tr = document.createElement("tr");
+  tr.classList.add("discount-row");
+  tr.innerHTML = `
+    <td>
+      <input type="text" class="discount-name" value="${name}">
+    </td>
+    <td>
+      <input type="number" step="0.01" class="discount-amount" value="${amount}">
+    </td>
+    <td>
+      <button type="button" onclick="this.closest('tr').remove()">✕</button>
+    </td>
+  `;
+  tbody.appendChild(tr);
+}
+
+/*function collectAdjustmentsFromUI() {
+  // Discounts
+  const discountRows = document.querySelectorAll(".discount-row");
+  const discounts = [];
+  discountRows.forEach(row => {
+    const nameEl = row.querySelector(".discount-name");
+    const amtEl  = row.querySelector(".discount-amount");
+    const name   = nameEl?.value.trim();
+    const amount = Number(amtEl?.value || 0);
+    if (name && !Number.isNaN(amount)) {
+      discounts.push({ discountName: name, discountAmount: amount });
+    }
+  });
+
+  // Similar pattern for Fees (feeName, feeAmount)
+  // and Tips (tipAmount only)…
+
+  const fees = []; // TODO: collect from .fee-row
+  const tips = []; // TODO: collect from .tip-row
+
+  return {
+    additionalFees: fees,
+    discounts,
+    tips
+  };
+}
+*/
+
+function renderEventProfitSummary(event) {
+  const sales = event.sales || {};
+  const totals = event.totals || {};
+  console.log("event inside renderEventProfitSummary: ", event);
+  const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`;
+
+  const html = `
+    <div class="profit-summary">
+      <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
+      <div><strong>Returns:</strong> -${fmtMoney(sales.refunds)}</div>
+      <div><strong>Discounts:</strong> -${fmtMoney(sales.discounts)}</div>
+      <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
+      <hr>
+
+      <div><strong>Tips:</strong> ${fmtMoney(sales.tips)}</div>
+      <hr>
+
+      <div><strong>Cash:</strong> ${fmtMoney(sales.cash)}</div>
+      <div><strong>Card:</strong> ${fmtMoney(sales.card)}</div>
+      <div><strong>Venmo / Wallet:</strong> ${fmtMoney(sales.venmo)}</div>
+      <div><strong>CashApp:</strong> ${fmtMoney(sales.cashApp)}</div>
+      <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
+      <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
+	  <hr>
+	  <div><strong>Total Collected </strong> ${fmtMoney(sales.totalCollected)}</div>
+	  <div><strong>-State Food Tax </strong> ${fmtMoney(sales.squareReportedTax)}</div>
+	  <div><strong>-Square Fees/Vendor Fees </strong> ${fmtMoney(sales.squareFees)}</div>
+	  TotalNetRevenue
+	  
+	  
+	  
+    </div>
+  `;
+
+  return createCollapsibleCard("Event Profit Summary", html);
+}
+
 
 // ---------------------------
 // 📊 Clean Event Dashboard Loader
+// ---------------------------
+// ---------------------------
+// 📊 Clean Event Dashboard Loader (Sheet-Style Cards, no IDs)
 // ---------------------------
 async function loadEventIntoDashboard(evt) {
   if (!evt) {
@@ -1491,7 +1945,7 @@ async function loadEventIntoDashboard(evt) {
   }
   container.innerHTML = "";
 
-  // HEADER
+  // HEADER (top of dashboard)
   const headerTitle = document.getElementById("dashEventName");
   const headerDate = document.getElementById("dashEventDate");
   const finalizedIndicator = document.getElementById("dashFinalizedIndicator");
@@ -1597,7 +2051,9 @@ async function loadEventIntoDashboard(evt) {
     buttonContainer.appendChild(reportBtn);
   }
 
-  // EVENT SUMMARY CARD
+  // ======================
+  // 1) EVENT SUMMARY CARD
+  // ======================
   const summaryData = {
     EventID: eventID,
     Date: eventDate,
@@ -1608,31 +2064,30 @@ async function loadEventIntoDashboard(evt) {
     NumDays: event.numDays ?? "",
   };
 
-  const summaryHTML = `
-    ${Object.entries(summaryData)
-      .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
-      .join("")}
-    <div class="event-summary-links" style="margin-top:12px;">
-      <button class="btn-inline" data-target="drinkSalesCard">Drink Sales →</button><br>
-      <button class="btn-inline" data-target="additionalFeesCard">Additional Fees →</button><br>
-      <button class="btn-inline" data-target="discountsCard">Discounts →</button><br>
-      <button class="btn-inline" data-target="tipsCard">Tips →</button><br>
-      <button class="btn-inline" data-target="suppliesCard">Supplies →</button>
-    </div>
-  `;
+  const summaryHTML = Object.entries(summaryData)
+    .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
+    .join("");
 
   container.appendChild(
-    createCollapsibleCard("eventSummaryCard", "Event Summary", summaryHTML)
+    createCollapsibleCard("Event Summary", summaryHTML)
   );
 
-  // CUSTOM FIELDS
+  // ======================
+  // 2) CUSTOM FIELDS CARD (if any)
+  // ======================
   if (event.customFields && Object.keys(event.customFields).length) {
+    const customHTML = Object.entries(event.customFields)
+      .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
+      .join("");
+
     container.appendChild(
-      createCollapsibleCard("customFieldsCard", "Custom Fields", event.customFields)
+      createCollapsibleCard("Custom Fields", customHTML)
     );
   }
 
-  // DRINK SALES
+  // ======================
+  // 3) DRINK SALES CARD
+  // ======================
   let drinkHTML = "";
   if (!event.drinkSales || event.drinkSales.length === 0) {
     drinkHTML = "<p>No drink sales recorded.</p>";
@@ -1654,10 +2109,12 @@ async function loadEventIntoDashboard(evt) {
     `;
   }
   container.appendChild(
-    createCollapsibleCard("drinkSalesCard", "Itemized Drink Sales", drinkHTML)
+    createCollapsibleCard("Itemized Drink Sales", drinkHTML)
   );
 
-  // ADDITIONAL FEES
+  // ======================
+  // 4) ADDITIONAL FEES CARD
+  // ======================
   let feeHTML = "";
   if (!event.additionalFees || event.additionalFees.length === 0) {
     feeHTML = "<p>No additional fees recorded.</p>";
@@ -1672,12 +2129,20 @@ async function loadEventIntoDashboard(evt) {
       ${buildTableHTMLString(event.additionalFees)}
     `;
   }
-  container.appendChild(
-    createCollapsibleCard("additionalFeesCard", "Additional Fees", feeHTML)
-  );
+  // ======================
+// 💰 FEES CARD (Editable)
+// ======================
+container.appendChild(
+  createCollapsibleCard("Additional Fees", buildFeesEditor(event))
 
-  // DISCOUNTS
-  let discHTML = "";
+
+  );
+// ======================
+// 5) DISCOUNTS CARD (Editable)
+// ======================
+	const discountEditorHTML = buildDiscountsEditor(event);
+
+	let discHTML = "";
   if (!event.discounts || event.discounts.length === 0) {
     discHTML = "<p>No discounts recorded.</p>";
   } else {
@@ -1691,11 +2156,14 @@ async function loadEventIntoDashboard(evt) {
       ${buildTableHTMLString(event.discounts)}
     `;
   }
-  container.appendChild(
-    createCollapsibleCard("discountsCard", "Discounts", discHTML)
-  );
+ 
+   container.appendChild(
+    createCollapsibleCard("Discounts", buildDiscountsEditor(event))
+   );
 
-  // TIPS
+  // ======================
+  // 6) TIPS CARD
+  // ======================
   let tipsHTML = "";
   if (!event.tips || event.tips.length === 0) {
     tipsHTML = "<p>No tips recorded.</p>";
@@ -1711,10 +2179,12 @@ async function loadEventIntoDashboard(evt) {
     `;
   }
   container.appendChild(
-    createCollapsibleCard("tipsCard", "Tips", tipsHTML)
-  );
-
-  // SUPPLIES
+  createCollapsibleCard("Tips", buildTipsEditor(event))
+);
+  
+  // ======================
+  // 7) SUPPLIES CARD
+  // ======================
   let suppliesHTML = "";
   if (!event.supplies || event.supplies.length === 0) {
     suppliesHTML = "<p>No supplies recorded.</p>";
@@ -1730,72 +2200,136 @@ async function loadEventIntoDashboard(evt) {
     `;
   }
   container.appendChild(
-    createCollapsibleCard("suppliesCard", "Supplies", suppliesHTML)
+    createCollapsibleCard("Supply Fees", suppliesHTML)
   );
 
-  // EMPLOYEES
+  // ======================
+  // 8) EMPLOYEES / LABOR CARD
+  // ======================
   if (event.eventEmployees && event.eventEmployees.length) {
+    const employeesHTML = buildTableHTMLString(event.eventEmployees);
     container.appendChild(
-      createCollapsibleCard("employeesCard", "Employees", event.eventEmployees)
+      createCollapsibleCard("Employees", employeesHTML)
     );
   }
 
-  // PROFIT SUMMARY
-  if (event.totals) {
-    const t = event.totals;
-    const profit =
-      t.drinkRevenue +
-      t.tipsTotal -
-      t.suppliesTotal -
-      t.additionalFees -
-      t.discounts -
-      t.laborTotal;
+ // ======================
+// 9) PROFIT SUMMARY CARD (Full Accounting Analysis)
+// ======================
+if (event.totals) {
 
-    const profitHTML = `
-      <div><strong>Drink Revenue:</strong> ${fmt(t.drinkRevenue)}</div>
-      <div><strong>Tips:</strong> ${fmt(t.tipsTotal)}</div>
-      <div><strong>Supplies:</strong> -${fmt(t.suppliesTotal)}</div>
-      <div><strong>Additional Fees:</strong> -${fmt(t.additionalFees)}</div>
-      <div><strong>Discounts:</strong> -${fmt(t.discounts)}</div>
-      <div><strong>Labor:</strong> -${fmt(t.laborTotal)}</div>
-      <hr>
-      <div style="font-size:1.2rem;">
-        <strong>NET PROFIT:</strong>
-        <span style="color:${profit >= 0 ? "green" : "red"};">
-          ${fmt(profit)}
-        </span>
-      </div>
-    `;
-    container.appendChild(
-      createCollapsibleCard("profitSummaryCard", "Profit Summary", profitHTML)
-    );
-  }
+// ===============================
+// Profit Summary Calculation FIX
+// ===============================
+const n = (v) => Number(v || 0);
+const t = event.totals || {};
+const s = event.sales || {};
 
-  // SUMMARY → SECTION NAVIGATION (safe)
-  document
-    .querySelectorAll(".event-summary-links .btn-inline")
-    .forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+// -------------------------------
+// 1) BASE SALES
+// -------------------------------
+const grossSales = n(s.grossSales);
+const returns = n(s.refunds);
 
-        const targetId = btn.dataset.target;
-        const target = document.getElementById(targetId);
-        if (!target) {
-          console.warn("Navigation target not found:", targetId);
-          return;
-        }
+// Discounts: Prefer table rows, otherwise fallback to SalesSummary
+let discounts = 0;
+if (Array.isArray(event.discounts) && event.discounts.length > 0) {
+  discounts = event.discounts.reduce((sum, d) => sum + n(d.discountAmount), 0);
+} else {
+  discounts = n(s.discounts);
+}
 
-        const content = target.querySelector(".collapsible-content");
-        if (content) {
-          target.classList.add("card-open");
-          content.style.maxHeight = content.scrollHeight + "px";
-          content.style.opacity = "1";
-        }
+const netSales = n(s.netSales);
 
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    });
+// -------------------------------
+// 2) TIPS (non-cash tips from Square)
+// -------------------------------
+let tips = 0;
+if (s.tips != null) {
+  tips = n(s.tips);
+} else if (Array.isArray(event.tips)) {
+  tips = event.tips.reduce((sum, t) => sum + n(t.tipAmount), 0);
+}
+
+// -------------------------------
+// 3) GIFT CARDS
+// -------------------------------
+const giftCardSales = n(event.giftCardSales);
+
+// -------------------------------
+// 4) TOTAL SALES (Net + Tips + Gift Cards)
+// -------------------------------
+const totalSales = netSales + tips + giftCardSales;
+
+// -------------------------------
+// 5) PAYMENT BREAKDOWN (EventInfo)
+// -------------------------------
+const cash    = n(s.cash);
+const card    = n(s.card);
+const venmo   = n(s.venmo);
+const other   = n(s.other);
+const cashApp = n(s.cashApp);
+
+
+// Total Collected = all tender types
+const totalCollected = cash + card + venmo + other + cashApp;
+
+// -------------------------------
+// 6) TAXES & FEES
+// -------------------------------
+const foodTax = n(s.squareReportedTax);
+const squareFees = n(s.squareFees);
+
+// Total Net Revenue = Total Collected - Taxes - Square Fees
+const totalNetRevenue = totalCollected - foodTax - squareFees;
+
+// -------------------------------
+// 7) EXPENSES
+// -------------------------------
+const healthDeptFee = n(event.healthDeptFee);
+const eventFee = n(event.eventFee);
+
+// Supply Fees (from SupplyCosts)
+const supplyFees = n(t.supplyTotal);
+
+// Additional Fees (correct)
+const additionalFees = n(t.additionalFees);
+
+// Mileage
+const mileage = n(event.mileageReimbursement);
+
+// Labor (correct source)
+const laborFees = n(t.laborTotal);
+
+// Event Runner Fees
+const eventRunnerFees = n(event.eventRunnerFees);
+
+// Employee Bonus (fixed for now)
+const employeeBonus = 50;
+
+// Total Expenses
+const totalExpenses =
+  healthDeptFee +
+  eventFee +
+  supplyFees +
+  additionalFees +
+  mileage +
+  laborFees +
+  eventRunnerFees +
+  employeeBonus;
+
+// -------------------------------
+// 8) PROFIT CALCULATIONS
+// -------------------------------
+	if (event.sales && event.totals) {
+		container.appendChild(
+		renderEventProfitSummary(event)
+		);
+	}
+}
+
+
+
 }
 
 
@@ -1842,7 +2376,7 @@ async function pullSquareSales(eventID) {
 // ---------------------------
 // 📊 Post-Event Report Viewer
 // ---------------------------
-async function openPostEventReport(eventData) {
+/*async function openPostEventReport(eventData) {
   try {
     eventData = normalizeEvent(eventData);
 
@@ -1878,7 +2412,7 @@ async function openPostEventReport(eventData) {
     console.error("❌ Error loading post-event report:", err);
     alert("Failed to load post-event report. Check console for details.");
   }
-}
+}*/
 
 /* ============================================================
    🟢 FINAL — Option B
@@ -2074,7 +2608,7 @@ function renderPostEventReport(report) {
   container.innerHTML = html;
   document.getElementById("postEventReportSection").scrollIntoView({ behavior: "smooth" });
 }
-async function loadEmployeesForDropdown() {
+/*async function loadEmployeesForDropdown() {
   const select = document.getElementById("laborEmployeeSelect");
   if (!select) return;
 
@@ -2089,9 +2623,9 @@ async function loadEmployeesForDropdown() {
     opt.textContent = emp.EmployeeName;
     select.appendChild(opt);
   });
-}
+}*/
 
-async function loadLaborForEvent(eventID) {
+/*async function loadLaborForEvent(eventID) {
   const container = document.getElementById("laborTableContainer");
   container.innerHTML = "Loading labor...";
 
@@ -2162,7 +2696,7 @@ async function deleteLaborShift(shiftID) {
   });
 
   loadLaborForEvent(eventID);
-}
+}*/
 
 
 
@@ -2568,7 +3102,7 @@ async function saveLaborShift() {
     hourlyRate: wageEl ? wageEl.value : 0,
     role: roleEl ? roleEl.value : "",
     notes: notesEl ? notesEl.value : ""
-  };
+	};
 
   try {
     const res = await fetch(`${API_BASE}/api/events/${eventID}/employees`, {
@@ -2590,6 +3124,50 @@ async function saveLaborShift() {
     console.error("❌ saveLaborShift error:", err);
     alert("Could not save labor shift.");
   }
+}
+
+async function saveAdjustmentsForCurrentEvent() {
+  const eventID = window.currentEventId;
+  if (!eventID) {
+    alert("No active event selected.");
+    return;
+  }
+
+  // TODO: build these from your UI (see next subsection)
+  const payload = collectAdjustmentsFromUI();
+
+  const res = await fetch(`${API_BASE}/api/events/${eventID}/adjustments`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    console.error("🚨 Adjustments save error:", json);
+    alert(json.error || "Failed to save adjustments.");
+    return;
+  }
+
+  alert("Adjustments saved!");
+
+  // Optionally reload report/dashboard for fresh totals
+  const updatedReport = await fetch(`${API_BASE}/api/events/${eventID}/report`)
+    .then(r => r.json());
+
+  const refreshed = normalizeEvent({
+    ...updatedReport.event,
+    drinkSales: updatedReport.drinkSales,
+    additionalFees: updatedReport.additionalFees,
+    discounts: updatedReport.discounts,
+    tips: updatedReport.tips,
+    supplies: updatedReport.supplies,
+    eventEmployees: updatedReport.labor,
+    totals: updatedReport.totals,
+    sales: updatedReport.sales
+  });
+
+  loadEventIntoDashboard(refreshed);
 }
 
 async function deleteLaborShift(shiftID) {

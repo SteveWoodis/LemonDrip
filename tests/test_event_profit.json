@@ -1,0 +1,41 @@
+{
+  "eventInfo": {
+    "EventID": 1,
+    "eventName": "Test Football Game",
+    "eventDate": "2025-01-15",
+    "eventFee": 150,
+    "healthDeptFee": 40,
+    "mileageReimbursement": 25,
+    "eventRunnerFees": 60,
+    "giftCardSales": 100,
+    "cash": 500,
+    "card": 850,
+    "venmo": 120,
+    "other": 0,
+    "cashApp": 75,
+    "taxOverride": null
+  },
+  "sales": {
+    "grossSales": 3000,
+    "refunds": 50,
+    "discounts": 70,
+    "tips": 130,
+    "totalSales": 2110,
+    "squareReportedTax": 140,
+    "squareFees": 55
+  },
+  "totals": {
+    "suppliesTotal": 185,
+    "additionalFees": 90,
+    "laborTotal": 460
+  },
+  "discounts": [
+    { "discountAmount": 50 },
+    { "discountAmount": 20 }
+  ],
+  "tips": [
+    { "tipAmount": 100 },
+    { "tipAmount": 30 }
+  ]
+}
+

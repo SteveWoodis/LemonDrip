@@ -699,15 +699,20 @@ app.post("/api/events", (req, res) => {
     if (!e.eventName)
       return res.status(400).json({ error: "Missing eventName." });
 
-    const stmt = db.prepare(`
+        const stmt = db.prepare(`
       INSERT INTO EventInfo (
         eventName, eventDate, applicationDate, finalizedDate,
         eventFee, squareLocationId, time, employees,
         eventRating, eventHost, notes, status, eventType,
         numDays, coordinator, grossSales, tips, netSales,
-        totalSales, isFinalized, customFields
+        totalSales, isFinalized, customFields,
+        healthDeptFee, mileageReimbursement, eventRunnerFees,
+        giftCardSales,
+        cash, card, venmo, other, cashApp,
+        taxOverride
       )
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+              ?,?,?,?,?,?,?,?,?)
     `);
 
     const result = stmt.run(
@@ -731,8 +736,19 @@ app.post("/api/events", (req, res) => {
       e.netSales,
       e.totalSales,
       e.isFinalized,
-      e.customFields
+      e.customFields,
+      e.healthDeptFee ?? 0,
+      e.mileageReimbursement ?? 0,
+      e.eventRunnerFees ?? 0,
+      e.giftCardSales ?? 0,
+      e.cash ?? 0,
+      e.card ?? 0,
+      e.venmo ?? 0,
+      e.other ?? 0,
+      e.cashApp ?? 0,
+      e.taxOverride ?? null
     );
+
 
     res.json({ success: true, eventID: result.lastInsertRowid });
   } catch (err) {
@@ -749,13 +765,17 @@ app.put("/api/events/:id", (req, res) => {
     const id = req.params.id;
     const e = coerceEvent(req.body);
 
-    const stmt = db.prepare(`
+        const stmt = db.prepare(`
       UPDATE EventInfo SET
         eventName=?, eventDate=?, applicationDate=?, finalizedDate=?,
         eventFee=?, squareLocationId=?, time=?, employees=?,
         eventRating=?, eventHost=?, notes=?, status=?, eventType=?,
         numDays=?, coordinator=?, grossSales=?, tips=?, netSales=?,
-        totalSales=?, isFinalized=?, customFields=?
+        totalSales=?, isFinalized=?, customFields=?,
+        healthDeptFee=?, mileageReimbursement=?, eventRunnerFees=?,
+        giftCardSales=?,
+        cash=?, card=?, venmo=?, other=?, cashApp=?,
+        taxOverride=?
       WHERE eventID=?
     `);
 
@@ -781,8 +801,19 @@ app.put("/api/events/:id", (req, res) => {
       e.totalSales,
       e.isFinalized,
       e.customFields,
+      e.healthDeptFee ?? 0,
+      e.mileageReimbursement ?? 0,
+      e.eventRunnerFees ?? 0,
+      e.giftCardSales ?? 0,
+      e.cash ?? 0,
+      e.card ?? 0,
+      e.venmo ?? 0,
+      e.other ?? 0,
+      e.cashApp ?? 0,
+      e.taxOverride ?? null,
       id
     );
+
 
     if (result.changes === 0)
       return res.status(404).json({ error: "Event not found." });
@@ -794,66 +825,50 @@ app.put("/api/events/:id", (req, res) => {
   }
 });
 
-// -------------------------------
-// PUT /api/square/sales/:eventId  (DST-aware)
-// -------------------------------
-// -------------------------------
-// PUT /api/square/sales/:eventId  (DST-aware + Drink Line Items)
-// -------------------------------
+
 app.put("/api/square/sales/:eventId", async (req, res) => {
   try {
     const eventId = req.params.eventId;
 
-    // 1️⃣ Look up event date & location
-    const ev = db
-      .prepare(
-        `
-        SELECT eventDate, squareLocationId
-        FROM EventInfo
-        WHERE eventID = ?
-      `
-      )
-      .get(eventId);
+    // 1️⃣ Fetch event info
+    const ev = db.prepare(`
+      SELECT eventDate, squareLocationId
+      FROM EventInfo
+      WHERE eventID = ?
+    `).get(eventId);
 
-    if (!ev) {
-      return res.status(404).json({ error: "Event not found." });
-    }
+    if (!ev) return res.status(404).json({ error: "Event not found." });
+    if (!ev.squareLocationId)
+      return res.status(400).json({ error: "Event has no Square Location ID." });
 
-    if (!ev.squareLocationId) {
-      return res
-        .status(400)
-        .json({ error: "Event has no Square Location ID." });
-    }
-
-    // 2️⃣ Build local (Utah-ish) day window, then convert to ISO
+    // 2️⃣ Build local → ISO window (MT = -06:00 standard)
     const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
     const localEnd = new Date(`${ev.eventDate}T23:59:59-06:00`);
-
     const beginTime = localStart.toISOString();
     const endTime = localEnd.toISOString();
 
-    console.log("DST-AWARE BEGIN:", beginTime);
-    console.log("DST-AWARE END  :", endTime);
-
     const accessToken = process.env.SQUARE_ACCESS_TOKEN;
-    if (!accessToken) {
-      return res.status(500).json({
-        error: "SQUARE_ACCESS_TOKEN is not set in the environment.",
-      });
-    }
 
+    // COLLECTORS
+    let payments = [];
+    let orderIds = new Set();
+
+    let grossSales = 0;     // Square Gross
+    let discounts = 0;      // Square Discounts
+    let netSales = 0;       // EXACT Square Net Sales
+    let refunds = 0;
+    let tips = 0;
+    let totalCollected = 0;
+    let squareReportedTax = 0;
+    let squareFees = 0;
+	let cash = 0;
+	let card = 0;
+	let venmo = 0;
+	let wallet = 0;
+	let other = 0;
     let cursor = null;
 
-    // Aggregate totals (same as before)
-    let gross = 0;
-    let refunds = 0;
-    let discounts = 0;
-    let tips = 0;
-
-    // We'll collect order IDs so we can fetch line items after
-    const orderIds = new Set();
-
-    // 3️⃣ Page through payments
+    // 3️⃣ PAGE THROUGH PAYMENTS
     do {
       const url = new URL("https://connect.squareup.com/v2/payments");
       url.searchParams.set("begin_time", beginTime);
@@ -866,153 +881,170 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         method: "GET",
         headers: {
           "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${accessToken}`,
-        },
+          Authorization: `Bearer ${accessToken}`
+        }
       });
 
-      if (!response.ok) {
-        const errBody = await response.text().catch(() => "");
-        console.error("Square payments error:", response.status, errBody);
-        return res.status(response.status).json({
-          error: `Square API error ${response.status}`,
-        });
-      }
-
       const json = await response.json();
-      const payments = json.payments || [];
+      const pagePayments = json.payments || [];
 
-      for (const p of payments) {
-        gross += p.amount_money?.amount || 0;
-        refunds += p.refunded_money?.amount || 0;
-        discounts += p.total_discount_money?.amount || 0;
-        tips += p.tip_money?.amount || 0;
+      payments.push(...pagePayments);
+	
+      for (const p of pagePayments) {
+		  const amount =
+			p.amount_money?.amount
+			  ? p.amount_money.amount / 100
+			  : 0;
+		  totalCollected += amount;
+		  
+		if (p.order_id) orderIds.add(p.order_id);
+		switch (p.source_type) {
+			case "CASH":
+			  cash += amount;
+			  break;
 
-        if (p.order_id) {
-          orderIds.add(p.order_id);
-        }
-      }
+			case "CARD":
+			  card += amount;
+			  break;
+
+			case "WALLET":
+			  wallet += amount;
+			  break;
+
+			default:
+			  other += amount;
+			  break;
+		  }
+
+  // Tips
+  if (p.tip_money)
+    tips += p.tip_money.amount / 100;
+
+  // Refunds
+  if (p.refunded_money)
+    refunds += (p.refunded_money.amount || 0) / 100;
+
+  // Processing fees
+  if (p.processing_fee_money) {
+    for (const f of p.processing_fee_money) {
+      squareFees += (f.amount || 0) / 100;
+    }
+  }
+}
+
 
       cursor = json.cursor || null;
     } while (cursor);
 
-    // Convert cents → dollars
-    gross /= 100;
-    refunds /= 100;
-    discounts /= 100;
-    tips /= 100;
-
-    const netSales = gross - refunds - discounts;
-    const totalCollected = netSales + tips;
-
-    // 4️⃣ Upsert SalesSummary (same as before)
-    db.prepare(`
-      INSERT INTO SalesSummary (
-        EventID, grossSales, netSales, refunds, discounts, tips, totalCollected
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(EventID) DO UPDATE SET
-        grossSales = excluded.grossSales,
-        netSales = excluded.netSales,
-        refunds = excluded.refunds,
-        discounts = excluded.discounts,
-        tips = excluded.tips,
-        totalCollected = excluded.totalCollected
-    `).run(
-      eventId,
-      gross,
-      netSales,
-      refunds,
-      discounts,
-      tips,
-      totalCollected
-    );
-
-    // 5️⃣ Fetch Orders to build itemized drink sales
-    const drinkMap = new Map(); // key = drinkName, value = { quantitySold, costPerDrink, totalCost }
-
-    for (const orderId of orderIds) {
-      const orderUrl = `https://connect.squareup.com/v2/orders/${orderId}`;
-      const oRes = await fetch(orderUrl, {
-        method: "GET",
-        headers: {
-          "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!oRes.ok) {
-        const errBody = await oRes.text().catch(() => "");
-        console.error("Square order error:", oRes.status, errBody);
-        continue; // skip this order but keep going
-      }
-
-      const oJson = await oRes.json();
-      const order = oJson.order;
-      if (!order || !order.line_items) continue;
-
-      for (const li of order.line_items) {
-        const name = li.name || "Unknown Item";
-        const qty = Number(li.quantity || 0);
-        const unitCents = li.base_price_money?.amount ?? 0;
-        const unit = unitCents / 100;
-        const total = unit * qty;
-
-        if (!drinkMap.has(name)) {
-          drinkMap.set(name, {
-            drinkName: name,
-            costPerDrink: unit,
-            quantitySold: 0,
-            totalCost: 0,
-          });
+    // 4️⃣ FETCH ORDERS for true GROSS + DISCOUNTS + NET SALES
+    for (const oid of orderIds) {
+	  const oRes = await fetch(
+        `https://connect.squareup.com/v2/orders/${oid}`,
+        {
+          method: "GET",
+          headers: {
+            "Square-Version": "2025-01-15",
+            Authorization: `Bearer ${accessToken}`
+          }
         }
+      );
 
-        const agg = drinkMap.get(name);
-        agg.quantitySold += qty;
-        agg.totalCost += total;
+      const { order } = await oRes.json();
+      if (!order) continue;
+
+      // Gross Sales = sum(base_price_money * quantity)
+      if (order.line_items) {
+        for (const li of order.line_items) {
+          const qty = Number(li.quantity || 0);
+          const base = li.base_price_money?.amount || 0;
+          grossSales += (base * qty) / 100;
+        }
+      }
+
+      // Discounts
+      if (order.discounts) {
+        for (const d of order.discounts) {
+          if (d.applied_money)
+            discounts += (d.applied_money.amount || 0) / 100;
+        }
+      }
+
+      // Square Net Sales EXACT FROM API
+      if (order.net_amounts?.sales_money) {
+        netSales += (order.net_amounts.sales_money.amount || 0) / 100;
       }
     }
 
-    // 6️⃣ Persist DrinkSales table from aggregated map
-    // (assumes table: DrinkSales(eventID, drinkName, costPerDrink, quantitySold, totalCost))
-    const deleteStmt = db.prepare(
-      `DELETE FROM DrinkSales WHERE eventID = ?`
-    );
-    deleteStmt.run(eventId);
+    // 5️⃣ WRITE INTO DB
+    db.prepare(`
+  INSERT INTO SalesSummary (
+    eventID,
+    grossSales, netSales, refunds, discounts, tips,
+    totalCollected,
+    cash, card, venmo, other, cashApp,
+    squareReportedTax, squareFees
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(eventID) DO UPDATE SET
+    grossSales = excluded.grossSales,
+    netSales = excluded.netSales,
+    refunds = excluded.refunds,
+    discounts = excluded.discounts,
+    tips = excluded.tips,
+    totalCollected = excluded.totalCollected,
+    cash = excluded.cash,
+    card = excluded.card,
+    venmo = excluded.venmo,
+    other = excluded.other,
+    cashApp = excluded.cashApp,
+    squareReportedTax = excluded.squareReportedTax,
+    squareFees = excluded.squareFees
+`).run(
+  eventId,
+  grossSales,
+  netSales,
+  refunds,
+  discounts,
+  tips,
+  totalCollected,
+  cash,
+  card,
+  wallet, // venmo for now
+  other,
+  0,      // cashApp placeholder
+  squareReportedTax,
+  squareFees
+);
 
-    const insertStmt = db.prepare(`
-      INSERT INTO DrinkSales (eventID, drinkName, costPerDrink, quantitySold, totalCost)
-      VALUES (?, ?, ?, ?, ?)
-    `);
 
-    const drinkSales = [];
-    for (const agg of drinkMap.values()) {
-      insertStmt.run(
-        eventId,
-        agg.drinkName,
-        agg.costPerDrink,
-        agg.quantitySold,
-        agg.totalCost
-      );
-      drinkSales.push(agg);
-    }
-
-    // 7️⃣ Respond with both summary + itemized drinks
+    // 6️⃣ RETURN CLEAN JSON
     res.json({
       success: true,
-      message: "Square data synced (DST-aware, with itemized drink sales).",
-      grossSales: gross,
-      refunds,
-      discounts,
-      netSales,
-      tips,
-      totalCollected,
-      drinkSales,
+      message: "Square data synced successfully.",
+      sales: {
+        grossSales,
+        discounts,
+        netSales,
+        refunds,
+        tips,
+		cash,
+		card,
+		venmo,
+		other,
+        totalCollected,
+        squareReportedTax,
+        squareFees
+      }
     });
+
+
   } catch (err) {
     console.error("❌ Square Sales Error:", err);
     res.status(500).json({ error: "Failed pulling Square sales." });
   }
 });
+
+
 
 
 function findOrCreateEmployee(squareEmp) {
@@ -1484,6 +1516,117 @@ app.put("/api/events/:id/finalize", (req, res) => {
   }
 });
 
+	// ---------------------------------------------------------
+	// Generic helper to save "sub-table" rows for an event
+	// ---------------------------------------------------------
+	function saveSubTableRows(eventID, rows, config) {
+	  const { table, columns } = config;
+	  if (!Array.isArray(rows)) return;
+
+	  // 1) Delete existing rows for this event
+	  const delStmt = db.prepare(`DELETE FROM ${table} WHERE eventID = ?`);
+	  delStmt.run(eventID);
+
+	  if (!rows.length) return;
+
+	  // 2) Build INSERT statement
+	  const colNames = ["eventID", ...columns.map(c => c.name)];
+	  const placeholders = colNames.map(() => "?").join(", ");
+
+	  const insertStmt = db.prepare(`
+		INSERT INTO ${table} (${colNames.join(", ")})
+		VALUES (${placeholders})
+	  `);
+
+	  const insertMany = db.transaction((rowList) => {
+		for (const row of rowList) {
+		  insertStmt.run(
+			eventID,
+			...columns.map(c => row[c.prop] ?? null)
+		  );
+		}
+	  });
+
+	  insertMany(rows);
+	}
+	// ---------------------------------------------------------
+	// Save all "adjustment" sub-tables: Fees, Discounts, Tips
+	// ---------------------------------------------------------
+	function saveEventAdjustments(eventID, payload) {
+	  const {
+		additionalFees = [],
+		discounts = [],
+		tips = []
+	  } = payload || {};
+
+	  // AdditionalFees: { feeName, feeAmount }
+	  saveSubTableRows(eventID, additionalFees, {
+		table: "AdditionalFees",
+		columns: [
+		  { name: "feeName",   prop: "feeName" },
+		  { name: "feeAmount", prop: "feeAmount" }
+		]
+	  });
+
+	  // Discounts: { discountName, discountAmount }
+	  saveSubTableRows(eventID, discounts, {
+		table: "Discounts",
+		columns: [
+		  { name: "discountName",   prop: "discountName" },
+		  { name: "discountAmount", prop: "discountAmount" }
+		]
+	  });
+
+	  // TipTracker: { tipAmount }
+	  saveSubTableRows(eventID, tips, {
+		table: "TipTracker",
+		columns: [
+		  { name: "tipAmount", prop: "tipAmount" }
+		]
+	  });
+	}
+
+// ---------------------------------------------------------
+// PUT /api/events/:id/adjustments
+// Save AdditionalFees, Discounts, Tips for an event
+// ---------------------------------------------------------
+app.put("/api/events/:id/adjustments", (req, res) => {
+  try {
+    const eventID = Number(req.params.id);
+    if (!eventID) {
+      return res.status(400).json({ error: "Invalid eventID." });
+    }
+
+    // Ensure event exists
+    const exists = db
+      .prepare("SELECT 1 FROM EventInfo WHERE eventID = ?")
+      .get(eventID);
+
+    if (!exists) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    // Expect { additionalFees: [], discounts: [], tips: [] }
+    const { additionalFees, discounts, tips } = req.body || {};
+
+    saveEventAdjustments(eventID, {
+      additionalFees,
+      discounts,
+      tips
+    });
+
+    res.json({
+      success: true,
+      message: "Adjustments saved.",
+      eventID
+    });
+  } catch (err) {
+    console.error("❌ Error saving adjustments:", err);
+    res.status(500).json({ error: "Failed to save adjustments." });
+  }
+});
+
+
 // -------------------------------
 // PUT /api/events/:id/ratings
 // -------------------------------
@@ -1629,13 +1772,13 @@ function coerceEvent(body) {
     v === true || v === "true" || v === 1 || v === "1" ? 1 : 0;
   const toStr = (v) => (v == null || v === "" ? null : String(v));
 
-  return {
+    return {
     eventName: toStr(body.eventName),
     eventDate: toStr(body.eventDate),
     applicationDate: toStr(body.applicationDate),
     finalizedDate: toStr(body.finalizedDate),
 
-    eventFee: toInt(body.eventFee),
+    eventFee: toNum(body.eventFee),
     squareLocationId: toStr(body.squareLocationId),
     time: toStr(body.time),
     employees: toStr(body.employees),
@@ -1653,6 +1796,21 @@ function coerceEvent(body) {
     totalSales: toNum(body.totalSales),
     isFinalized: toBoolI(body.isFinalized),
 
+    // 🔹 NEW: Profit-related fields
+    healthDeptFee: toNum(body.healthDeptFee),
+    mileageReimbursement: toNum(body.mileageReimbursement),
+    eventRunnerFees: toNum(body.eventRunnerFees),
+
+    giftCardSales: toNum(body.giftCardSales),
+
+    cash: toNum(body.cash),
+    card: toNum(body.card),
+    venmo: toNum(body.venmo),
+    other: toNum(body.other),
+    cashApp: toNum(body.cashApp),
+
+    taxOverride: toNum(body.taxOverride),
+
     customFields:
       body.customFields && Object.keys(body.customFields).length
         ? JSON.stringify(body.customFields)
@@ -1660,95 +1818,147 @@ function coerceEvent(body) {
   };
 }
 
-// -------------------------------
-// Unified Post-Event Report builder
-// -------------------------------
+
+
 function buildPostEventReport(eventId) {
+  // =========================
+  // 1) Base EventInfo record
+  // =========================
   const event = db
-    .prepare(
-      `SELECT * FROM EventInfo WHERE eventID = ?`
-    )
+    .prepare(`SELECT * FROM EventInfo WHERE eventID = ?`)
     .get(eventId);
 
   if (!event) return null;
 
-  // --- Sales Summary ---
+  // =========================
+  // 2) Sales Summary (Square)
+  // =========================
   const sales = db
-    .prepare(`SELECT * FROM SalesSummary WHERE eventID = ?`)
+    .prepare(`
+      SELECT
+        grossSales,
+        netSales,
+        refunds,
+        discounts,
+        tips,
+        cash,
+        card,
+        venmo,
+        cashApp,
+        other,
+        totalCollected,
+        squareReportedTax,
+        squareFees
+      FROM SalesSummary
+      WHERE eventID = ?
+    `)
     .get(eventId) || {
-    grossSales: 0,
-    netSales: 0,
-    refunds: 0,
-    discounts: 0,
-    tips: 0,
-    totalCollected: 0,
-  };
+      grossSales: 0,
+      netSales: 0,
+      refunds: 0,
+      discounts: 0,
+      tips: 0,
+      cash: 0,
+      card: 0,
+      venmo: 0,
+      cashApp: 0,
+      other: 0,
+      totalCollected: 0,
+      squareReportedTax: 0,
+      squareFees: 0
+    };
 
-  // --- Drink Sales (new!) ---
+  // =========================
+  // 3) Drink Sales
+  // =========================
   const drinkSales = db
     .prepare(
-      `SELECT drinkName, costPerDrink, quantitySold, totalCost
+      `SELECT drinkName, unitPrice, quantitySold, totalCost
        FROM DrinkSales WHERE eventID = ?`
     )
     .all(eventId);
 
-  // --- Additional Fees ---
+  // =========================
+  // 4) Additional Fees
+  // =========================
   const additionalFees = db
     .prepare(
-      `SELECT feeName, feeAmount FROM AdditionalFees WHERE eventID = ?`
+      `SELECT feeName, feeAmount
+       FROM AdditionalFees
+       WHERE eventID = ?`
     )
     .all(eventId);
 
-  // --- Discounts ---
-  const discounts = db
+  // =========================
+  // 5) Discounts (line items)
+  // =========================
+  const discountItems = db
     .prepare(
-      `SELECT description, discountAmount FROM Discounts WHERE eventID = ?`
+      `SELECT discountName, discountAmount
+       FROM Discounts
+       WHERE eventID = ?`
     )
     .all(eventId);
 
-  // --- Tips ---
-  const tips = db
+  // =========================
+  // 6) Tips (event-level)
+  // =========================
+  const tipItems = db
     .prepare(
-      `SELECT tipAmount FROM TipTracker WHERE eventID = ?`
+      `SELECT tipAmount
+       FROM TipTracker
+       WHERE eventID = ?`
     )
     .all(eventId);
 
-  // --- Supplies ---
+  // =========================
+  // 7) Supplies
+  // =========================
   const supplies = db
     .prepare(
       `SELECT itemName, unitCost, quantityUsed, totalCost
-       FROM SupplyCosts WHERE eventID = ?`
+       FROM SupplyCosts
+       WHERE eventID = ?`
     )
     .all(eventId);
 
-  // --- Labor ---
+  // =========================
+  // 8) Labor
+  // =========================
   const labor = db
     .prepare(
-      `SELECT employeeName, hoursWorked, hourlyRate, totalPay
-       FROM EmployeeTracker WHERE eventID = ?`
+      `SELECT e.EmployeeName, ee.hoursWorked, ee.hourlyRate, ee.totalPay
+       FROM EventEmployees ee
+       JOIN EmployeeTracker e ON ee.EmployeeID = e.EmployeeID
+       WHERE ee.eventID = ?`
     )
     .all(eventId);
 
-  // --- Totals for Profit Summary ---
+  // =========================
+  // 9) Totals for Profit Summary
+  // =========================
   const totals = {
-    drinkRevenue: drinkSales.reduce((sum, r) => sum + r.totalCost, 0),
-    additionalFees: additionalFees.reduce((sum, r) => sum + r.feeAmount, 0),
-    discounts: discounts.reduce((sum, r) => sum + r.discountAmount, 0),
-    tipsTotal: tips.reduce((sum, r) => sum + r.tipAmount, 0),
-    suppliesTotal: supplies.reduce((sum, r) => sum + r.totalCost, 0),
-    laborTotal: labor.reduce((sum, r) => sum + r.totalPay, 0),
+    drinkRevenue: drinkSales.reduce((sum, r) => sum + (r.totalCost || 0), 0),
+    additionalFees: additionalFees.reduce((sum, r) => sum + (r.feeAmount || 0), 0),
+    discounts: discountItems.reduce((sum, r) => sum + (r.discountAmount || 0), 0),
+    tipsTotal: tipItems.reduce((sum, r) => sum + (r.tipAmount || 0), 0),
+    suppliesTotal: supplies.reduce((sum, r) => sum + (r.totalCost || 0), 0),
+    laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0)
   };
 
+  // =========================
+  // 10) Return Unified Report
+  // =========================
   return {
     event,
     sales,
     drinkSales,
     additionalFees,
-    discounts,
-    tips,
+    discounts: discountItems,
+    tips: tipItems,
     supplies,
     labor,
-    totals,
+    totals
   };
 }
 

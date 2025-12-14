@@ -1,0 +1,164 @@
+{
+  "templateName": "Full Event Template",
+  "fields": [
+    {
+      "id": "eventName",
+      "label": "Event Name",
+      "dbKey": "eventName",
+      "type": "text",
+      "section": "Event Info"
+    },
+    {
+      "id": "eventDate",
+      "label": "Event Date",
+      "dbKey": "eventDate",
+      "type": "date",
+      "section": "Event Info"
+    },
+    {
+      "id": "applicationDate",
+      "label": "Application Date",
+      "dbKey": "applicationDate",
+      "type": "date",
+      "section": "Event Info"
+    },
+    {
+      "id": "finalizedDate",
+      "label": "Finalized Date",
+      "dbKey": "finalizedDate",
+      "type": "date",
+      "section": "Event Info"
+    },
+    {
+      "id": "eventType",
+      "label": "Event Type",
+      "dbKey": "eventType",
+      "type": "text",
+      "section": "Event Info"
+    },
+    {
+      "id": "location",
+      "label": "Location",
+      "dbKey": "location",
+      "type": "text",
+      "section": "Event Info"
+    },
+    {
+      "id": "coordinator",
+      "label": "Coordinator",
+      "dbKey": "coordinator",
+      "type": "text",
+      "section": "Event Info"
+    },
+    {
+      "id": "numDays",
+      "label": "Number of Days",
+      "dbKey": "numDays",
+      "type": "number",
+      "section": "Event Info"
+    },
+    {
+      "id": "squareLocationId",
+      "label": "Square Location ID",
+      "dbKey": "squareLocationId",
+      "type": "text",
+      "section": "Event Info"
+    },
+    {
+      "id": "eventFee",
+      "label": "Event Fee",
+      "dbKey": "eventFee",
+      "type": "number",
+      "section": "Fees"
+    },
+    {
+      "id": "healthDeptFee",
+      "label": "Health Dept Fee",
+      "dbKey": "healthDeptFee",
+      "type": "number",
+      "section": "Fees"
+    },
+    {
+      "id": "mileageReimbursement",
+      "label": "Mileage Reimbursement",
+      "dbKey": "mileageReimbursement",
+      "type": "number",
+      "section": "Fees"
+    },
+    {
+      "id": "eventRunnerFees",
+      "label": "Event Runner Fees",
+      "dbKey": "eventRunnerFees",
+      "type": "number",
+      "section": "Fees"
+    },
+    {
+      "id": "giftCardSales",
+      "label": "Gift Card Sales",
+      "dbKey": "giftCardSales",
+      "type": "number",
+      "section": "Fees"
+    },
+    {
+      "id": "cash",
+      "label": "Cash Collected",
+      "dbKey": "cash",
+      "type": "number",
+      "section": "Payment Breakdown"
+    },
+    {
+      "id": "card",
+      "label": "Card Collected",
+      "dbKey": "card",
+      "type": "number",
+      "section": "Payment Breakdown"
+    },
+    {
+      "id": "venmo",
+      "label": "Venmo Collected",
+      "dbKey": "venmo",
+      "type": "number",
+      "section": "Payment Breakdown"
+    },
+    {
+      "id": "other",
+      "label": "Other Payment Method",
+      "dbKey": "other",
+      "type": "number",
+      "section": "Payment Breakdown"
+    },
+    {
+      "id": "cashApp",
+      "label": "Cash App Collected",
+      "dbKey": "cashApp",
+      "type": "number",
+      "section": "Payment Breakdown"
+    },
+    {
+      "id": "taxOverride",
+      "label": "Tax Override (optional)",
+      "dbKey": "taxOverride",
+      "type": "number",
+      "section": "Taxes"
+    },
+    {
+      "id": "notes",
+      "label": "Event Notes",
+      "dbKey": "notes",
+      "type": "textarea",
+      "section": "Notes"
+    },
+   {
+      "id": "Internal Notes",
+      "label": "Internal Notes",
+      "type": "textarea",
+      "section": "Custom"
+    },
+    {
+      "id": "External Notes",
+      "label": "External Notes",
+      "type": "textarea",
+      "section": "Custom"
+    }
+  ]
+}
