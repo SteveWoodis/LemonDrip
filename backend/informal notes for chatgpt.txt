@@ -1,0 +1,67 @@
+🟦 GOAT Tracking Software — Persistent Kanban Board 
+🟦 TO-DO C — Dynamic Form Builder (cleanup & consistency) 
+H — Multi-Day Event Support 
+I — Multi-squareLocationId Support 
+K — Supply Cost Analysis Report 
+L — Inventory Restock Order Form 
+E — Pull Employee Labor from Square 
+M — Google Calendar Invite Automation 
+J — Event Summary → Itemized Drink Sales link 
+
+
+
+🟧 DOING 
+F — Post-Event data shows correctly 
+
+
+🟩 DONE 
+D — Clean submitEvent() 
+B — Unified search/filter pipeline 
+A — createCollapsibleCard() cleaned 
+G — Clear Search Button
+
+
+
+
+1️⃣ Split Venmo vs Cash App (by inspecting p.wallet_details)
+2️⃣ Add tender breakdown card in the dashboard
+3️⃣ Validate totals vs Square dashboard
+4️⃣ Lock Square data after finalization
+5️⃣ Handle refunds by tender type
+
+Mental Model Going Forward (This Will Help Everywhere)
+
+Think of your backend as three layers:
+
+1️⃣ Ingestion layer
+
+Square API routes
+
+File uploads
+
+External systems
+👉 This is the only place that writes system data
+
+2️⃣ Storage layer
+
+SQLite tables
+
+Triggers
+
+Constraints
+👉 Never invent values here
+
+3️⃣ Assembly layer
+
+buildPostEventReport()
+
+dashboard payloads
+
+exports / PDFs
+👉 Read + format only
+
+Right now, buildPostEventReport() was accidentally doing layer 1 behavior.
+
+You caught it early — very good instincts.
+
+

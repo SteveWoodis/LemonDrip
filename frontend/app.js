@@ -24,7 +24,9 @@ const API_BASE = "http://localhost:3000";
 // 🔄 Event Normalization Helpers
 // ---------------------------
 function normalizeEvent(e) {
-	const n = (v) => Number(v || 0);
+	const n = (v) =>
+  v === null || v === undefined ? null : Number(v);
+
   if (!e) {
     return {
       eventID: null,
@@ -1872,7 +1874,7 @@ function renderEventProfitSummary(event) {
   const sales = event.sales || {};
   const totals = event.totals || {};
   console.log("event inside renderEventProfitSummary: ", event);
-  const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`;
+  const fmtMoney = (v) => v == null ?"-" : `$${Number(v || 0).toFixed(2)}`;
 
   const html = `
     <div class="profit-summary">
@@ -1895,7 +1897,7 @@ function renderEventProfitSummary(event) {
 	  <div><strong>Total Collected </strong> ${fmtMoney(sales.totalCollected)}</div>
 	  <div><strong>-State Food Tax </strong> ${fmtMoney(sales.squareReportedTax)}</div>
 	  <div><strong>-Square Fees/Vendor Fees </strong> ${fmtMoney(sales.squareFees)}</div>
-	  TotalNetRevenue
+	 
 	  
 	  
 	  
@@ -2221,7 +2223,9 @@ if (event.totals) {
 // ===============================
 // Profit Summary Calculation FIX
 // ===============================
-const n = (v) => Number(v || 0);
+const n = (v) =>
+  v === null || v === undefined ? null : Number(v);
+
 const t = event.totals || {};
 const s = event.sales || {};
 

@@ -184,14 +184,19 @@ app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
 app.post("/api/events/upload-permits", upload.array("permits"),  (req, res) => {
     const eventID = Number(req.body.eventID);
 
-    for (const file of req.files) {
-      db.prepare(
-        `
-      INSERT INTO EventPermits (eventID, fileName, originalName, mimeType)
-      VALUES (?, ?, ?, ?)
-    `
-      ).run(eventID, file.filename, file.originalname, file.mimetype);
-    }
+	const insert = db.prepare(`
+	  INSERT INTO EventPermits (eventID, filename, path)
+	  VALUES (?, ?, ?)
+	`);
+
+	const tx = db.transaction(files => {
+	  for (const f of files) {
+		insert.run(eventId, f.originalname, f.path);
+	  }
+	});
+
+	tx(req.files);
+
 
     res.json({ message: "Permit files saved", count: req.files.length });
   }
@@ -708,7 +713,7 @@ app.post("/api/events", (req, res) => {
         totalSales, isFinalized, customFields,
         healthDeptFee, mileageReimbursement, eventRunnerFees,
         giftCardSales,
-        cash, card, venmo, other, cashApp,
+        cash, card, wallet, other, cashApp,
         taxOverride
       )
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
@@ -743,7 +748,7 @@ app.post("/api/events", (req, res) => {
       e.giftCardSales ?? 0,
       e.cash ?? 0,
       e.card ?? 0,
-      e.venmo ?? 0,
+      e.wallet ?? 0,
       e.other ?? 0,
       e.cashApp ?? 0,
       e.taxOverride ?? null
@@ -774,7 +779,7 @@ app.put("/api/events/:id", (req, res) => {
         totalSales=?, isFinalized=?, customFields=?,
         healthDeptFee=?, mileageReimbursement=?, eventRunnerFees=?,
         giftCardSales=?,
-        cash=?, card=?, venmo=?, other=?, cashApp=?,
+        cash=?, card=?, wallet=?, other=?, cashApp=?,
         taxOverride=?
       WHERE eventID=?
     `);
@@ -807,7 +812,7 @@ app.put("/api/events/:id", (req, res) => {
       e.giftCardSales ?? 0,
       e.cash ?? 0,
       e.card ?? 0,
-      e.venmo ?? 0,
+      e.wallet ?? 0,
       e.other ?? 0,
       e.cashApp ?? 0,
       e.taxOverride ?? null,
@@ -828,9 +833,8 @@ app.put("/api/events/:id", (req, res) => {
 
 app.put("/api/square/sales/:eventId", async (req, res) => {
   try {
-    const eventId = req.params.eventId;
+    const eventId = Number(req.params.eventId);
 
-    // 1️⃣ Fetch event info
     const ev = db.prepare(`
       SELECT eventDate, squareLocationId
       FROM EventInfo
@@ -841,208 +845,211 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     if (!ev.squareLocationId)
       return res.status(400).json({ error: "Event has no Square Location ID." });
 
-    // 2️⃣ Build local → ISO window (MT = -06:00 standard)
-    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
-    const localEnd = new Date(`${ev.eventDate}T23:59:59-06:00`);
-    const beginTime = localStart.toISOString();
-    const endTime = localEnd.toISOString();
+    // ─────────────────────────────────────────────
+    // 1️⃣ Time window (LOCAL event day → ISO)
+    // ─────────────────────────────────────────────
+    const start = new Date(`${ev.eventDate}T00:00:00-06:00`).toISOString();
+    const end   = new Date(`${ev.eventDate}T23:59:59-06:00`).toISOString();
 
-    const accessToken = process.env.SQUARE_ACCESS_TOKEN;
+    const token = process.env.SQUARE_ACCESS_TOKEN;
 
-    // COLLECTORS
-    let payments = [];
-    let orderIds = new Set();
-
-    let grossSales = 0;     // Square Gross
-    let discounts = 0;      // Square Discounts
-    let netSales = 0;       // EXACT Square Net Sales
-    let refunds = 0;
-    let tips = 0;
-    let totalCollected = 0;
+    // ─────────────────────────────────────────────
+    // 2️⃣ ORDER-CENTRIC SALES (Dashboard Truth)
+    // ─────────────────────────────────────────────
+    let grossSales = 0;
+    let netSales = 0;
+    let discounts = 0;
     let squareReportedTax = 0;
+
+    const orderRes = await fetch(
+  "https://connect.squareup.com/v2/orders/search",
+  {
+    method: "POST",
+    headers: {
+      "Square-Version": "2025-01-15",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      location_ids: [ev.squareLocationId],
+      query: {
+        filter: {
+          state_filter: {
+            states: ["COMPLETED"]
+          },
+          date_time_filter: {
+            closed_at: {
+              start_at: start,
+              end_at: end
+            }
+          }
+        }
+      }
+    })
+  }
+);
+
+const orderJson = await orderRes.json();
+const orders = orderJson.orders || [];
+
+for (const o of orders) {
+  // Gross Sales (no modifiers)
+  for (const li of o.line_items || []) {
+    const qty = Number(li.quantity || 0);
+    const base = li.base_price_money?.amount || 0;
+    grossSales += (base * qty) / 100;
+  }
+
+  // Discounts 
+  for (const d of o.discounts || []) {
+    if (d.applied_money)
+      discounts += d.applied_money.amount / 100;
+  }
+
+  // ✅ Net Sales (NOW POPULATED)
+  // ✅ Net Sales (Square Dashboard authoritative)
+	if (o.net_amounts?.total_money?.amount != null) {
+	  netSales += o.net_amounts.total_money.amount / 100;
+	}
+
+
+  // Tax
+  if (o.total_tax_money)
+    squareReportedTax += o.total_tax_money.amount / 100;
+}
+
+
+ console.log(
+  orders.map(o => ({
+    id: o.id,
+    state: o.state,
+    net_total: o.net_amounts?.total_money?.amount,
+    net_sales: o.net_amounts?.sales_money?.amount
+  }))
+);
+
+     
+    // ─────────────────────────────────────────────
+    // 3️⃣ PAYMENT-CENTRIC CASH FLOW
+    // ─────────────────────────────────────────────
+    let tips = 0;
+    let refunds = 0;
     let squareFees = 0;
-	let cash = 0;
-	let card = 0;
-	let venmo = 0;
-	let wallet = 0;
-	let other = 0;
+    let totalCollected = 0;
+    let cash = 0, card = 0, wallet = 0, other = 0;
+
     let cursor = null;
 
-    // 3️⃣ PAGE THROUGH PAYMENTS
     do {
       const url = new URL("https://connect.squareup.com/v2/payments");
-      url.searchParams.set("begin_time", beginTime);
-      url.searchParams.set("end_time", endTime);
+      url.searchParams.set("begin_time", start);
+      url.searchParams.set("end_time", end);
       url.searchParams.set("location_id", ev.squareLocationId);
       url.searchParams.set("limit", "100");
       if (cursor) url.searchParams.set("cursor", cursor);
 
-      const response = await fetch(url, {
-        method: "GET",
+      const payRes = await fetch(url, {
         headers: {
           "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${accessToken}`
+          Authorization: `Bearer ${token}`
         }
       });
 
-      const json = await response.json();
-      const pagePayments = json.payments || [];
+      const payJson = await payRes.json();
+      const payments = payJson.payments || [];
 
-      payments.push(...pagePayments);
-	
-      for (const p of pagePayments) {
-		  const amount =
-			p.amount_money?.amount
-			  ? p.amount_money.amount / 100
-			  : 0;
-		  totalCollected += amount;
-		  
-		if (p.order_id) orderIds.add(p.order_id);
-		switch (p.source_type) {
-			case "CASH":
-			  cash += amount;
-			  break;
+      for (const p of payments) {
+        const amt = (p.amount_money?.amount || 0) / 100;
+        totalCollected += amt;
 
-			case "CARD":
-			  card += amount;
-			  break;
+        switch (p.source_type) {
+          case "CASH":   cash += amt; break;
+          case "CARD":   card += amt; break;
+          case "WALLET": wallet += amt; break;
+          default:       other += amt;
+        }
 
-			case "WALLET":
-			  wallet += amount;
-			  break;
+        if (p.tip_money)
+          tips += p.tip_money.amount / 100;
 
-			default:
-			  other += amount;
-			  break;
-		  }
+        if (p.refunded_money)
+          refunds += p.refunded_money.amount / 100;
 
-  // Tips
-  if (p.tip_money)
-    tips += p.tip_money.amount / 100;
+        for (const f of p.processing_fee_money || []) {
+          squareFees += (f.amount || 0) / 100;
+        }
+      }
 
-  // Refunds
-  if (p.refunded_money)
-    refunds += (p.refunded_money.amount || 0) / 100;
-
-  // Processing fees
-  if (p.processing_fee_money) {
-    for (const f of p.processing_fee_money) {
-      squareFees += (f.amount || 0) / 100;
-    }
-  }
-}
-
-
-      cursor = json.cursor || null;
+      cursor = payJson.cursor || null;
     } while (cursor);
 
-    // 4️⃣ FETCH ORDERS for true GROSS + DISCOUNTS + NET SALES
-    for (const oid of orderIds) {
-	  const oRes = await fetch(
-        `https://connect.squareup.com/v2/orders/${oid}`,
-        {
-          method: "GET",
-          headers: {
-            "Square-Version": "2025-01-15",
-            Authorization: `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      const { order } = await oRes.json();
-      if (!order) continue;
-
-      // Gross Sales = sum(base_price_money * quantity)
-      if (order.line_items) {
-        for (const li of order.line_items) {
-          const qty = Number(li.quantity || 0);
-          const base = li.base_price_money?.amount || 0;
-          grossSales += (base * qty) / 100;
-        }
-      }
-
-      // Discounts
-      if (order.discounts) {
-        for (const d of order.discounts) {
-          if (d.applied_money)
-            discounts += (d.applied_money.amount || 0) / 100;
-        }
-      }
-
-      // Square Net Sales EXACT FROM API
-      if (order.net_amounts?.sales_money) {
-        netSales += (order.net_amounts.sales_money.amount || 0) / 100;
-      }
-    }
-
-    // 5️⃣ WRITE INTO DB
+    // ─────────────────────────────────────────────
+    // 4️⃣ Persist EXACT Square values
+    // ─────────────────────────────────────────────
     db.prepare(`
-  INSERT INTO SalesSummary (
-    eventID,
-    grossSales, netSales, refunds, discounts, tips,
-    totalCollected,
-    cash, card, venmo, other, cashApp,
-    squareReportedTax, squareFees
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(eventID) DO UPDATE SET
-    grossSales = excluded.grossSales,
-    netSales = excluded.netSales,
-    refunds = excluded.refunds,
-    discounts = excluded.discounts,
-    tips = excluded.tips,
-    totalCollected = excluded.totalCollected,
-    cash = excluded.cash,
-    card = excluded.card,
-    venmo = excluded.venmo,
-    other = excluded.other,
-    cashApp = excluded.cashApp,
-    squareReportedTax = excluded.squareReportedTax,
-    squareFees = excluded.squareFees
-`).run(
-  eventId,
-  grossSales,
-  netSales,
-  refunds,
-  discounts,
-  tips,
-  totalCollected,
-  cash,
-  card,
-  wallet, // venmo for now
-  other,
-  0,      // cashApp placeholder
-  squareReportedTax,
-  squareFees
-);
+      INSERT INTO SalesSummary (
+        eventID,
+        grossSales, netSales, discounts, refunds, tips,
+        totalCollected,
+        cash, card, wallet, other,
+        squareReportedTax, squareFees
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(eventID) DO UPDATE SET
+        grossSales = excluded.grossSales,
+        netSales = excluded.netSales,
+        discounts = excluded.discounts,
+        refunds = excluded.refunds,
+        tips = excluded.tips,
+        totalCollected = excluded.totalCollected,
+        cash = excluded.cash,
+        card = excluded.card,
+        wallet = excluded.wallet,
+        other = excluded.other,
+        squareReportedTax = excluded.squareReportedTax,
+        squareFees = excluded.squareFees
+    `).run(
+      eventId,
+	  Number.isFinite(grossSales) ? grossSales : null,
+      Number.isFinite(netSales) ? netSales : null,
+      Number.isFinite(discounts) ? discounts : null,
+      Number.isFinite(refunds) ? refunds : null,
+      Number.isFinite(tips) ? tips : null,
+      Number.isFinite(totalCollected) ? totalCollected : null,
+      Number.isFinite(cash) ? cash :  null,
+      Number.isFinite(card) ? card : null,
+      Number.isFinite(wallet) ? wallet : null,
+      Number.isFinite(other) ? other : null,
+      Number.isFinite(squareReportedTax) ? squareReportedTax : null,
+      Number.isFinite(squareFees) ? squareFees : null
+    );
 
-
-    // 6️⃣ RETURN CLEAN JSON
     res.json({
       success: true,
-      message: "Square data synced successfully.",
       sales: {
         grossSales,
         discounts,
         netSales,
         refunds,
         tips,
-		cash,
-		card,
-		venmo,
-		other,
         totalCollected,
+        cash,
+        card,
+        wallet,
+        other,
         squareReportedTax,
         squareFees
       }
     });
 
-
   } catch (err) {
-    console.error("❌ Square Sales Error:", err);
-    res.status(500).json({ error: "Failed pulling Square sales." });
+    console.error("❌ Square Dashboard Sync Error:", err);
+    res.status(500).json({ error: "Square sales sync failed." });
   }
+  
+ 
 });
+
 
 
 
@@ -1425,26 +1432,20 @@ app.put("/api/events/:id/finalize", (req, res) => {
         )
         .get(eventId)?.supplyCost || 0;
 
-    const feeSum =
-      db
-        .prepare(
-          `
-      SELECT SUM(feeAmount) AS fees
+    const feeSum = db.prepare(`SELECT SUM(feeAmount) AS fees
       FROM AdditionalFees
       WHERE EventID = ?
-    `
-        )
-        .get(eventId)?.fees || 0;
+    `).get(eventId)?.fees || 0;
 
     const totalCosts = laborSum + supplySum + feeSum;
 
-    const gross = square.grossSales || 0;
-    const net = square.netSales || 0;
+    const grossSales = square.grossSales || 0;
+    const netSales = square.netSales || 0;
     const refunds = square.refunds || 0;
-    const squareFees = gross - net;
+    const squareFees = grossSales - netSales;
 
-    const netProfit = net - totalCosts;
-    const profitMargin = gross > 0 ? netProfit / gross : 0;
+    const netProfit = netSales - totalCosts;
+    const profitMargin = grossSales > 0 ? netProfit / grossSales : 0;
 
     const internalScore =
       (event.teamArrivalRating || 0) * 0.2 +
@@ -1481,8 +1482,8 @@ app.put("/api/events/:id/finalize", (req, res) => {
       WHERE EventID = ?
     `
     ).run(
-      gross,
-      net,
+      grossSales,
+      netSales,
       refunds,
       squareFees,
       totalCosts,
@@ -1498,8 +1499,8 @@ app.put("/api/events/:id/finalize", (req, res) => {
       success: true,
       message: "Event successfully finalized.",
       calculations: {
-        gross,
-        net,
+        grossSales,
+        netSales,
         refunds,
         squareFees,
         totalCosts,
@@ -1805,7 +1806,7 @@ function coerceEvent(body) {
 
     cash: toNum(body.cash),
     card: toNum(body.card),
-    venmo: toNum(body.venmo),
+    wallet: toNum(body.wallet),
     other: toNum(body.other),
     cashApp: toNum(body.cashApp),
 
@@ -1820,6 +1821,13 @@ function coerceEvent(body) {
 
 
 
+/**
+ * buildPostEventReport
+ * READ-ONLY aggregator.
+ * ❌ Must NEVER calculate or initialize Square-derived fields.
+ * ✅ Square values come ONLY from SalesSummary table.
+ */
+
 function buildPostEventReport(eventId) {
   // =========================
   // 1) Base EventInfo record
@@ -1833,106 +1841,79 @@ function buildPostEventReport(eventId) {
   // =========================
   // 2) Sales Summary (Square)
   // =========================
-  const sales = db
-    .prepare(`
-      SELECT
-        grossSales,
-        netSales,
-        refunds,
-        discounts,
-        tips,
-        cash,
-        card,
-        venmo,
-        cashApp,
-        other,
-        totalCollected,
-        squareReportedTax,
-        squareFees
-      FROM SalesSummary
-      WHERE eventID = ?
-    `)
-    .get(eventId) || {
-      grossSales: 0,
-      netSales: 0,
-      refunds: 0,
-      discounts: 0,
-      tips: 0,
-      cash: 0,
-      card: 0,
-      venmo: 0,
-      cashApp: 0,
-      other: 0,
-      totalCollected: 0,
-      squareReportedTax: 0,
-      squareFees: 0
-    };
+  const sales = db.prepare(`
+    SELECT
+      grossSales,
+      netSales,
+      refunds,
+      discounts,
+      tips,
+      cash,
+      card,
+      wallet,
+      cashApp,
+      other,
+      totalCollected,
+      squareReportedTax,
+      squareFees
+    FROM SalesSummary
+    WHERE eventID = ?
+  `).get(eventId) || {};
 
   // =========================
   // 3) Drink Sales
   // =========================
-  const drinkSales = db
-    .prepare(
-      `SELECT drinkName, unitPrice, quantitySold, totalCost
-       FROM DrinkSales WHERE eventID = ?`
-    )
-    .all(eventId);
+  const drinkSales = db.prepare(`
+    SELECT drinkName, unitPrice, quantitySold, totalCost
+    FROM DrinkSales
+    WHERE eventID = ?
+  `).all(eventId);
 
   // =========================
   // 4) Additional Fees
   // =========================
-  const additionalFees = db
-    .prepare(
-      `SELECT feeName, feeAmount
-       FROM AdditionalFees
-       WHERE eventID = ?`
-    )
-    .all(eventId);
+  const additionalFees = db.prepare(`
+    SELECT feeName, feeAmount
+    FROM AdditionalFees
+    WHERE eventID = ?
+  `).all(eventId);
 
   // =========================
   // 5) Discounts (line items)
   // =========================
-  const discountItems = db
-    .prepare(
-      `SELECT discountName, discountAmount
-       FROM Discounts
-       WHERE eventID = ?`
-    )
-    .all(eventId);
+  const discountItems = db.prepare(`
+    SELECT discountName, discountAmount
+    FROM Discounts
+    WHERE eventID = ?
+  `).all(eventId);
 
   // =========================
   // 6) Tips (event-level)
   // =========================
-  const tipItems = db
-    .prepare(
-      `SELECT tipAmount
-       FROM TipTracker
-       WHERE eventID = ?`
-    )
-    .all(eventId);
+  const tipItems = db.prepare(`
+    SELECT tipAmount
+    FROM TipTracker
+    WHERE eventID = ?
+  `).all(eventId);
 
   // =========================
   // 7) Supplies
   // =========================
-  const supplies = db
-    .prepare(
-      `SELECT itemName, unitCost, quantityUsed, totalCost
-       FROM SupplyCosts
-       WHERE eventID = ?`
-    )
-    .all(eventId);
+  const supplies = db.prepare(`
+    SELECT itemName, unitCost, quantityUsed, totalCost
+    FROM SupplyCosts
+    WHERE eventID = ?
+  `).all(eventId);
 
   // =========================
   // 8) Labor
   // =========================
-  const labor = db
-    .prepare(
-      `SELECT e.EmployeeName, ee.hoursWorked, ee.hourlyRate, ee.totalPay
-       FROM EventEmployees ee
-       JOIN EmployeeTracker e ON ee.EmployeeID = e.EmployeeID
-       WHERE ee.eventID = ?`
-    )
-    .all(eventId);
+  const labor = db.prepare(`
+    SELECT e.EmployeeName, ee.hoursWorked, ee.hourlyRate, ee.totalPay
+    FROM EventEmployees ee
+    JOIN EmployeeTracker e ON ee.EmployeeID = e.EmployeeID
+    WHERE ee.eventID = ?
+  `).all(eventId);
 
   // =========================
   // 9) Totals for Profit Summary
@@ -1951,7 +1932,21 @@ function buildPostEventReport(eventId) {
   // =========================
   return {
     event,
-    sales,
+    sales: {
+      grossSales: sales.grossSales ?? null,
+      netSales: sales.netSales ?? null,
+      refunds: sales.refunds ?? null,
+      discounts: sales.discounts ?? null,
+      tips: sales.tips ?? null,
+      cash: sales.cash ?? null,
+      card: sales.card ?? null,
+      wallet: sales.wallet ?? null,
+      cashApp: sales.cashApp ?? null,
+      other: sales.other ?? null,
+      totalCollected: sales.totalCollected ?? null,
+      squareFees: sales.squareFees ?? null,
+      squareReportedTax: sales.squareReportedTax ?? null
+    },
     drinkSales,
     additionalFees,
     discounts: discountItems,
