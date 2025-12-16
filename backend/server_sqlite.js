@@ -846,7 +846,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       return res.status(400).json({ error: "Event has no Square Location ID." });
 
     // ─────────────────────────────────────────────
-    // 1️⃣ Time window (LOCAL event day → ISO)
+    // 1️⃣ Event day window (local → ISO)
     // ─────────────────────────────────────────────
     const start = new Date(`${ev.eventDate}T00:00:00-06:00`).toISOString();
     const end   = new Date(`${ev.eventDate}T23:59:59-06:00`).toISOString();
@@ -854,7 +854,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     const token = process.env.SQUARE_ACCESS_TOKEN;
 
     // ─────────────────────────────────────────────
-    // 2️⃣ ORDER-CENTRIC SALES (Dashboard Truth)
+    // 2️⃣ ORDER-CENTRIC (Dashboard Truth)
     // ─────────────────────────────────────────────
     let grossSales = 0;
     let netSales = 0;
@@ -862,75 +862,64 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     let squareReportedTax = 0;
 
     const orderRes = await fetch(
-  "https://connect.squareup.com/v2/orders/search",
-  {
-    method: "POST",
-    headers: {
-      "Square-Version": "2025-01-15",
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      location_ids: [ev.squareLocationId],
-      query: {
-        filter: {
-          state_filter: {
-            states: ["COMPLETED"]
-          },
-          date_time_filter: {
-            closed_at: {
-              start_at: start,
-              end_at: end
+      "https://connect.squareup.com/v2/orders/search",
+      {
+        method: "POST",
+        headers: {
+          "Square-Version": "2025-01-15",
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          location_ids: [ev.squareLocationId],
+          query: {
+            filter: {
+              state_filter: { states: ["COMPLETED"] },
+              date_time_filter: {
+                closed_at: { start_at: start, end_at: end }
+              }
             }
           }
-        }
+        })
       }
-    })
-  }
-);
+    );
 
-const orderJson = await orderRes.json();
-const orders = orderJson.orders || [];
+    const orderJson = await orderRes.json();
+    const rawOrders = orderJson.orders || [];
 
-for (const o of orders) {
-  // Gross Sales (no modifiers)
-  for (const li of o.line_items || []) {
-    const qty = Number(li.quantity || 0);
-    const base = li.base_price_money?.amount || 0;
-    grossSales += (base * qty) / 100;
-  }
+    // ✅ DEDUPE ORDERS (Square returns duplicates)
+    const orderMap = new Map();
+    for (const o of rawOrders) {
+      if (!orderMap.has(o.id)) orderMap.set(o.id, o);
+    }
+    const orders = [...orderMap.values()];
 
-  // Discounts 
-  for (const d of o.discounts || []) {
-    if (d.applied_money)
-      discounts += d.applied_money.amount / 100;
-  }
+    for (const o of orders) {
+      // Gross Sales (base price × qty, no modifiers)
+      for (const li of o.line_items || []) {
+        const qty = Number(li.quantity || 0);
+        const base = li.base_price_money?.amount || 0;
+        grossSales += (base * qty) / 100;
+      }
 
-  // ✅ Net Sales (NOW POPULATED)
-  // ✅ Net Sales (Square Dashboard authoritative)
-	if (o.net_amounts?.total_money?.amount != null) {
-	  netSales += o.net_amounts.total_money.amount / 100;
-	}
+      // Discounts
+      for (const d of o.discounts || []) {
+        if (d.applied_money)
+          discounts += d.applied_money.amount / 100;
+      }
 
+      // ✅ Net Sales — DASHBOARD AUTHORITATIVE
+      if (o.net_amounts?.total_money?.amount != null) {
+        netSales += o.net_amounts.total_money.amount / 100;
+      }
 
-  // Tax
-  if (o.total_tax_money)
-    squareReportedTax += o.total_tax_money.amount / 100;
-}
+      // Tax
+      if (o.total_tax_money)
+        squareReportedTax += o.total_tax_money.amount / 100;
+    }
 
-
- console.log(
-  orders.map(o => ({
-    id: o.id,
-    state: o.state,
-    net_total: o.net_amounts?.total_money?.amount,
-    net_sales: o.net_amounts?.sales_money?.amount
-  }))
-);
-
-     
     // ─────────────────────────────────────────────
-    // 3️⃣ PAYMENT-CENTRIC CASH FLOW
+    // 3️⃣ PAYMENT-CENTRIC (Cash Flow Truth)
     // ─────────────────────────────────────────────
     let tips = 0;
     let refunds = 0;
@@ -984,8 +973,10 @@ for (const o of orders) {
     } while (cursor);
 
     // ─────────────────────────────────────────────
-    // 4️⃣ Persist EXACT Square values
+    // 4️⃣ Persist (NO zero→null corruption)
     // ─────────────────────────────────────────────
+    const safe = v => Number.isFinite(v) ? v : null;
+
     db.prepare(`
       INSERT INTO SalesSummary (
         eventID,
@@ -1010,26 +1001,26 @@ for (const o of orders) {
         squareFees = excluded.squareFees
     `).run(
       eventId,
-	  Number.isFinite(grossSales) ? grossSales : null,
-      Number.isFinite(netSales) ? netSales : null,
-      Number.isFinite(discounts) ? discounts : null,
-      Number.isFinite(refunds) ? refunds : null,
-      Number.isFinite(tips) ? tips : null,
-      Number.isFinite(totalCollected) ? totalCollected : null,
-      Number.isFinite(cash) ? cash :  null,
-      Number.isFinite(card) ? card : null,
-      Number.isFinite(wallet) ? wallet : null,
-      Number.isFinite(other) ? other : null,
-      Number.isFinite(squareReportedTax) ? squareReportedTax : null,
-      Number.isFinite(squareFees) ? squareFees : null
+      safe(grossSales),
+      safe(netSales),
+      safe(discounts),
+      safe(refunds),
+      safe(tips),
+      safe(totalCollected),
+      safe(cash),
+      safe(card),
+      safe(wallet),
+      safe(other),
+      safe(squareReportedTax),
+      safe(squareFees)
     );
 
     res.json({
       success: true,
       sales: {
         grossSales,
-        discounts,
         netSales,
+        discounts,
         refunds,
         tips,
         totalCollected,
@@ -1046,9 +1037,8 @@ for (const o of orders) {
     console.error("❌ Square Dashboard Sync Error:", err);
     res.status(500).json({ error: "Square sales sync failed." });
   }
-  
- 
 });
+
 
 
 
