@@ -845,21 +845,36 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     if (!ev.squareLocationId)
       return res.status(400).json({ error: "Event has no Square Location ID." });
 
-    // ─────────────────────────────────────────────
-    // 1️⃣ Event day window (local → ISO)
-    // ─────────────────────────────────────────────
-    const start = new Date(`${ev.eventDate}T00:00:00-06:00`).toISOString();
-    const end   = new Date(`${ev.eventDate}T23:59:59-06:00`).toISOString();
-
     const token = process.env.SQUARE_ACCESS_TOKEN;
 
     // ─────────────────────────────────────────────
-    // 2️⃣ ORDER-CENTRIC (Dashboard Truth)
+    // 1️⃣ LOCAL EVENT DAY → UTC WINDOW
+    // ─────────────────────────────────────────────
+
+    // Local midnight → local 23:59:59
+    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
+    const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
+
+    // Convert to UTC ISO for Square
+    const orderStartISO   = localStart.toISOString();
+    const orderEndISO     = localEnd.toISOString();
+
+    // Payments can settle slightly after midnight local,
+    // so allow a small buffer (NOT a full extra day)
+    const paymentEnd = new Date(localEnd);
+    paymentEnd.setHours(paymentEnd.getHours() + 2);
+
+    const paymentStartISO = orderStartISO;
+    const paymentEndISO   = paymentEnd.toISOString();
+
+    // ─────────────────────────────────────────────
+    // 2️⃣ ORDER-CENTRIC (sales truth)
     // ─────────────────────────────────────────────
     let grossSales = 0;
     let netSales = 0;
     let discounts = 0;
     let squareReportedTax = 0;
+    let totalCollected = 0;
 
     const orderRes = await fetch(
       "https://connect.squareup.com/v2/orders/search",
@@ -876,7 +891,10 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
             filter: {
               state_filter: { states: ["COMPLETED"] },
               date_time_filter: {
-                closed_at: { start_at: start, end_at: end }
+                closed_at: {
+                  start_at: orderStartISO,
+                  end_at: orderEndISO
+                }
               }
             }
           }
@@ -887,7 +905,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     const orderJson = await orderRes.json();
     const rawOrders = orderJson.orders || [];
 
-    // ✅ DEDUPE ORDERS (Square returns duplicates)
+    // Deduplicate orders
     const orderMap = new Map();
     for (const o of rawOrders) {
       if (!orderMap.has(o.id)) orderMap.set(o.id, o);
@@ -895,45 +913,45 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     const orders = [...orderMap.values()];
 
     for (const o of orders) {
-      // Gross Sales (base price × qty, no modifiers)
       for (const li of o.line_items || []) {
         const qty = Number(li.quantity || 0);
         const base = li.base_price_money?.amount || 0;
         grossSales += (base * qty) / 100;
       }
 
-      // Discounts
       for (const d of o.discounts || []) {
         if (d.applied_money)
           discounts += d.applied_money.amount / 100;
       }
 
-      // ✅ Net Sales — DASHBOARD AUTHORITATIVE
       if (o.net_amounts?.total_money?.amount != null) {
-        netSales += o.net_amounts.total_money.amount / 100;
+        totalCollected += o.net_amounts.total_money.amount / 100;
+        //console.log("This is the output for Orders", netSales);
+
       }
 
-      // Tax
       if (o.total_tax_money)
         squareReportedTax += o.total_tax_money.amount / 100;
+		
     }
+    
 
     // ─────────────────────────────────────────────
-    // 3️⃣ PAYMENT-CENTRIC (Cash Flow Truth)
+    // 3️⃣ PAYMENT-CENTRIC (fees + cash flow)
     // ─────────────────────────────────────────────
     let tips = 0;
     let refunds = 0;
     let squareFees = 0;
-    let totalCollected = 0;
     let cash = 0, card = 0, wallet = 0, other = 0;
 
     let cursor = null;
+	let allPayments = [];
 
     do {
       const url = new URL("https://connect.squareup.com/v2/payments");
-      url.searchParams.set("begin_time", start);
-      url.searchParams.set("end_time", end);
-      url.searchParams.set("location_id", ev.squareLocationId);
+     url.searchParams.set("begin_time", paymentStartISO);
+      url.searchParams.set("end_time", paymentEndISO);
+	  url.searchParams.set("location_id", ev.squareLocationId);
       url.searchParams.set("limit", "100");
       if (cursor) url.searchParams.set("cursor", cursor);
 
@@ -946,34 +964,55 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
 
       const payJson = await payRes.json();
       const payments = payJson.payments || [];
+	 allPayments.push(...payments);
+	
+		for (const pay of payments) {
+		  const amt = (pay.amount_money?.amount || 0) / 100;
+		  netSales += amt;
+     
+		  switch (pay.source_type) {
+			case "CASH":   cash += amt; break;
+			case "CARD":   card += amt; break;
+			case "WALLET": wallet += amt; break;
+			default:       other += amt;
+		  }
 
-      for (const p of payments) {
-        const amt = (p.amount_money?.amount || 0) / 100;
-        totalCollected += amt;
+		  if (pay.tip_money)
+			tips += pay.tip_money.amount / 100;
 
-        switch (p.source_type) {
-          case "CASH":   cash += amt; break;
-          case "CARD":   card += amt; break;
-          case "WALLET": wallet += amt; break;
-          default:       other += amt;
-        }
+		  if (pay.refunded_money)
+			refunds += pay.refunded_money.amount / 100;
 
-        if (p.tip_money)
-          tips += p.tip_money.amount / 100;
-
-        if (p.refunded_money)
-          refunds += p.refunded_money.amount / 100;
-
-        for (const f of p.processing_fee_money || []) {
-          squareFees += (f.amount || 0) / 100;
-        }
-      }
-
+		  for (const f of pay.processing_fee || []) {
+				squareFees += (f.amount_money.amount || 0) / 100;
+				
+		}
+		
+	}
+	
       cursor = payJson.cursor || null;
     } while (cursor);
+	
+	const feesPending = allPayments.some(pay => pay.processing_fee == null);
+
+	// Start with payment-computed fees
+	let squareFeesFinal = squareFees;
+
+	// If fees are pending, ask Balance API for authoritative fees (dashboard accurate)
+	/*if (feesPending) {
+	  squareFeesFinal = await fetchSquareFeesFromBalance({
+		token,
+		locationId: ev.squareLocationId,
+		beginISO: paymentStartISO,
+		endISO: paymentEndISO
+	  });
+	}*/
+
+	
+
 
     // ─────────────────────────────────────────────
-    // 4️⃣ Persist (NO zero→null corruption)
+    // 4️⃣ Atomic upsert
     // ─────────────────────────────────────────────
     const safe = v => Number.isFinite(v) ? v : null;
 
@@ -983,9 +1022,9 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         grossSales, netSales, discounts, refunds, tips,
         totalCollected,
         cash, card, wallet, other,
-        squareReportedTax, squareFees
+        squareReportedTax, squareFeesFinal, feesPending
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(eventID) DO UPDATE SET
         grossSales = excluded.grossSales,
         netSales = excluded.netSales,
@@ -998,7 +1037,8 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         wallet = excluded.wallet,
         other = excluded.other,
         squareReportedTax = excluded.squareReportedTax,
-        squareFees = excluded.squareFees
+        squareFeesFinal = excluded.squareFeesFinal,
+		feesPending = excluded.feesPending
     `).run(
       eventId,
       safe(grossSales),
@@ -1012,11 +1052,17 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       safe(wallet),
       safe(other),
       safe(squareReportedTax),
-      safe(squareFees)
+      safe(squareFeesFinal),
+	  feesPending ? 1: 0
     );
 
     res.json({
       success: true,
+      localDay: ev.eventDate,
+      windows: {
+        orders: { start: orderStartISO, end: orderEndISO },
+        payments: { start: paymentStartISO, end: paymentEndISO }
+      },
       sales: {
         grossSales,
         netSales,
@@ -1024,17 +1070,14 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         refunds,
         tips,
         totalCollected,
-        cash,
-        card,
-        wallet,
-        other,
         squareReportedTax,
-        squareFees
+        squareFees: squareFeesFinal,
+		feesPending
       }
     });
 
   } catch (err) {
-    console.error("❌ Square Dashboard Sync Error:", err);
+    console.error("❌ Square sync failed:", err);
     res.status(500).json({ error: "Square sales sync failed." });
   }
 });
@@ -1186,9 +1229,11 @@ async function fetchSquareLaborForEvent(eventID) {
 
   const token = await getSquareLaborToken();
   const baseUrl = "https://connect.squareup.com"; // labor is production-only
+	const localStart = new Date(`${event.eventDate}T00:00:00-06:00`);
+	const localEnd   = new Date(`${event.eventDate}T23:59:59-06:00`);
 
-  const startAt = `${event.eventDate}T00:00:00Z`;
-  const endAt = `${event.eventDate}T23:59:59Z`;
+  const startAt = localStart.toISOString();
+  const endAt = localEnd.toISOString();
 
   const params = new URLSearchParams({
     location_id: event.squareLocationId,
@@ -1314,6 +1359,8 @@ async function fetchSquareLaborForEvent(eventID) {
 
   return employees;
 }
+
+
 async function refreshSquareLaborToken(row) {
   if (!row.refreshToken) {
     throw new Error(
@@ -1432,7 +1479,7 @@ app.put("/api/events/:id/finalize", (req, res) => {
     const grossSales = square.grossSales || 0;
     const netSales = square.netSales || 0;
     const refunds = square.refunds || 0;
-    const squareFees = grossSales - netSales;
+   
 
     const netProfit = netSales - totalCosts;
     const profitMargin = grossSales > 0 ? netProfit / grossSales : 0;
@@ -1460,7 +1507,6 @@ app.put("/api/events/:id/finalize", (req, res) => {
         squareGrossSales = ?,
         squareNetSales = ?,
         squareRefunds = ?,
-        squareFees = ?,
         totalCosts = ?,
         netProfit = ?,
         profitMargin = ?,
@@ -1475,7 +1521,6 @@ app.put("/api/events/:id/finalize", (req, res) => {
       grossSales,
       netSales,
       refunds,
-      squareFees,
       totalCosts,
       netProfit,
       profitMargin,
@@ -1492,7 +1537,6 @@ app.put("/api/events/:id/finalize", (req, res) => {
         grossSales,
         netSales,
         refunds,
-        squareFees,
         totalCosts,
         netProfit,
         profitMargin,
@@ -1576,6 +1620,44 @@ app.put("/api/events/:id/finalize", (req, res) => {
 		]
 	  });
 	}
+	
+	async function fetchSquareFeesFromBalance({
+  token,
+  locationId,
+  beginISO,
+  endISO
+}) {
+  let fees = 0;
+  let cursor = null;
+
+  do {
+    const url = new URL("https://connect.squareup.com/v2/balance/transactions");
+    url.searchParams.set("types", "FEE");
+    url.searchParams.set("location_id", locationId);
+    url.searchParams.set("begin_time", beginISO);
+    url.searchParams.set("end_time", endISO);
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const res = await fetch(url, {
+      headers: {
+        "Square-Version": "2025-01-15",
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    const json = await res.json();
+    const txns = json.balance_transactions || [];
+
+    for (const t of txns) {
+      fees += (t.amount_money?.amount || 0) / 100;
+    }
+
+    cursor = json.cursor || null;
+  } while (cursor);
+
+  return fees;
+}
+
 
 // ---------------------------------------------------------
 // PUT /api/events/:id/adjustments
@@ -1845,10 +1927,36 @@ function buildPostEventReport(eventId) {
       other,
       totalCollected,
       squareReportedTax,
-      squareFees
+      squareFees,
+      totalNetRevenue
     FROM SalesSummary
     WHERE eventID = ?
   `).get(eventId) || {};
+
+  // =========================
+    // 2B) Calculated Total Net Revenue
+    // =========================
+    const totalCollected = sales.totalCollected ?? 0;
+    const squareFees = sales.squareFees ?? 0;
+    const vendorFees = 0; // future-proof, manual for now
+
+    const computedTotalNetRevenue =
+      totalCollected - squareFees - vendorFees;
+
+    const totalNetRevenue =
+      Number.isFinite(computedTotalNetRevenue)
+        ? computedTotalNetRevenue
+        : 0;
+
+    // Persist it (authoritative)
+    db.prepare(`
+      UPDATE SalesSummary
+      SET totalNetRevenue = ?
+      WHERE eventID = ?
+    `).run(
+      totalNetRevenue,
+      eventId
+    );
 
   // =========================
   // 3) Drink Sales
@@ -1906,7 +2014,33 @@ function buildPostEventReport(eventId) {
   `).all(eventId);
 
   // =========================
-  // 9) Totals for Profit Summary
+  // 9) Expenses
+  // =========================
+   const expenses = {
+    healthDeptFee: manual.healthDeptFee ?? 0,
+    eventFee: manual.eventFee ?? 0,
+    supplyFees: totals.suppliesTotal ?? 0,
+    additionalFees: totals.additionalFees ?? 0,
+    mileageReimbursement: manual.mileageReimbursement ?? 0,
+    laborFees: totals.laborTotal ?? 0,
+    eventRunnerFees: manual.eventRunnerFees ?? 0,
+    employeeBonus: manual.employeeBonus ?? 0
+  };
+
+  const totalExpenses = Object.values(expenses)
+  .reduce((sum, v) => sum + (v || 0), 0);
+
+
+// =========================
+// 10) Gross Profit
+// =========================
+const grossProfit =
+  (totalNetRevenue || 0) - (expenses.totalExpenses || 0);
+
+
+
+  // =========================
+  // 11) Totals for Profit Summary
   // =========================
   const totals = {
     drinkRevenue: drinkSales.reduce((sum, r) => sum + (r.totalCost || 0), 0),
@@ -1914,11 +2048,19 @@ function buildPostEventReport(eventId) {
     discounts: discountItems.reduce((sum, r) => sum + (r.discountAmount || 0), 0),
     tipsTotal: tipItems.reduce((sum, r) => sum + (r.tipAmount || 0), 0),
     suppliesTotal: supplies.reduce((sum, r) => sum + (r.totalCost || 0), 0),
-    laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0)
+    laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0),
+    totalNetRevenue,
+    totalExpenses: expenses.totalExpenses,
+    grossProfit
   };
 
+
+console.log("🧾 Expenses Card:", {
+  eventID: eventId,
+  expenses
+});
   // =========================
-  // 10) Return Unified Report
+  // 12) Return Unified Report
   // =========================
   return {
     event,
@@ -1935,8 +2077,10 @@ function buildPostEventReport(eventId) {
       other: sales.other ?? null,
       totalCollected: sales.totalCollected ?? null,
       squareFees: sales.squareFees ?? null,
-      squareReportedTax: sales.squareReportedTax ?? null
+      squareReportedTax: sales.squareReportedTax ?? null,
+      totalNetRevenue: sales.totalNetRevenue
     },
+    expenses,
     drinkSales,
     additionalFees,
     discounts: discountItems,
@@ -1945,6 +2089,8 @@ function buildPostEventReport(eventId) {
     labor,
     totals
   };
+
+
 }
 
 

@@ -1881,25 +1881,24 @@ function renderEventProfitSummary(event) {
       <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
       <div><strong>Returns:</strong> -${fmtMoney(sales.refunds)}</div>
       <div><strong>Discounts:</strong> -${fmtMoney(sales.discounts)}</div>
-      <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
+      <div><strong>*Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
       <hr>
 
       <div><strong>Tips:</strong> ${fmtMoney(sales.tips)}</div>
-      <hr>
 
       <div><strong>Cash:</strong> ${fmtMoney(sales.cash)}</div>
       <div><strong>Card:</strong> ${fmtMoney(sales.card)}</div>
       <div><strong>Venmo / Wallet:</strong> ${fmtMoney(sales.venmo)}</div>
       <div><strong>CashApp:</strong> ${fmtMoney(sales.cashApp)}</div>
       <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
-      <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
+      <div><strong>*Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
 	  <hr>
 	  <div><strong>Total Collected </strong> ${fmtMoney(sales.totalCollected)}</div>
 	  <div><strong>-State Food Tax </strong> ${fmtMoney(sales.squareReportedTax)}</div>
 	  <div><strong>-Square Fees/Vendor Fees </strong> ${fmtMoney(sales.squareFees)}</div>
+	 <div><strong>*Total Net Revenue</strong> ${fmtMoney(sales.totalNetRevenue)}</div>
+	  <div><strong>Total Expenses</strong> ${fmtMoney(totals.totalExpenses)}</div>
 	 
-	  
-	  
 	  
     </div>
   `;
@@ -2342,40 +2341,37 @@ const totalExpenses =
 
 
 
-async function pullSquareSales(eventID) {
-  if (!eventID) {
-    alert("Missing Event ID — cannot pull Square data.");
-    return;
-  }
-
-  if (!confirm("Pull Square sales for this event?")) return;
-
+async function pullSquareSales(eventId) {
   try {
-    const res = await fetch(`http://localhost:3000/api/square/sales/${eventID}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" }
+    const res = await fetch(`http://localhost:3000/api/square/sales/${eventId}`, {
+      method: "PUT"
     });
 
-    const data = await res.json();
+    // 🔑 Always read the body FIRST
+    const text = await res.text();
+
     if (!res.ok) {
-      alert(data.error || "Square sync failed.");
-      return;
+      console.error("❌ Square sync failed (raw response):", text);
+      throw new Error(text || `HTTP ${res.status}`);
     }
 
-    alert("Square Sales Updated!");
-    console.log("Square data:", data);
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch (e) {
+      console.warn("⚠️ Non-JSON response from Square sync:", text);
+      payload = {};
+    }
 
-    // Reload dashboard with fresh numbers
-    const updatedEventRes = await fetch(`http://localhost:3000/api/events/${eventID}`);
-    const updatedEvent = await updatedEventRes.json();
-
-    loadEventIntoDashboard(updatedEvent);
+    console.log("✅ Square sync success:", payload);
+    return payload;
 
   } catch (err) {
-    console.error("Error pulling Square data:", err);
-    alert("Error pulling Square data. Check console.");
+    console.error("❌ Error pulling Square data:", err);
+    throw err;
   }
 }
+
 
 // ---------------------------
 // 📊 Post-Event Report Viewer
@@ -2598,6 +2594,10 @@ function renderPostEventReport(report) {
       </section>
     `;
   }
+  //EXPENSES
+
+
+  
 
   // TOTALS
   if (report.totals) {
