@@ -1936,6 +1936,7 @@ function buildPostEventReport(eventId) {
   // =========================
     // 2B) Calculated Total Net Revenue
     // =========================
+    const totals = {};
     const totalCollected = sales.totalCollected ?? 0;
     const squareFees = sales.squareFees ?? 0;
     const vendorFees = 0; // future-proof, manual for now
@@ -2013,22 +2014,40 @@ function buildPostEventReport(eventId) {
     WHERE ee.eventID = ?
   `).all(eventId);
 
-  // =========================
-  // 9) Expenses
-  // =========================
-   const expenses = {
-    healthDeptFee: manual.healthDeptFee ?? 0,
-    eventFee: manual.eventFee ?? 0,
-    supplyFees: totals.suppliesTotal ?? 0,
-    additionalFees: totals.additionalFees ?? 0,
-    mileageReimbursement: manual.mileageReimbursement ?? 0,
-    laborFees: totals.laborTotal ?? 0,
-    eventRunnerFees: manual.eventRunnerFees ?? 0,
-    employeeBonus: manual.employeeBonus ?? 0
-  };
 
-  const totalExpenses = Object.values(expenses)
-  .reduce((sum, v) => sum + (v || 0), 0);
+  // =========================
+  // 11) Totals for Profit Summary
+  // =========================
+  const allTotals = {
+    drinkRevenue: drinkSales.reduce((sum, r) => sum + (r.totalCost || 0), 0),
+    additionalFees: additionalFees.reduce((sum, r) => sum + (r.feeAmount || 0), 0),
+    discounts: discountItems.reduce((sum, r) => sum + (r.discountAmount || 0), 0),
+    tipsTotal: tipItems.reduce((sum, r) => sum + (r.tipAmount || 0), 0),
+    suppliesTotal: supplies.reduce((sum, r) => sum + (r.totalCost || 0), 0),
+    laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0),
+    totalNetRevenue
+    };
+
+
+ // =========================
+// 9) Expenses (Phase 1: defaults + calculated)
+// =========================
+const expenses = {
+  // Manual (not persisted yet)
+  healthDeptFee: 0,
+  eventFee: 0,
+  mileageReimbursement: 0,
+  eventRunnerFees: 0,
+  employeeBonus: 0,
+
+  // Calculated
+  supplyFees: allTotals?.suppliesTotal ?? 0,
+  additionalFees: allTotals?.additionalFees ?? 0,
+  laborFees: allTotals?.laborTotal ?? 0
+};
+
+expenses.totalExpenses =
+  Object.values(expenses).reduce((s, v) => s + (v || 0), 0);
 
 
 // =========================
@@ -2038,27 +2057,6 @@ const grossProfit =
   (totalNetRevenue || 0) - (expenses.totalExpenses || 0);
 
 
-
-  // =========================
-  // 11) Totals for Profit Summary
-  // =========================
-  const totals = {
-    drinkRevenue: drinkSales.reduce((sum, r) => sum + (r.totalCost || 0), 0),
-    additionalFees: additionalFees.reduce((sum, r) => sum + (r.feeAmount || 0), 0),
-    discounts: discountItems.reduce((sum, r) => sum + (r.discountAmount || 0), 0),
-    tipsTotal: tipItems.reduce((sum, r) => sum + (r.tipAmount || 0), 0),
-    suppliesTotal: supplies.reduce((sum, r) => sum + (r.totalCost || 0), 0),
-    laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0),
-    totalNetRevenue,
-    totalExpenses: expenses.totalExpenses,
-    grossProfit
-  };
-
-
-console.log("🧾 Expenses Card:", {
-  eventID: eventId,
-  expenses
-});
   // =========================
   // 12) Return Unified Report
   // =========================
@@ -2080,16 +2078,22 @@ console.log("🧾 Expenses Card:", {
       squareReportedTax: sales.squareReportedTax ?? null,
       totalNetRevenue: sales.totalNetRevenue
     },
-    expenses,
     drinkSales,
     additionalFees,
     discounts: discountItems,
     tips: tipItems,
     supplies,
     labor,
-    totals
+    totals: allTotals,
+    totalExpenses: expenses.totalExpenses,
+    grossProfit
   };
 
+
+console.log("🧾 Expenses Card:", {
+  eventID: eventId,
+  totalExpenses
+});
 
 }
 

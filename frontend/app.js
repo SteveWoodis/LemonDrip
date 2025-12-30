@@ -28,31 +28,28 @@ function normalizeEvent(e) {
   v === null || v === undefined ? null : Number(v);
 
   if (!e) {
-    return {
-      eventID: null,
-      eventName: "",
-      eventDate: "",
-      coordinator: "",
-      eventLocation: "",
-      eventType: "",
-      numDays: "",
-      status: "",
-      isFinalized: 0,
-      finalizedDate: null,
+  return {
+    eventID: null,
+    eventName: "",
+    eventDate: "",
+    coordinator: "",
+    eventLocation: "",
+    status: "",
+    isFinalized: 0,
 
-      // Post-event fields (always present)
-      drinkSales: [],
-      additionalFees: [],
-      discounts: [],
-      supplies: [],
-      tips: [],
-      eventEmployees: [],
-      totals: null,
-      sales: null,
-      customFields: {},
-      squareLocationId: null,
-    };
-  }
+    sales: e.sales || null,
+    expenses: e.expenses || null,   // ✅ REQUIRED
+    totals: e.totals || null,       // ✅ REQUIRED
+
+    drinkSales: e.drinkSales || [],
+    additionalFees: e.additionalFees || [],
+    discounts: e.discounts || [],
+    tips: e.tips || [],
+    supplies: e.supplies || [],
+    eventEmployees: e.eventEmployees || []
+  };
+}
+
 
   const info = e.EventInfo ?? e;
 
@@ -174,7 +171,29 @@ function normalizeEvent(e) {
     srcSales.squareFees ?? e.squareFees
   );
 
-  return normalized;
+
+// ✅ Guarantee expenses object
+normalized.expenses = normalized.expenses ?? {
+  healthDeptFee: 0,
+  eventFee: 0,
+  mileageReimbursement: 0,
+  eventRunnerFees: 0,
+  employeeBonus: 0,
+  supplyFees: 0,
+  additionalFees: 0,
+  laborFees: 0,
+  totalExpenses: 0
+};
+
+// ✅ Guarantee totals object
+normalized.totals = normalized.totals ?? {
+  totalNetRevenue: 0,
+  totalExpenses: normalized.expenses.totalExpenses ?? 0,
+  grossProfit: 0
+};
+
+
+   return normalized;
 }
 
 
@@ -1510,15 +1529,17 @@ async function saveFees() {
 
     const refreshed = normalizeEvent({
       ...updated.event,
+      sales: updated.sales,
+      expenses: updated.expenses,
+      totals: updated.totals,
       drinkSales: updated.drinkSales,
       additionalFees: updated.additionalFees,
       discounts: updated.discounts,
       tips: updated.tips,
       supplies: updated.supplies,
-      eventEmployees: updated.labor,
-      totals: updated.totals,
-      sales: updated.sales
+      eventEmployees: updated.labor
     });
+
 
     loadEventIntoDashboard(refreshed);
 
@@ -1667,15 +1688,17 @@ async function saveTips() {
 
     const refreshed = normalizeEvent({
       ...updated.event,
+      sales: updated.sales,
+      expenses: updated.expenses,
+      totals: updated.totals,
       drinkSales: updated.drinkSales,
       additionalFees: updated.additionalFees,
       discounts: updated.discounts,
       tips: updated.tips,
       supplies: updated.supplies,
-      eventEmployees: updated.labor,
-      totals: updated.totals,
-      sales: updated.sales
+      eventEmployees: updated.labor
     });
+
 
     loadEventIntoDashboard(refreshed);
 
@@ -1803,15 +1826,17 @@ async function saveDiscounts() {
 
     const refreshed = normalizeEvent({
       ...updated.event,
+      sales: updated.sales,
+      expenses: updated.expenses,
+      totals: updated.totals,
       drinkSales: updated.drinkSales,
       additionalFees: updated.additionalFees,
       discounts: updated.discounts,
       tips: updated.tips,
       supplies: updated.supplies,
-      eventEmployees: updated.labor,
-      totals: updated.totals,
-      sales: updated.sales
+      eventEmployees: updated.labor
     });
+
 
     loadEventIntoDashboard(refreshed);
 
@@ -1873,10 +1898,15 @@ function addDiscountRow(name = "", amount = "") {
 function renderEventProfitSummary(event) {
   const sales = event.sales || {};
   const totals = event.totals || {};
+  const expenses = event.expenses;
+
   console.log("event inside renderEventProfitSummary: ", event);
   const fmtMoney = (v) => v == null ?"-" : `$${Number(v || 0).toFixed(2)}`;
 
-  const html = `
+
+  return createCollapsibleCard(
+    "Event Profit Summary",
+     `
     <div class="profit-summary">
       <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
       <div><strong>Returns:</strong> -${fmtMoney(sales.refunds)}</div>
@@ -1892,27 +1922,49 @@ function renderEventProfitSummary(event) {
       <div><strong>CashApp:</strong> ${fmtMoney(sales.cashApp)}</div>
       <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
       <div><strong>*Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
-	  <hr>
-	  <div><strong>Total Collected </strong> ${fmtMoney(sales.totalCollected)}</div>
-	  <div><strong>-State Food Tax </strong> ${fmtMoney(sales.squareReportedTax)}</div>
-	  <div><strong>-Square Fees/Vendor Fees </strong> ${fmtMoney(sales.squareFees)}</div>
-	 <div><strong>*Total Net Revenue</strong> ${fmtMoney(sales.totalNetRevenue)}</div>
-	  <div><strong>Total Expenses</strong> ${fmtMoney(totals.totalExpenses)}</div>
-	 
-	  
+    <hr>
+    <div><strong>Total Collected </strong> ${fmtMoney(sales.totalCollected)}</div>
+    <div><strong>-State Food Tax </strong> ${fmtMoney(sales.squareReportedTax)}</div>
+    <div><strong>-Square Fees/Vendor Fees </strong> ${fmtMoney(sales.squareFees)}</div>
+   <div><strong>*Total Net Revenue</strong> ${fmtMoney(totals.totalNetRevenue)}</div>
+    <div><strong>Total Expenses: </strong> ${fmtMoney(expenses.totalExpenses)}</div>
+     <div><strong>Gross Profit: </strong> ${fmtMoney(totals.grossProfit)} </div>
+    
+    </div>
+  `);
+}
+
+function renderExpensesCard(expenses = {}) {
+  const html = `
+    <div class="expenses-summary">
+      <div><strong>Health Dept Fee:</strong> ${fmt(expenses.healthDeptFee)}</div>
+      <div><strong>Event Fee:</strong> ${fmt(expenses.eventFee)}</div>
+      <div><strong>Mileage Reimbursement:</strong> ${fmt(expenses.mileageReimbursement)}</div>
+      <div><strong>Event Runner Fees:</strong> ${fmt(expenses.eventRunnerFees)}</div>
+      <div><strong>Employee Bonus:</strong> ${fmt(expenses.employeeBonus)}</div>
+      <div><strong>Supply Fees:</strong> ${fmt(expenses.supplyFees)}</div>
+      <div><strong>Additional Fees:</strong> ${fmt(expenses.additionalFees)}</div>
+      <div><strong>Labor Fees:</strong> ${fmt(expenses.laborFees)}</div>
+      <hr>
+      <div><strong>Total Expenses:</strong> ${fmt(expenses.totalExpenses)}</div>
     </div>
   `;
 
-  return createCollapsibleCard("Event Profit Summary", html);
+  return createCollapsibleCard("Expenses", html);
 }
-
 
 // ---------------------------
 // 📊 Clean Event Dashboard Loader
 // ---------------------------
 // ---------------------------
 // 📊 Clean Event Dashboard Loader (Sheet-Style Cards, no IDs)
+
+
 // ---------------------------
+
+
+
+
 async function loadEventIntoDashboard(evt) {
   if (!evt) {
     console.warn("⚠️ loadEventIntoDashboard called with no event");
@@ -1920,6 +1972,14 @@ async function loadEventIntoDashboard(evt) {
   }
 
   const event = normalizeEvent(evt);
+
+  console.log("🧪 Dashboard event object:", {
+  hasExpenses: !!event.expenses,
+  hasTotals: !!event.totals,
+  expenses: event.expenses,
+  totals: event.totals
+});
+
   window.activeEvent = event;
   window.currentEventId = event.eventID;
 
@@ -1992,15 +2052,18 @@ async function loadEventIntoDashboard(evt) {
 
         const refreshed = normalizeEvent({
           ...updated.event,
+          sales: updated.sales,
+          expenses: updated.expenses,
+          totals: updated.totals,
           drinkSales: updated.drinkSales,
           additionalFees: updated.additionalFees,
           discounts: updated.discounts,
           tips: updated.tips,
           supplies: updated.supplies,
-          eventEmployees: updated.labor,
-          totals: updated.totals,
-          sales: updated.sales,
+          eventEmployees: updated.labor
         });
+
+
 
         loadEventIntoDashboard(refreshed);
       } catch (err) {
@@ -2018,16 +2081,19 @@ async function loadEventIntoDashboard(evt) {
         const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`).then(r => r.json());
 
         const refreshed = normalizeEvent({
-          ...updated.event,
-          drinkSales: updated.drinkSales,
-          additionalFees: updated.additionalFees,
-          discounts: updated.discounts,
-          tips: updated.tips,
-          supplies: updated.supplies,
-          eventEmployees: updated.labor,
-          totals: updated.totals,
-          sales: updated.sales,
-        });
+        ...updated.event,
+        sales: updated.sales,
+        expenses: updated.expenses,
+        totals: updated.totals,
+        drinkSales: updated.drinkSales,
+        additionalFees: updated.additionalFees,
+        discounts: updated.discounts,
+        tips: updated.tips,
+        supplies: updated.supplies,
+        eventEmployees: updated.labor
+      });
+
+
 
         loadEventIntoDashboard(refreshed);
       } catch (err) {
@@ -2141,9 +2207,9 @@ container.appendChild(
 // ======================
 // 5) DISCOUNTS CARD (Editable)
 // ======================
-	const discountEditorHTML = buildDiscountsEditor(event);
+  const discountEditorHTML = buildDiscountsEditor(event);
 
-	let discHTML = "";
+  let discHTML = "";
   if (!event.discounts || event.discounts.length === 0) {
     discHTML = "<p>No discounts recorded.</p>";
   } else {
@@ -2214,121 +2280,27 @@ container.appendChild(
     );
   }
 
- // ======================
-// 9) PROFIT SUMMARY CARD (Full Accounting Analysis)
-// ======================
-if (event.totals) {
+
+  // ======================
+  // 8)EXPENSES / COST CARD
+  // ======================
+
+if (event.expenses && Object.keys(event.expenses).length) {
+  container.appendChild(renderExpensesCard(event.expenses));
+}
+
+
+
+
+
 
 // ===============================
 // Profit Summary Calculation FIX
 // ===============================
-const n = (v) =>
-  v === null || v === undefined ? null : Number(v);
-
-const t = event.totals || {};
-const s = event.sales || {};
-
-// -------------------------------
-// 1) BASE SALES
-// -------------------------------
-const grossSales = n(s.grossSales);
-const returns = n(s.refunds);
-
-// Discounts: Prefer table rows, otherwise fallback to SalesSummary
-let discounts = 0;
-if (Array.isArray(event.discounts) && event.discounts.length > 0) {
-  discounts = event.discounts.reduce((sum, d) => sum + n(d.discountAmount), 0);
-} else {
-  discounts = n(s.discounts);
-}
-
-const netSales = n(s.netSales);
-
-// -------------------------------
-// 2) TIPS (non-cash tips from Square)
-// -------------------------------
-let tips = 0;
-if (s.tips != null) {
-  tips = n(s.tips);
-} else if (Array.isArray(event.tips)) {
-  tips = event.tips.reduce((sum, t) => sum + n(t.tipAmount), 0);
-}
-
-// -------------------------------
-// 3) GIFT CARDS
-// -------------------------------
-const giftCardSales = n(event.giftCardSales);
-
-// -------------------------------
-// 4) TOTAL SALES (Net + Tips + Gift Cards)
-// -------------------------------
-const totalSales = netSales + tips + giftCardSales;
-
-// -------------------------------
-// 5) PAYMENT BREAKDOWN (EventInfo)
-// -------------------------------
-const cash    = n(s.cash);
-const card    = n(s.card);
-const venmo   = n(s.venmo);
-const other   = n(s.other);
-const cashApp = n(s.cashApp);
-
-
-// Total Collected = all tender types
-const totalCollected = cash + card + venmo + other + cashApp;
-
-// -------------------------------
-// 6) TAXES & FEES
-// -------------------------------
-const foodTax = n(s.squareReportedTax);
-const squareFees = n(s.squareFees);
-
-// Total Net Revenue = Total Collected - Taxes - Square Fees
-const totalNetRevenue = totalCollected - foodTax - squareFees;
-
-// -------------------------------
-// 7) EXPENSES
-// -------------------------------
-const healthDeptFee = n(event.healthDeptFee);
-const eventFee = n(event.eventFee);
-
-// Supply Fees (from SupplyCosts)
-const supplyFees = n(t.supplyTotal);
-
-// Additional Fees (correct)
-const additionalFees = n(t.additionalFees);
-
-// Mileage
-const mileage = n(event.mileageReimbursement);
-
-// Labor (correct source)
-const laborFees = n(t.laborTotal);
-
-// Event Runner Fees
-const eventRunnerFees = n(event.eventRunnerFees);
-
-// Employee Bonus (fixed for now)
-const employeeBonus = 50;
-
-// Total Expenses
-const totalExpenses =
-  healthDeptFee +
-  eventFee +
-  supplyFees +
-  additionalFees +
-  mileage +
-  laborFees +
-  eventRunnerFees +
-  employeeBonus;
-
-// -------------------------------
-// 8) PROFIT CALCULATIONS
-// -------------------------------
-	if (event.sales && event.totals) {
-		container.appendChild(
-		renderEventProfitSummary(event)
-		);
-	}
+if (event.sales && event.expenses && event.totals) {
+  container.appendChild(
+    renderEventProfitSummary(event)
+  );
 }
 
 
@@ -3160,16 +3132,18 @@ async function saveAdjustmentsForCurrentEvent() {
     .then(r => r.json());
 
   const refreshed = normalizeEvent({
-    ...updatedReport.event,
-    drinkSales: updatedReport.drinkSales,
-    additionalFees: updatedReport.additionalFees,
-    discounts: updatedReport.discounts,
-    tips: updatedReport.tips,
-    supplies: updatedReport.supplies,
-    eventEmployees: updatedReport.labor,
-    totals: updatedReport.totals,
-    sales: updatedReport.sales
-  });
+  ...updated.event,
+  sales: updated.sales,
+  expenses: updated.expenses,
+  totals: updated.totals,
+  drinkSales: updated.drinkSales,
+  additionalFees: updated.additionalFees,
+  discounts: updated.discounts,
+  tips: updated.tips,
+  supplies: updated.supplies,
+  eventEmployees: updated.labor
+});
+
 
   loadEventIntoDashboard(refreshed);
 }
