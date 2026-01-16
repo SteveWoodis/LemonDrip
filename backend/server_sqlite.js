@@ -87,6 +87,25 @@ db.exec(`
     DatePulledAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
   );
+  CREATE TABLE IF NOT EXISTS EventTaxes (
+  eventID INTEGER PRIMARY KEY,
+
+  -- Tax rate configuration (percentages as decimals)
+  federalTaxRate REAL DEFAULT 0,   -- e.g. 0.22
+  stateTaxRate   REAL DEFAULT 0,   -- e.g. 0.05
+  localTaxRate   REAL DEFAULT 0,   -- optional
+
+  -- Optional override (absolute amount)
+  taxOverrideAmount REAL DEFAULT NULL,
+
+  -- Metadata
+  taxNotes TEXT,
+  updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (eventID)
+    REFERENCES EventInfo(eventID)
+    ON DELETE CASCADE
+);
 
   CREATE TABLE IF NOT EXISTS EventEmployees (
     eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1447,42 +1466,9 @@ app.put("/api/events/:id/finalize", (req, res) => {
       });
     }
 
-    const laborSum =
-      db
-        .prepare(
-          `
-      SELECT SUM(hoursWorked * hourlyRate) AS laborCost
-      FROM EventEmployee
-      WHERE EventID = ?
-    `
-        )
-        .get(eventId)?.laborCost || 0;
+   const report = buildPostEventReport(eventId);
 
-    const supplySum =
-      db
-        .prepare(
-          `
-      SELECT SUM(totalCost) AS supplyCost
-      FROM SupplyCosts
-      WHERE EventID = ?
-    `
-        )
-        .get(eventId)?.supplyCost || 0;
-
-    const feeSum = db.prepare(`SELECT SUM(feeAmount) AS fees
-      FROM AdditionalFees
-      WHERE EventID = ?
-    `).get(eventId)?.fees || 0;
-
-    const totalCosts = laborSum + supplySum + feeSum;
-
-    const grossSales = square.grossSales || 0;
-    const netSales = square.netSales || 0;
-    const refunds = square.refunds || 0;
    
-
-    const netProfit = netSales - totalCosts;
-    const profitMargin = grossSales > 0 ? netProfit / grossSales : 0;
 
     const internalScore =
       (event.teamArrivalRating || 0) * 0.2 +
@@ -1491,39 +1477,31 @@ app.put("/api/events/:id/finalize", (req, res) => {
       (event.teamCleanUpRating || 0) * 0.15 +
       (event.teamProfessionalismRating || 0) * 0.2;
 
+      const profitSignal =
+      report.totals.totalNetRevenue > 0
+       ? report.taxes.finalNetProfit / report.totals.totalNetRevenue
+        : 0;
+        
     const externalScore =
       (event.vendorAccessRating || 0) * 0.2 +
       (event.eventOrganizationRating || 0) * 0.2 +
       (event.crowdQualityRating || 0) * 0.2 +
       (event.weatherImpactRating || 0) * 0.15 +
-      (event.hostCommunicationRating || 0) * 0.15 +
-      profitMargin * 0.1;
-
+      (event.hostCommunicationRating || 0) * 0.15; 
+      
     const eventScore = internalScore * 0.5 + externalScore * 0.5;
 
     db.prepare(
       `
       UPDATE EventInfo SET
-        squareGrossSales = ?,
-        squareNetSales = ?,
-        squareRefunds = ?,
-        totalCosts = ?,
-        netProfit = ?,
-        profitMargin = ?,
-        internalScore = ?,
-        externalScore = ?,
-        eventScore = ?,
-        isFinalized = 1,
-        finalizedDate = CURRENT_TIMESTAMP
-      WHERE EventID = ?
+    internalScore = ?,
+    externalScore = ?,
+    eventScore = ?,
+    isFinalized = 1,
+    finalizedDate = CURRENT_TIMESTAMP
+    WHERE EventID = ?
     `
     ).run(
-      grossSales,
-      netSales,
-      refunds,
-      totalCosts,
-      netProfit,
-      profitMargin,
       internalScore,
       externalScore,
       eventScore,
@@ -1533,18 +1511,9 @@ app.put("/api/events/:id/finalize", (req, res) => {
     res.json({
       success: true,
       message: "Event successfully finalized.",
-      calculations: {
-        grossSales,
-        netSales,
-        refunds,
-        totalCosts,
-        netProfit,
-        profitMargin,
-        internalScore,
-        externalScore,
-        eventScore,
-      },
+      report
     });
+
   } catch (err) {
     console.error("❌ Finalization error:", err);
     res.status(500).json({ error: "Failed to finalize event." });
@@ -1910,6 +1879,43 @@ function buildPostEventReport(eventId) {
 
   if (!event) return null;
 
+  const sanitizedEvent = {
+  eventID: event.eventID,
+  companyID: event.companyID,
+  eventName: event.eventName,
+  eventType: event.eventType,
+  eventDate: event.eventDate,
+  numDays: event.numDays,
+  coordinator: event.coordinator,
+  eventLocation: event.eventLocation,
+  status: event.status,
+  isFinalized: event.isFinalized,
+  finalizedDate: event.finalizedDate,
+  squareLocationId: event.squareLocationId,
+  time: event.time,
+  notes: event.notes,
+  customFields: event.customFields
+};
+
+
+  // Ensure EventExpenses row exists for this event
+  db.prepare(`
+    INSERT INTO EventExpenses (eventID)
+    VALUES (?)
+    ON CONFLICT(eventID) DO NOTHING
+  `).run(eventId);
+
+  const manual = db.prepare(`
+    SELECT
+      healthDeptFee,
+      eventFee,
+      mileageReimbursement,
+      eventRunnerFees,
+      employeeBonus
+    FROM EventExpenses
+    WHERE eventID = ?
+  `).get(eventId) || {};
+
   // =========================
   // 2) Sales Summary (Square)
   // =========================
@@ -1985,6 +1991,7 @@ function buildPostEventReport(eventId) {
     FROM Discounts
     WHERE eventID = ?
   `).all(eventId);
+  const discounts = discountItems;
 
   // =========================
   // 6) Tips (event-level)
@@ -2014,7 +2021,6 @@ function buildPostEventReport(eventId) {
     WHERE ee.eventID = ?
   `).all(eventId);
 
-
   // =========================
   // 11) Totals for Profit Summary
   // =========================
@@ -2032,22 +2038,30 @@ function buildPostEventReport(eventId) {
  // =========================
 // 9) Expenses (Phase 1: defaults + calculated)
 // =========================
+// =========================
+// 9) Expenses (persisted + calculated)
+// =========================
+    // 9A) Load calculated totals (already done elsewhere)
+
 const expenses = {
-  // Manual (not persisted yet)
-  healthDeptFee: 0,
-  eventFee: 0,
-  mileageReimbursement: 0,
-  eventRunnerFees: 0,
-  employeeBonus: 0,
+  // Manual (persisted)
+  healthDeptFee: manual.healthDeptFee ?? 0,
+  eventFee: manual.eventFee ?? 0,
+  mileageReimbursement: manual.mileageReimbursement ?? 0,
+  eventRunnerFees: manual.eventRunnerFees ?? 0,
+  employeeBonus: manual.employeeBonus ?? 0,
 
   // Calculated
-  supplyFees: allTotals?.suppliesTotal ?? 0,
-  additionalFees: allTotals?.additionalFees ?? 0,
-  laborFees: allTotals?.laborTotal ?? 0
+  supplyFees: allTotals.suppliesTotal ?? 0,
+  additionalFees: allTotals.additionalFees ?? 0,
+  laborFees: allTotals.laborTotal ?? 0
+
+ 
 };
 
 expenses.totalExpenses =
-  Object.values(expenses).reduce((s, v) => s + (v || 0), 0);
+  Object.values(expenses).reduce((sum, v) => sum + (v || 0), 0);
+
 
 
 // =========================
@@ -2060,8 +2074,68 @@ const grossProfit =
   // =========================
   // 12) Return Unified Report
   // =========================
+  totals.totalExpenses = expenses.totalExpenses;
+  totals.grossProfit = grossProfit;
+
+  // =========================
+// 13) Tax Configuration
+// =========================
+const taxConfig = db.prepare(`
+  SELECT
+    federalTaxRate,
+    stateTaxRate,
+    localTaxRate,
+    taxOverrideAmount,
+    taxNotes
+  FROM EventTaxes
+  WHERE eventID = ?
+`).get(eventId) || {};
+
+// =========================
+// 11) Tax Computation
+// =========================
+const taxableProfit = grossProfit;
+
+const federalTaxRate = taxConfig.federalTaxRate ?? 0;
+const stateTaxRate   = taxConfig.stateTaxRate ?? 0;
+const localTaxRate   = taxConfig.localTaxRate ?? 0;
+
+const federalTax = taxableProfit * federalTaxRate;
+const stateTax   = taxableProfit * stateTaxRate;
+const localTax   = taxableProfit * localTaxRate;
+
+const computedTotalTax = federalTax + stateTax + localTax;
+
+const totalTax =
+  taxConfig.taxOverrideAmount != null
+    ? taxConfig.taxOverrideAmount
+    : computedTotalTax;
+
+const finalNetProfit = taxableProfit - totalTax;
+
+// =========================
+// 14) Taxes Object
+// =========================
+const taxes = {
+  federalTaxRate,
+  stateTaxRate,
+  localTaxRate,
+
+  federalTax,
+  stateTax,
+  localTax,
+
+  totalTax,
+  taxOverrideAmount: taxConfig.taxOverrideAmount ?? null,
+  finalNetProfit,
+
+  taxNotes: taxConfig.taxNotes ?? null
+};
+
+
+
   return {
-    event,
+    event: sanitizedEvent,
     sales: {
       grossSales: sales.grossSales ?? null,
       netSales: sales.netSales ?? null,
@@ -2080,27 +2154,24 @@ const grossProfit =
     },
     drinkSales,
     additionalFees,
-    discounts: discountItems,
-    tips: tipItems,
+    discounts,
     supplies,
     labor,
-    totals: allTotals,
-    totalExpenses: expenses.totalExpenses,
-    grossProfit
-  };
+    taxes,
+    totals,
+    expenses
+    };
 
 
-console.log("🧾 Expenses Card:", {
+console.log("🧾 EventExpenses loaded:", {
   eventID: eventId,
-  totalExpenses
+  manual,
+  totalExpenses: expenses.totalExpenses
 });
 
 }
 
 
-// -------------------------------
-// GET /api/events/:id/report
-// -------------------------------
 // -------------------------------
 // GET /api/events/:id/report
 // -------------------------------
@@ -2120,3 +2191,143 @@ app.get("/api/events/:id/report", async (req, res) => {
   }
 });
 
+app.put("/api/events/:eventId/expenses", (req, res) => {
+  const eventId = req.params.eventId;
+  const {
+    healthDeptFee = 0,
+    eventFee = 0,
+    mileageReimbursement = 0,
+    eventRunnerFees = 0,
+    employeeBonus = 0
+  } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      UPDATE EventExpenses
+      SET
+        healthDeptFee = ?,
+        eventFee = ?,
+        mileageReimbursement = ?,
+        eventRunnerFees = ?,
+        employeeBonus = ?,
+
+        updatedAt = CURRENT_TIMESTAMP
+      WHERE eventID = ?
+    `);
+
+    stmt.run(
+      healthDeptFee,
+      eventFee,
+      mileageReimbursement,
+      eventRunnerFees,
+      employeeBonus,
+      eventId
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Expense update error:", err);
+    res.status(500).json({ error: "Failed to update expenses" });
+  }
+});
+
+app.post("/api/events/:eventId/additional-fees", (req, res) => {
+  const { eventId } = req.params;
+  const { feeName, feeAmount } = req.body;
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO AdditionalFees (eventID, feeName, feeAmount)
+      VALUES (?, ?, ?)
+    `).run(eventId, feeName, Number(feeAmount) || 0);
+
+    res.json({ id: result.lastInsertRowid });
+  } catch (err) {
+    console.error("Add fee error:", err);
+    res.status(500).json({ error: "Failed to add fee" });
+  }
+});
+
+app.put("/api/additional-fees/:id", (req, res) => {
+  const { id } = req.params;
+  const { feeName, feeAmount } = req.body;
+
+  try {
+    db.prepare(`
+      UPDATE AdditionalFees
+      SET feeName = ?, feeAmount = ?
+      WHERE id = ?
+    `).run(feeName, Number(feeAmount) || 0, id);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Update fee error:", err);
+    res.status(500).json({ error: "Failed to update fee" });
+  }
+});
+
+app.delete("/api/additional-fees/:id", (req, res) => {
+  try {
+    db.prepare(`DELETE FROM AdditionalFees WHERE id = ?`)
+      .run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete fee error:", err);
+    res.status(500).json({ error: "Failed to delete fee" });
+  }
+});
+
+app.post("/api/events/:eventId/supplies", (req, res) => {
+  const { eventId } = req.params;
+  const { itemName, unitCost = 0, quantityUsed = 0 } = req.body;
+  const totalCost = Number(unitCost) * Number(quantityUsed);
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO SupplyCosts (eventID, itemName, unitCost, quantityUsed, totalCost)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(eventId, itemName, Number(unitCost), Number(quantityUsed), totalCost);
+
+    res.json({ id: result.lastInsertRowid });
+  } catch (err) {
+    console.error("Add supply error:", err);
+    res.status(500).json({ error: "Failed to add supply cost" });
+  }
+});
+
+app.put("/api/supplies/:id", (req, res) => {
+  const { id } = req.params;
+  const { itemName, unitCost, quantityUsed } = req.body;
+
+  try {
+    const row = db.prepare(`
+      SELECT unitCost, quantityUsed FROM SupplyCosts WHERE id = ?
+    `).get(id);
+
+    const newUnitCost = unitCost ?? row.unitCost;
+    const newQty = quantityUsed ?? row.quantityUsed;
+    const totalCost = Number(newUnitCost) * Number(newQty);
+
+    db.prepare(`
+      UPDATE SupplyCosts
+      SET itemName = ?, unitCost = ?, quantityUsed = ?, totalCost = ?
+      WHERE id = ?
+    `).run(itemName ?? row.itemName, newUnitCost, newQty, totalCost, id);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Update supply error:", err);
+    res.status(500).json({ error: "Failed to update supply cost" });
+  }
+});
+
+app.delete("/api/supplies/:id", (req, res) => {
+  try {
+    db.prepare(`DELETE FROM SupplyCosts WHERE id = ?`)
+      .run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete supply error:", err);
+    res.status(500).json({ error: "Failed to delete supply cost" });
+  }
+});

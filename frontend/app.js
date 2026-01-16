@@ -12,8 +12,8 @@ let currentAction = "manage";
 let events = [];
 let formTemplate = { templateName: "Custom Event Form", fields: [] };
 let lastLoadedEvents = [];
-
-
+let expensesEditMode = false;
+window.USER_PLAN = "starter"; // or "pro"
 
 
 // ---------------------------
@@ -46,7 +46,7 @@ function normalizeEvent(e) {
     discounts: e.discounts || [],
     tips: e.tips || [],
     supplies: e.supplies || [],
-    eventEmployees: e.eventEmployees || []
+    labor: e.labor || []
   };
 }
 
@@ -130,16 +130,16 @@ function normalizeEvent(e) {
     discounts: Array.isArray(e.discounts) ? e.discounts : [],
     supplies: Array.isArray(e.supplies) ? e.supplies : [],
     tips: Array.isArray(e.tips) ? e.tips : [],
-    eventEmployees: Array.isArray(e.eventEmployees) ? e.eventEmployees : [],
+    labor: Array.isArray(e.labor) ? e.labor : [],
 
-        totals: e.totals ?? null,
+    expenses: e.expenses ?? null,
+    totals: e.totals ?? null,
     sales: {
 	  ...e.sales,
 	  grossSales: e.sales?.grossSales ?? 0,
 	  netSales: e.sales?.netSales ?? 0,
 	  discounts: e.sales?.discounts ?? 0,
-	  refunds: e.sales?.refunds ?? 0,
-	  tips: e.sales?.tips ?? 0,
+    refunds: e.sales?.refunds ?? 0,
 	  totalCollected: e.sales?.totalCollected ?? 0
 	},
 
@@ -195,13 +195,16 @@ normalized.totals = normalized.totals ?? {
 
    return normalized;
 }
+function getFinalizedEventCount() {
+  return (window.events || []).filter(e => Number(e.isFinalized) === 1).length;
+}
 
-
-
-
-//function getSafeEventID(e) {
-//  return normalizeEvent(e).eventID;
-//}
+//---------------------
+//showUpgradeModal
+//---------------------
+function showUpgradeModal(title, message) {
+  alert(`${title}\n\n${message}\n\nUpgrade to Pro to continue.`);
+}
 
 //
 // ---------------------------
@@ -425,6 +428,13 @@ function buildTableHTML(results, containerId = "searchResults") {
           alert("eventID missing — cannot load details.");
           return;
         }
+        if (window.USER_PLAN === "starter" && event.isFinalized === 1) {
+          showUpgradeModal(
+            "Event history is a Pro feature.",
+            "Upgrade to view finalized events and trends."
+          );
+          return;
+        }
 
         const res = await fetch(`${API_BASE}/api/events/${eventID}/report`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
@@ -438,7 +448,7 @@ function buildTableHTML(results, containerId = "searchResults") {
           discounts: report.discounts,
           tips: report.tips,
           supplies: report.supplies,
-          eventEmployees: report.labor,
+          labor: report.labor,
           totals: report.totals,
           sales: report.sales,
         });
@@ -499,9 +509,14 @@ async function loadAllEvents() {
     const events = data.Events || [];
 
     const formatted = events.map(formatEvent);
+    let displayEvents = formatted;
 
-    lastLoadedEvents = formatted;
-    buildTableHTML(formatted, "manageResults");
+    if (window.USER_PLAN === "starter") {
+      displayEvents = formatted.filter(e => e.isFinalized == 0).slice(0, 1);
+    }
+
+    lastLoadedEvents = displayEvents;
+    buildTableHTML(displayEvents, "manageResults");
 
   } catch (err) {
     console.error("loadAllEvents error:", err);
@@ -806,14 +821,27 @@ function coerceForApi(obj) {
   obj["cashApp"] = bool("cashApp");
   obj["taxOverride"] = bool("taxOverride");
   
-  forEach((k) => {
-    if (k in obj) obj[k] = num(k);
-  });
+  Object.keys(obj).forEach((k) => {
+  obj[k] = num(k);
+});
+
 
   return obj;
 }
 
 async function submitEvent(e) {
+
+  if (window.USER_PLAN === "starter") {
+    const finalizedCount = getFinalizedEventCount();
+
+    if (!window.isEditing && finalizedCount >= 1) {
+      showUpgradeModal(
+        "You’ve completed your first event.",
+        "Upgrade to Pro to analyze unlimited events."
+      );
+      return;
+    }
+  }
   if (e) e.preventDefault();
 
   const formEl = document.getElementById("eventForm");
@@ -917,7 +945,18 @@ async function submitEvent(e) {
 
   const method = isEditing ? "PUT" : "POST";
 
-  console.log("📨 Final Submit Payload:", payload);
+   
+  if (
+  window.USER_PLAN === "starter" &&
+  !isEditing &&
+  getFinalizedEventCount() >= 1
+) {
+  showUpgradeModal(
+    "Starter includes 1 event.",
+    "Upgrade to Pro to create more events."
+  );
+  return;
+}
 
   // 🔟 Submit to backend
   const res = await fetch(url, {
@@ -1472,6 +1511,44 @@ function feeRowHTML(name = "", amount = "") {
   `;
 }
 
+async function reloadEventDashboard() {
+  if (!window.currentEventId) {
+    console.warn("⚠️ reloadEventDashboard called with no active event");
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/events/${window.currentEventId}/report`
+    );
+
+    const report = await res.json();
+    if (!res.ok) {
+      throw new Error(report.error || "Failed to load event report");
+    }
+
+    const refreshedEvent = normalizeEvent({
+      ...report.event,
+      sales: report.sales,
+      expenses: report.expenses,
+      totals: report.totals,
+      drinkSales: report.drinkSales,
+      additionalFees: report.additionalFees,
+      discounts: report.discounts,
+      tips: report.tips,
+      supplies: report.supplies,
+      labor: report.labor
+    });
+
+    loadEventIntoDashboard(refreshedEvent);
+
+  } catch (err) {
+    console.error("❌ Failed to reload event dashboard", err);
+    alert("Failed to reload event data.");
+  }
+}
+
+
 function addFeeRow() {
   const tbody = document.querySelector("#feesEditor tbody");
   if (!tbody) return;
@@ -1523,31 +1600,15 @@ async function saveFees() {
 
     alert("Fees saved!");
 
-    // 🔄 Reload dashboard
-    const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`)
-      .then(r => r.json());
-
-    const refreshed = normalizeEvent({
-      ...updated.event,
-      sales: updated.sales,
-      expenses: updated.expenses,
-      totals: updated.totals,
-      drinkSales: updated.drinkSales,
-      additionalFees: updated.additionalFees,
-      discounts: updated.discounts,
-      tips: updated.tips,
-      supplies: updated.supplies,
-      eventEmployees: updated.labor
-    });
-
-
-    loadEventIntoDashboard(refreshed);
+    // ✅ Single source of truth
+    await reloadEventDashboard();
 
   } catch (err) {
     console.error("❌ saveFees error:", err);
     alert("Network error saving fees.");
   }
 }
+
 
 // --------------------------------------------
 // 💰 Build Editable Fees Card
@@ -1696,7 +1757,7 @@ async function saveTips() {
       discounts: updated.discounts,
       tips: updated.tips,
       supplies: updated.supplies,
-      eventEmployees: updated.labor
+      labor: updated.labor
     });
 
 
@@ -1834,7 +1895,7 @@ async function saveDiscounts() {
       discounts: updated.discounts,
       tips: updated.tips,
       supplies: updated.supplies,
-      eventEmployees: updated.labor
+      labor: updated.labor
     });
 
 
@@ -1898,20 +1959,21 @@ function addDiscountRow(name = "", amount = "") {
 function renderEventProfitSummary(event) {
   const sales = event.sales || {};
   const totals = event.totals || {};
-  const expenses = event.expenses;
+  const expenses = event.expenses || {}; // ✅ THIS WAS MISSING
 
-  console.log("event inside renderEventProfitSummary: ", event);
-  const fmtMoney = (v) => v == null ?"-" : `$${Number(v || 0).toFixed(2)}`;
-
+  const fmtMoney = (v) =>
+    v == null ? "-" : `$${Number(v || 0).toFixed(2)}`;
 
   return createCollapsibleCard(
     "Event Profit Summary",
-     `
+    `
     <div class="profit-summary">
+
       <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
-      <div><strong>Returns:</strong> -${fmtMoney(sales.refunds)}</div>
-      <div><strong>Discounts:</strong> -${fmtMoney(sales.discounts)}</div>
-      <div><strong>*Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
+      <div><strong>Returns:</strong> (${fmtMoney(sales.refunds)})</div>
+      <div><strong>Discounts:</strong> (${fmtMoney(sales.discounts)})</div>
+      <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
+
       <hr>
 
       <div><strong>Tips:</strong> ${fmtMoney(sales.tips)}</div>
@@ -1921,46 +1983,289 @@ function renderEventProfitSummary(event) {
       <div><strong>Venmo / Wallet:</strong> ${fmtMoney(sales.venmo)}</div>
       <div><strong>CashApp:</strong> ${fmtMoney(sales.cashApp)}</div>
       <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
-      <div><strong>*Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
-    <hr>
-    <div><strong>Total Collected </strong> ${fmtMoney(sales.totalCollected)}</div>
-    <div><strong>-State Food Tax </strong> ${fmtMoney(sales.squareReportedTax)}</div>
-    <div><strong>-Square Fees/Vendor Fees </strong> ${fmtMoney(sales.squareFees)}</div>
-   <div><strong>*Total Net Revenue</strong> ${fmtMoney(totals.totalNetRevenue)}</div>
-    <div><strong>Total Expenses: </strong> ${fmtMoney(expenses.totalExpenses)}</div>
-     <div><strong>Gross Profit: </strong> ${fmtMoney(totals.grossProfit)} </div>
-    
+
+      <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
+
+      <hr>
+
+      <div><strong>State Food Tax:</strong> (${fmtMoney(sales.squareReportedTax)})</div>
+      <div><strong>Square / Vendor Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
+
+      <div><strong>Total Net Revenue:</strong> ${fmtMoney(totals.totalNetRevenue)}</div>
+
+      <hr>
+
+      <div><strong>Total Expenses:</strong> (${fmtMoney(event.totals.totalExpenses
+)})</div>
+
+      <div class="profit-final">
+        <strong>Gross Profit:</strong>
+        <strong>${fmtMoney(totals.grossProfit)}</strong>
+      </div>
+
     </div>
-  `);
+    `
+  );
 }
 
-function renderExpensesCard(expenses = {}) {
-  const html = `
-    <div class="expenses-summary">
-      <div><strong>Health Dept Fee:</strong> ${fmt(expenses.healthDeptFee)}</div>
-      <div><strong>Event Fee:</strong> ${fmt(expenses.eventFee)}</div>
-      <div><strong>Mileage Reimbursement:</strong> ${fmt(expenses.mileageReimbursement)}</div>
-      <div><strong>Event Runner Fees:</strong> ${fmt(expenses.eventRunnerFees)}</div>
-      <div><strong>Employee Bonus:</strong> ${fmt(expenses.employeeBonus)}</div>
-      <div><strong>Supply Fees:</strong> ${fmt(expenses.supplyFees)}</div>
-      <div><strong>Additional Fees:</strong> ${fmt(expenses.additionalFees)}</div>
-      <div><strong>Labor Fees:</strong> ${fmt(expenses.laborFees)}</div>
+
+  function renderExpensesCard(expenses = {}) {
+  const content = expensesEditMode
+    ? renderExpensesEditMode(expenses)
+    : renderExpensesViewMode(expenses);
+
+  return createCollapsibleCard("Expenses", content);
+}
+
+
+function renderExpensesViewMode(expenses) {
+  const fmtMoney = (v) =>
+    v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
+
+  return `
+    <div class="expenses-card">
+
+      <div>Health Dept Fee: ${fmtMoney(expenses.healthDeptFee)}</div>
+      <div>Event Fee: ${fmtMoney(expenses.eventFee)}</div>
+      <div>Mileage: ${fmtMoney(expenses.mileageReimbursement)}</div>
+      <div>Employee Bonus: ${fmtMoney(expenses.employeeBonus)}</div>
+      <div>Event Runner Fees: ${fmtMoney(expenses.eventRunnerFees)}</div>
+
       <hr>
-      <div><strong>Total Expenses:</strong> ${fmt(expenses.totalExpenses)}</div>
+
+      <div>Additional Fees (auto): ${fmtMoney(expenses.additionalFees)}</div>
+      <div>Labor Fees (auto): ${fmtMoney(expenses.laborFees)}</div>
+      <div>Supply Costs (auto): ${fmtMoney(expenses.supplyFees)}</div>
+
+      <hr>
+
+      <strong>Total Expenses: ${fmtMoney(expenses.totalExpenses)}</strong>
+
+      <button class="btn-secondary" onclick="enterExpensesEditMode()">
+        ✏️ Edit Expenses
+      </button>
     </div>
   `;
-
-  return createCollapsibleCard("Expenses", html);
 }
 
-// ---------------------------
-// 📊 Clean Event Dashboard Loader
-// ---------------------------
+function renderExpensesEditMode(expenses) {
+  return `
+    <div class="expenses-card">
+
+      <label>Health Dept Fee</label>
+      <input type="number" data-field="healthDeptFee"
+        value="${expenses.healthDeptFee ?? 0}">
+
+      <label>Event Fee</label>
+      <input type="number" data-field="eventFee"
+        value="${expenses.eventFee ?? 0}">
+
+      <label>Mileage Reimbursement</label>
+      <input type="number" data-field="mileageReimbursement"
+        value="${expenses.mileageReimbursement ?? 0}">
+
+      <label>Employee Bonus</label>
+      <input type="number" data-field="employeeBonus"
+        value="${expenses.employeeBonus ?? 0}">
+
+      <label>Event Runner Fees</label>
+      <input type="number" data-field="eventRunnerFees"
+        value="${expenses.eventRunnerFees ?? 0}">
+
+      <hr>
+
+      <button class="btn-primary" onclick="saveExpenses()">💾 Save</button>
+      <button class="btn-secondary" onclick="cancelExpensesEdit()">Cancel</button>
+    </div>
+  `;
+}
+
+function enterExpensesEditMode() {
+  expensesEditMode = true;
+  reloadEventDashboard();
+}
+
+function cancelExpensesEdit() {
+  expensesEditMode = false;
+  reloadEventDashboard();
+}
+
+
+async function saveExpenses() {
+  const inputs = document.querySelectorAll(".expenses-card input");
+  const payload = {};
+
+  inputs.forEach(input => {
+    payload[input.dataset.field] = Number(input.value) || 0;
+  });
+
+  try {
+    await fetch(`${API_BASE}/api/events/${window.currentEventId}/expenses`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    expensesEditMode = false;
+    reloadEventDashboard();
+
+  } catch (err) {
+    console.error("Failed to save expenses", err);
+    alert("Failed to save expenses");
+  }
+}
+
+
 // ---------------------------
 // 📊 Clean Event Dashboard Loader (Sheet-Style Cards, no IDs)
 
 
 // ---------------------------
+
+function renderAdditionalFeesCard(fees = []) {
+  const total = fees.reduce(
+    (sum, f) => sum + (Number(f.feeAmount) || 0),
+    0
+  );
+
+  const rows = fees.map(f => `
+    <div class="row">
+      <input type="text"
+             value="${f.feeName}"
+             onchange="updateAdditionalFee(${f.id}, this.value, null)">
+      <input type="number"
+             value="${f.feeAmount}"
+             onchange="updateAdditionalFee(${f.id}, null, this.value)">
+      <button onclick="deleteAdditionalFee(${f.id})">🗑</button>
+    </div>
+  `).join("");
+
+  const html = `
+    ${rows || "<p>No additional fees.</p>"}
+
+    <div class="row">
+      <input id="newFeeName" placeholder="Fee name">
+      <input id="newFeeAmount" type="number" placeholder="Amount">
+      <button onclick="addAdditionalFee()">➕ Add</button>
+    </div>
+
+    <hr>
+    <div><strong>Total Additional Fees:</strong> ${fmt(total)}</div>
+  `;
+
+  return createCollapsibleCard("Additional Fees", html);
+}
+
+async function addAdditionalFee() {
+  const name = document.getElementById("newFeeName").value;
+  const amt  = document.getElementById("newFeeAmount").value;
+
+  await fetch(`${API_BASE}/api/events/${currentEventId}/additional-fees`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ feeName: name, feeAmount: amt })
+  });
+
+  reloadEventDashboard();
+}
+
+async function updateAdditionalFee(id, name, amt) {
+  const payload = {};
+  if (name !== null) payload.feeName = name;
+  if (amt !== null) payload.feeAmount = amt;
+
+  await fetch(`${API_BASE}/api/additional-fees/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  reloadEventDashboard();
+}
+
+async function deleteAdditionalFee(id) {
+  await fetch(`${API_BASE}/api/additional-fees/${id}`, {
+    method: "DELETE"
+  });
+
+  reloadEventDashboard();
+}
+
+function renderSupplyCostsCard(items = []) {
+  const total = items.reduce(
+    (sum, r) => sum + (Number(r.totalCost) || 0),
+    0
+  );
+
+  const rows = items.map(r => `
+    <div class="row">
+      <input type="text"
+             value="${r.itemName}"
+             onchange="updateSupply(${r.id}, { itemName: this.value })">
+
+      <input type="number"
+             value="${r.unitCost}"
+             onchange="updateSupply(${r.id}, { unitCost: this.value })">
+
+      <input type="number"
+             value="${r.quantityUsed}"
+             onchange="updateSupply(${r.id}, { quantityUsed: this.value })">
+
+      <span>${fmt(r.totalCost)}</span>
+
+      <button onclick="deleteSupply(${r.id})">🗑</button>
+    </div>
+  `).join("");
+
+  const html = `
+    ${rows || "<p>No supply costs recorded.</p>"}
+
+    <div class="row">
+      <input id="newSupplyName" placeholder="Item">
+      <input id="newSupplyUnitCost" type="number" placeholder="Unit Cost">
+      <input id="newSupplyQty" type="number" placeholder="Qty Used">
+      <button onclick="addSupply()">➕ Add</button>
+    </div>
+
+    <hr>
+    <div><strong>Total Supply Cost:</strong> ${fmt(total)}</div>
+  `;
+
+  return createCollapsibleCard("Supply Costs", html);
+}
+
+async function addSupply() {
+  const payload = {
+    itemName: document.getElementById("newSupplyName").value,
+    unitCost: Number(document.getElementById("newSupplyUnitCost").value) || 0,
+    quantityUsed: Number(document.getElementById("newSupplyQty").value) || 0
+  };
+
+  await fetch(`${API_BASE}/api/events/${currentEventId}/supplies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  reloadEventDashboard();
+}
+
+async function updateSupply(id, changes) {
+  await fetch(`${API_BASE}/api/supplies/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes)
+  });
+
+  reloadEventDashboard();
+}
+
+async function deleteSupply(id) {
+  await fetch(`${API_BASE}/api/supplies/${id}`, {
+    method: "DELETE"
+  });
+
+  reloadEventDashboard();
+}
 
 
 
@@ -1973,12 +2278,13 @@ async function loadEventIntoDashboard(evt) {
 
   const event = normalizeEvent(evt);
 
-  console.log("🧪 Dashboard event object:", {
+  /*console.log("🧪 Dashboard event object:", {
   hasExpenses: !!event.expenses,
   hasTotals: !!event.totals,
   expenses: event.expenses,
-  totals: event.totals
-});
+  Testtotals: event.totals
+});*/
+  console.log("Dashboard event Object", event);
 
   window.activeEvent = event;
   window.currentEventId = event.eventID;
@@ -1997,8 +2303,7 @@ async function loadEventIntoDashboard(evt) {
 
   // Load labor UI if available
   if (typeof loadEmployeesForDropdown === "function") loadEmployeesForDropdown();
-  if (typeof loadLaborForEvent === "function") loadLaborForEvent(eventID);
-
+  
   const container = document.getElementById("eventDashboardContainer");
   if (!container) {
     console.warn("⚠️ #eventDashboardContainer not found");
@@ -2034,43 +2339,64 @@ async function loadEventIntoDashboard(evt) {
   if (buttonContainer) {
     buttonContainer.innerHTML = "";
 
-    const finalizeBtn = document.createElement("button");
-    finalizeBtn.textContent = "✔️ Finalize Event";
-    finalizeBtn.classList.add("btn-primary");
-    finalizeBtn.addEventListener("click", async () => {
-      if (!confirm("Finalize this event?")) return;
+  const finalizeBtn = document.createElement("button");
+  finalizeBtn.textContent = "✅ Finalize Event";
+  finalizeBtn.classList.add("btn-primary");
 
-      try {
-        const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
-          method: "PUT",
-        });
-        const out = await res.json();
-        if (!res.ok) return alert(out.error || "Could not finalize.");
-        alert("Event finalized!");
+   finalizeBtn.addEventListener("click", async () => {
+  // 🚫 Starter plan restriction
+  if (window.USER_PLAN === "starter" && event.isFinalized === 0) {
+    const finalizedCount = getFinalizedEventCount();
 
-        const updated = await fetch(`${API_BASE}/api/events/${eventID}/report`).then(r => r.json());
+    if (finalizedCount >= 1) {
+      showUpgradeModal(
+        "Starter includes 1 finalized event.",
+        "Upgrade to Pro to finalize more events."
+      );
+      return;
+    }
+  }
 
-        const refreshed = normalizeEvent({
-          ...updated.event,
-          sales: updated.sales,
-          expenses: updated.expenses,
-          totals: updated.totals,
-          drinkSales: updated.drinkSales,
-          additionalFees: updated.additionalFees,
-          discounts: updated.discounts,
-          tips: updated.tips,
-          supplies: updated.supplies,
-          eventEmployees: updated.labor
-        });
-
-
-
-        loadEventIntoDashboard(refreshed);
-      } catch (err) {
-        console.error("Finalize error:", err);
-        alert("Error finalizing event.");
-      }
+  // ✅ Finalize event
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
+      method: "PUT",
     });
+
+    const out = await res.json();
+    if (!res.ok) {
+      alert(out.error || "Could not finalize.");
+      return;
+    }
+
+    alert("Event finalized!");
+
+    const refreshed = await fetch(
+      `${API_BASE}/api/events/${eventID}/report`
+    ).then(r => r.json());
+
+    loadEventIntoDashboard(
+    normalizeEvent({
+      ...refreshed.event,
+      sales: refreshed.sales,
+      expenses: refreshed.expenses,
+      totals: refreshed.totals,
+      drinkSales: refreshed.drinkSales,
+      additionalFees: refreshed.additionalFees,
+      discounts: refreshed.discounts,
+      tips: refreshed.tips,
+      supplies: refreshed.supplies,
+      labor: refreshed.labor
+    })
+  );
+
+    
+
+  } catch (err) {
+    console.error("Finalize error:", err);
+    alert("Error finalizing event.");
+  }
+});
 
     const squareBtn = document.createElement("button");
     squareBtn.textContent = "🔄 Pull Square Sales";
@@ -2090,7 +2416,7 @@ async function loadEventIntoDashboard(evt) {
         discounts: updated.discounts,
         tips: updated.tips,
         supplies: updated.supplies,
-        eventEmployees: updated.labor
+        labor: updated.labor
       });
 
 
@@ -2107,15 +2433,20 @@ async function loadEventIntoDashboard(evt) {
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
+    if (window.USER_PLAN === "pro") {
     const reportBtn = document.createElement("button");
     reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
     reportBtn.addEventListener("click", () => openPostEventReport(event));
 
+    buttonContainer.appendChild(reportBtn);
+    }
+
+
     buttonContainer.appendChild(finalizeBtn);
     buttonContainer.appendChild(squareBtn);
     buttonContainer.appendChild(editBtn);
-    buttonContainer.appendChild(reportBtn);
+    
   }
 
   // ======================
@@ -2182,20 +2513,14 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   // 4) ADDITIONAL FEES CARD
   // ======================
-  let feeHTML = "";
-  if (!event.additionalFees || event.additionalFees.length === 0) {
-    feeHTML = "<p>No additional fees recorded.</p>";
-  } else {
-    const totalFees = event.additionalFees.reduce(
-      (sum, r) => sum + (Number(r.feeAmount) || 0),
-      0
+  
+  /*if (event.additionalFees) {
+    container.appendChild(
+      renderAdditionalFeesCard(event.additionalFees)
     );
-    feeHTML = `
-      <div><strong>Total Additional Fees:</strong> ${fmt(totalFees)}</div>
-      <hr>
-      ${buildTableHTMLString(event.additionalFees)}
-    `;
-  }
+  }*/
+
+
   // ======================
 // 💰 FEES CARD (Editable)
 // ======================
@@ -2252,33 +2577,22 @@ container.appendChild(
   // ======================
   // 7) SUPPLIES CARD
   // ======================
-  let suppliesHTML = "";
-  if (!event.supplies || event.supplies.length === 0) {
-    suppliesHTML = "<p>No supplies recorded.</p>";
-  } else {
-    const suppliesTotal = event.supplies.reduce(
-      (sum, r) => sum + (Number(r.totalCost) || 0),
-      0
-    );
-    suppliesHTML = `
-      <div><strong>Total Supply Cost:</strong> ${fmt(suppliesTotal)}</div>
-      <hr>
-      ${buildTableHTMLString(event.supplies)}
-    `;
-  }
-  container.appendChild(
-    createCollapsibleCard("Supply Fees", suppliesHTML)
-  );
+ container.appendChild(
+  renderSupplyCostsCard(event.supplies || [])
+);
 
   // ======================
   // 8) EMPLOYEES / LABOR CARD
   // ======================
-  if (event.eventEmployees && event.eventEmployees.length) {
-    const employeesHTML = buildTableHTMLString(event.eventEmployees);
-    container.appendChild(
-      createCollapsibleCard("Employees", employeesHTML)
-    );
-  }
+ container.appendChild(
+  createCollapsibleCard(
+    "Labor",
+    `<div id="laborTableContainer"></div>`
+  )
+);
+
+// THEN load the data
+loadLaborForEvent(eventID);
 
 
   // ======================
@@ -2345,47 +2659,6 @@ async function pullSquareSales(eventId) {
 }
 
 
-// ---------------------------
-// 📊 Post-Event Report Viewer
-// ---------------------------
-/*async function openPostEventReport(eventData) {
-  try {
-    eventData = normalizeEvent(eventData);
-
-    const eventID =
-      eventData.eventID ||
-      eventData.EventID ||
-      eventData.EventInfo?.["Event ID"];
-
-    if (!eventID) {
-      alert("Cannot determine eventID for report.");
-      console.warn("No eventID in eventData:", eventData);
-      return;
-    }
-
-    const res = await fetch(
-      `${API_BASE}/api/events/${eventID}/report`
-    );
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Server error ${res.status}`);
-    }
-
-    const report = await res.json();
-    window.currentPostEventReport = report;
-
-    // ⭐ populate UI correctly
-    document.getElementById("postEventTitle").textContent =
-      report.eventInfo.eventName || "Post Event Report";
-
-    renderPostEventReport(report);
-    navigateTo("postEventReportSection");
-  } catch (err) {
-    console.error("❌ Error loading post-event report:", err);
-    alert("Failed to load post-event report. Check console for details.");
-  }
-}*/
-
 /* ============================================================
    🟢 FINAL — Option B
    Unified Post-Event Report Loader + Renderer
@@ -2408,6 +2681,13 @@ function normalizeReportPayload(raw) {
 }
 
 async function openPostEventReport(eventData) {
+  if (window.USER_PLAN === "starter") {
+    showUpgradeModal(
+      "Post-Event Reports are a Pro feature.",
+      "Upgrade to unlock full reports and comparisons."
+    );
+    return;
+  }
   try {
     const eventID =
       eventData.eventID ||
@@ -2758,6 +3038,15 @@ function renderTable(rows) {
 }
 
 async function downloadPostEventPDF() {
+  if (window.USER_PLAN === "starter") {
+  showUpgradeModal(
+    "PDF reports are a Pro feature.",
+    "Upgrade to export and share event reports."
+  );
+  return;
+  }
+
+
   if (!window.currentPostEventReport) {
     alert("No report data available.");
     return;
@@ -2945,9 +3234,12 @@ async function uploadEventPermits(eventID) {
 
 
 window.addEventListener("DOMContentLoaded", () => {
-  populateTemplateDropdown(); // populate dropdown on startup
-  loadEvents();
+  if (window.USER_PLAN === "starter") {
+    document.getElementById("btnDesign")?.remove();
+    document.getElementById("btnCompany")?.remove();
+  }
 });
+
 
 function clearTemplate() {
   formTemplate.fields = [];
@@ -3141,7 +3433,7 @@ async function saveAdjustmentsForCurrentEvent() {
   discounts: updated.discounts,
   tips: updated.tips,
   supplies: updated.supplies,
-  eventEmployees: updated.labor
+  labor: updated.labor
 });
 
 
