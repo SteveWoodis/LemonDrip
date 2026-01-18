@@ -635,7 +635,8 @@ async function editEvent(eventData) {
   window.isEditing = true;
 
   // Show Add/Edit form
-  navigateTo("addSection");
+  openAddEventForUser();
+
 
   // Determine active template
   const activeTemplateName =
@@ -1172,13 +1173,65 @@ function clearManageSearch() {
   // Provide user feedback (optional)
   console.log("Manage search cleared.");
 }
+function getDefaultStarterTemplate() {
+  if (!Array.isArray(window.availableTemplates)) return null;
+
+  return (
+    window.availableTemplates.find(t =>
+      t.templateName.toLowerCase() === "default starter"
+    ) ||
+    window.availableTemplates.find(t =>
+      t.templateName.toLowerCase().includes("default")
+    ) ||
+    window.availableTemplates[0] ||
+    null
+  );
+}
+async function waitForTemplates(timeout = 3000) {
+  const start = Date.now();
+  while (!window.availableTemplates?.length) {
+    if (Date.now() - start > timeout) return false;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return true;
+}
+
+
+async function openAddEventForUser() {
+  window.addEventListener("DOMContentLoaded", async () => {
+  await populateTemplateDropdown(); // ✅ REQUIRED
+});
+
+  navigateTo("addSection");
+
+   if (!window.availableTemplates) {
+    console.error("Templates not loaded");
+    return;
+  }
+
+
+  if (window.USER_PLAN === "starter") {
+    const tpl = getDefaultStarterTemplate();
+    rebuildAddEventForm(stripEventColorFromTemplate(tpl));
+    // ✅ ADD THIS
+    const dropdown = document.getElementById("templateSelect");
+    if (dropdown && tpl) {
+      dropdown.innerHTML = `<option>${tpl.templateName}</option>`;
+    }
+    loadSquareLocationsIntoForm();
+    return;
+  }
+
+  populateTemplateDropdown();
+  loadSquareLocationsIntoForm();
+}
 
 async function loadTemplates() {
   try {
     const res = await fetch("http://localhost:3000/api/formTemplates");
     const templates = await res.json();
 
-    const selector = document.getElementById("templateSelector");
+    const selector = document.getElementById("templateSelect");
     selector.innerHTML =
       '<option value="">-- Select Template --</option>';
 
@@ -1191,6 +1244,8 @@ async function loadTemplates() {
 
     console.log("Loaded templates:", templates);
     // Keep templates in memory
+
+
     window.availableTemplates = templates;
   } catch (err) {
     console.error("Error loading templates:", err);
@@ -1200,41 +1255,30 @@ async function loadTemplates() {
 // 🧩 Load templates into Add Event dropdown
 async function populateTemplateDropdown() {
   try {
-    const res = await fetch("http://localhost:3000/api/formTemplates");
+    const res = await fetch(`${API_BASE}/api/formTemplates`);
     let templates = await res.json();
 
     templates = toCamelCaseKeys(templates);
-
     window.availableTemplates = templates;
 
-    const addDropdown = document.getElementById("templateSelect");
-    addDropdown.innerHTML =
-      '<option value="">-- Select Template --</option>';
-    templates.forEach((tpl) => {
+    const dropdown = document.getElementById("templateSelect");
+    if (!dropdown) return;
+
+    dropdown.innerHTML = '<option value="">-- Select Template --</option>';
+
+    templates.forEach(tpl => {
       const opt = document.createElement("option");
       opt.value = tpl.templateName;
       opt.textContent = tpl.templateName;
-      addDropdown.appendChild(opt);
+      dropdown.appendChild(opt);
     });
 
-    // Fill Design Form dropdown (if visible)
-    const designDropdown =
-      document.getElementById("templateSelector");
-    if (designDropdown) {
-      designDropdown.innerHTML =
-        '<option value="">-- Select Template --</option>';
-      templates.forEach((tpl) => {
-        const opt = document.createElement("option");
-        opt.value = tpl.templateName;
-        opt.textContent = tpl.templateName;
-        designDropdown.appendChild(opt);
-      });
-    }
-    console.log(`✅ ${templates.length} templates loaded.`);
+    console.log(`✅ ${templates.length} templates loaded`);
   } catch (err) {
     console.error("❌ Error loading templates:", err);
   }
 }
+
 
 // ⚡ When user picks a template
 // Helper to strip 'Event Color' field from templates defensively
@@ -1276,10 +1320,10 @@ function useSelectedTemplate() {
 }
 
 function activateTemplate() {
-  const selector = document.getElementById("templateSelector");
+  const selector = document.getElementById("templateSelect");
   if (!selector) {
     console.warn(
-      "activateTemplate called but #templateSelector not found"
+      "activateTemplate called but #templateSelect not found"
     );
     return;
   }
@@ -2051,7 +2095,7 @@ function cancelExpensesEdit() {
 
 
 async function saveExpenses() {
-  if (window.activeEvent?.isFinalized === 1) {
+ if (window.activeEvent?.isFinalized === 1) {
   alert("This event has been finalized and can no longer be edited.");
   return;
 }
@@ -2328,12 +2372,14 @@ if (buttonContainer) {
   });
 
   // Finalize
+  //Set # of events to display
   const finalizeBtn = document.createElement("button");
   finalizeBtn.textContent = "✅ Finalize Event";
   finalizeBtn.classList.add("btn-primary");
   finalizeBtn.addEventListener("click", async () => {
     if (window.USER_PLAN === "starter" && event.isFinalized === 0) {
-      if (getFinalizedEventCount() >= 1) {
+      const finalizedCount = getFinalizedEventCount();
+      if (finalizedCount >= 1) {
         showUpgradeModal(
           "Starter includes 1 finalized event.",
           "Upgrade to Pro to finalize more events."
@@ -2356,13 +2402,19 @@ if (buttonContainer) {
   });
 
   // Report (Pro only)
-  if (window.USER_PLAN === "pro") {
+   
     const reportBtn = document.createElement("button");
     reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
-    reportBtn.addEventListener("click", () => openPostEventReport(event));
+    
+    reportBtn.addEventListener("click", () => {
+      if (window.USER_PLAN !== "pro") {
+        showStarterUpgrade("Post-Event Reports are a Pro feature.");
+        return;
+      }
+      openPostEventReport(event);
+    });
     buttonContainer.appendChild(reportBtn);
-  }
 
   // Edit
   const editBtn = document.createElement("button");
@@ -3301,3 +3353,15 @@ async function deleteLaborShift(shiftID) {
     alert("Could not delete shift.");
   }
 }
+
+
+function showStarterUpgrade(reason = "") {
+  const base = "Starter includes 1 finalized event.";
+  const perks = "Pro unlocks unlimited events, reports, and exports.";
+  const message = reason ? `${reason}\n\n${base}\n${perks}` : `${base}\n${perks}`;
+
+  showUpgradeModal("Upgrade to Pro", message);
+}
+window.addEventListener("DOMContentLoaded", async () => {
+  await populateTemplateDropdown();
+});
