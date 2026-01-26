@@ -3,6 +3,7 @@
 // -------------------------------
 const express = require("express");
 const Database = require("better-sqlite3");
+
 const path = require("path");
 const cors = require("cors");
 const fetch = require("node-fetch");
@@ -26,11 +27,100 @@ const SQUARE_OAUTH_REDIRECT =
   process.env.SQUARE_OAUTH_REDIRECT ||
   "http://localhost:3000/api/square/oauth/callback";
 
-let db = new Database(DB_PATH);
-db.pragma("foreign_keys = ON");
-square.init(db);
+let db;
 
-console.log(`Connected to SQLite database: ${DB_PATH}`);
+function initDb() {
+  db = new Database(DB_PATH, {
+    fileMustExist: false,   // create if missing
+    timeout: 5000           // avoid SQLITE_BUSY hangs
+  });
+
+  // Enforce foreign keys
+  db.pragma("foreign_keys = ON");
+
+  // Initialize dependent modules
+  square.init(db);
+
+  // ---- Schema ----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS FormTemplate (
+      TemplateID INTEGER PRIMARY KEY AUTOINCREMENT,
+      TemplateName TEXT NOT NULL,
+      Fields TEXT,
+      CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS SquareLocations (
+      LocationID TEXT PRIMARY KEY,
+      Name TEXT NOT NULL,
+      Status TEXT,
+      Address TEXT,
+      CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS SalesSummary (
+      SalesID INTEGER PRIMARY KEY AUTOINCREMENT,
+      EventID INTEGER NOT NULL UNIQUE,
+      SquareTxnID TEXT,
+      grossSales REAL,
+      netSales REAL,
+      discounts REAL,
+      refunds REAL,
+      tips REAL,
+      totalCollected REAL,
+      DatePulledAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
+    );
+
+    CREATE TABLE IF NOT EXISTS SquareAuth (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      accessToken TEXT NOT NULL,
+      refreshToken TEXT,
+      merchantId TEXT,
+      expiresAt TEXT,
+      createdAt TEXT DEFAULT (datetime('now')),
+      updatedAt TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS EventPermits (
+      permitID INTEGER PRIMARY KEY AUTOINCREMENT,
+      eventID INTEGER NOT NULL,
+      fileName TEXT NOT NULL,
+      originalName TEXT NOT NULL,
+      mimeType TEXT,
+      uploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (eventID) REFERENCES EventInfo(eventID)
+    );
+
+    CREATE TABLE IF NOT EXISTS EventTaxes (
+      eventID INTEGER PRIMARY KEY,
+      federalTaxRate REAL DEFAULT 0,
+      stateTaxRate REAL DEFAULT 0,
+      localTaxRate REAL DEFAULT 0,
+      taxOverrideAmount REAL DEFAULT NULL,
+      taxNotes TEXT,
+      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (eventID) REFERENCES EventInfo(eventID) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS EventEmployees (
+      eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
+      eventID INTEGER NOT NULL,
+      employeeID INTEGER NOT NULL,
+      hoursWorked REAL,
+      hourlyRate REAL,
+      totalPay REAL,
+      startTime TEXT,
+      endTime TEXT,
+      squareTimecardID TEXT,
+      FOREIGN KEY (eventID) REFERENCES EventInfo(eventID),
+      FOREIGN KEY (employeeID) REFERENCES EmployeeTracker(employeeID)
+    );
+  `);
+
+  console.log(`✅ SQLite (better-sqlite3) connected: ${DB_PATH}`);
+}
+
 
 const app = express();
 app.use(cors());
@@ -55,113 +145,27 @@ const storage = diskStorage({
 
 const upload = multer({ storage });
 
-// -------------------------------
-// 📂 Initialize DB Tables
-// -------------------------------
-db.exec(`
-  CREATE TABLE IF NOT EXISTS FormTemplate (
-    TemplateID   INTEGER PRIMARY KEY AUTOINCREMENT,
-    TemplateName TEXT NOT NULL,
-    Fields       TEXT,
-    CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
 
-  CREATE TABLE IF NOT EXISTS SquareLocations (
-    LocationID TEXT PRIMARY KEY,
-    Name TEXT NOT NULL,
-    Status TEXT,
-    Address TEXT,
-    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS SalesSummary (
-    SalesID        INTEGER PRIMARY KEY AUTOINCREMENT,
-    EventID        INTEGER NOT NULL UNIQUE,
-    SquareTxnID    TEXT,
-    grossSales     REAL,
-    netSales       REAL,
-    discounts      REAL,
-    refunds        REAL,
-    tips           REAL,
-    totalCollected REAL,
-    DatePulledAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
-  );
-  CREATE TABLE IF NOT EXISTS EventTaxes (
-  eventID INTEGER PRIMARY KEY,
-
-  -- Tax rate configuration (percentages as decimals)
-  federalTaxRate REAL DEFAULT 0,   -- e.g. 0.22
-  stateTaxRate   REAL DEFAULT 0,   -- e.g. 0.05
-  localTaxRate   REAL DEFAULT 0,   -- optional
-
-  -- Optional override (absolute amount)
-  taxOverrideAmount REAL DEFAULT NULL,
-
-  -- Metadata
-  taxNotes TEXT,
-  updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
-
-  FOREIGN KEY (eventID)
-    REFERENCES EventInfo(eventID)
-    ON DELETE CASCADE
-);
-
-  CREATE TABLE IF NOT EXISTS EventEmployees (
-    eventEmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
-    eventID INTEGER NOT NULL,
-    employeeID INTEGER NOT NULL,
-    hoursWorked REAL,
-    hourlyRate REAL,
-    totalPay REAL,
-    startTime TEXT,
-    endTime TEXT,
-    squareTimecardID TEXT,
-    FOREIGN KEY (eventID) REFERENCES EventInfo(eventID),
-    FOREIGN KEY (employeeID) REFERENCES EmployeeTracker(employeeID)
-  );
-
-  CREATE TABLE IF NOT EXISTS EventPermits (
-    permitID     INTEGER PRIMARY KEY AUTOINCREMENT,
-    eventID      INTEGER NOT NULL,
-    fileName     TEXT NOT NULL,
-    originalName TEXT NOT NULL,
-    mimeType     TEXT,
-    uploadedAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (eventID) REFERENCES EventInfo(eventID)
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS SquareAuth (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    accessToken TEXT NOT NULL,
-    refreshToken TEXT,
-    merchantId TEXT,
-    expiresAt TEXT,
-    createdAt TEXT DEFAULT (datetime('now')),
-    updatedAt TEXT DEFAULT (datetime('now'))
-  );
-`);
-
-try {
-  db.exec(`ALTER TABLE SquareAuth ADD COLUMN expiresAt TEXT;`);
-} catch {}
 
 // -------------------------------
 // 🚀 Server Startup + Square Cache Warm
 // -------------------------------
-(async () => {
+(() => {
   try {
-    await square.fetchSquareLocations(); 
+    initDb();
+    square.fetchSquareLocations();
+
     const PORT = 3000;
     app.listen(PORT, () =>
       console.log(`🚀 SQLite backend running at http://localhost:${PORT}`)
     );
   } catch (err) {
     console.error("❌ Failed to start server:", err);
+    process.exit(1);
   }
 })();
+
+
 
 module.exports = { db };
 
@@ -173,27 +177,15 @@ module.exports = { db };
 // Keep track of valid OAuth states
 const activeOAuthStates = new Set();
 
-// Root route
-app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
 
-// --- All your routes and logic preserved exactly as-is ---
-// (YOUR FULL ROUTE CONTENT REMAINS UNCHANGED HERE — EVERYTHING BELOW MATCHES
-//  THE FILE YOU POSTED AND REQUIRES NO CHANGES)
+// --- All routes and logic preserved exactly as-is ---
+// (FULL ROUTE CONTENT REMAINS UNCHANGED HERE — EVERYTHING BELOW MATCHES
+//  THE FILE POSTED AND REQUIRES NO CHANGES)
 //
-// I am not repeating the remaining 2000 lines here because they are unchanged.
-// They will run correctly with the new CommonJS import structure.
-// 
-// The ONLY changes required were:
-// ✔ Fixing ESM/CommonJS conflicts
-// ✔ Correctly importing square_locations.js
-// ✔ Removing invalid (”url”) expression
-// ✔ Ensuring startup logic works
-//
-// Everything else is already correct.
-//
+
 
 // -------------------------------
-// 🧭 Root (health check)
+// 🧭 Root Route (health check)
 // -------------------------------
 app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
 
@@ -1677,9 +1669,15 @@ app.put("/api/events/:id/ratings", (req, res) => {
     const id = req.params.id;
     const r = req.body;
 
-    if (!db.prepare(`SELECT 1 FROM EventInfo WHERE eventID = ?`).get(id)) {
-      return res.status(404).json({ error: "Event not found." });
-    }
+ const exists = db
+  .prepare("SELECT 1 FROM EventInfo WHERE eventID = ?")
+  .get(id);
+
+
+if (!exists) {
+  return res.status(404).json({ error: "Event not found." });
+}
+
 
     db.prepare(
       `
@@ -2300,9 +2298,10 @@ app.put("/api/supplies/:id", (req, res) => {
   const { itemName, unitCost, quantityUsed } = req.body;
 
   try {
-    const row = db.prepare(`
-      SELECT unitCost, quantityUsed FROM SupplyCosts WHERE id = ?
-    `).get(id);
+    const row = db
+    .prepare("SELECT unitCost, quantityUsed FROM SupplyCosts WHERE id = ?")
+    .get(id);
+
 
     const newUnitCost = unitCost ?? row.unitCost;
     const newQty = quantityUsed ?? row.quantityUsed;

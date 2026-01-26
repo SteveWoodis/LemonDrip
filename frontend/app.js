@@ -15,6 +15,21 @@ let lastLoadedEvents = [];
 let expensesEditMode = false;
 window.USER_PLAN = "starter"; // or "pro"
 
+// -----------------------------
+// Home – Activity Image Rotator (STATE)
+// -----------------------------
+
+const activityImages = [
+  "images/lemon-1.png",
+  "images/lemon-2.png",
+  "images/lemon-3.png",
+  "images/lemon-4.png",
+  "images/lemon-5.png",
+  "images/lemon-6.png"
+];
+
+let activityImageIndex = 0;
+let activityImageTimer = null;
 
 // ---------------------------
 // 💾 Persistent State (localStorage)// 🔗 Backend base URL
@@ -223,7 +238,7 @@ async function loadAppState() {
 
   if (!saved) {
     // default: show Manage Events
-    navigateTo("manageSection");
+    navigateTo("homeSection");
     return;
   }
   try {
@@ -233,12 +248,12 @@ async function loadAppState() {
     if (document.getElementById(sectionId)) {
       navigateTo(sectionId);
     } else {
-      navigateTo("manageSection");
+      navigateTo("homeSection");
     }
     // ...rest unchanged
   } catch (err) {
     console.warn("⚠️ Failed to restore app state:", err);
-    navigateTo("manageSection");
+    navigateTo("homeSection");
   }
 }
 
@@ -292,6 +307,16 @@ function navigateTo(sectionId) {
 
   section.classList.remove("hidden");
   section.scrollIntoView({ behavior: "smooth" });
+
+  if (sectionId === "homeSection") {
+  if (typeof loadRecentActivity === "function") {
+    loadRecentActivity();
+  }
+  if (typeof startActivityImageRotation === "function") {
+    startActivityImageRotation();
+  }
+}
+
 
   // ⭐ AUTO-LOAD EVENTS ON MANAGE PAGE
   if (sectionId === "manageSection") {
@@ -3101,6 +3126,10 @@ async function uploadEventPermits(eventID) {
 
 window.addEventListener("DOMContentLoaded", () => {
   if (window.USER_PLAN === "starter") {
+    const eventDashboard = document.getElementById("eventDashboardSection");
+      if (eventDashboard) {
+      eventDashboard.classList.add("hidden");
+    }
     document.getElementById("btnDesign")?.remove();
     document.getElementById("btnCompany")?.remove();
   }
@@ -3354,6 +3383,16 @@ async function deleteLaborShift(shiftID) {
   }
 }
 
+function loadRecentActivity() {
+  const list = document.getElementById("recentActivityList");
+  if (!list) return;
+
+  list.innerHTML = `
+    <li class="activity-muted">
+      Activity will appear here as events are added and finalized
+    </li>
+  `;
+}
 
 function showStarterUpgrade(reason = "") {
   const base = "Starter includes 1 finalized event.";
@@ -3365,3 +3404,31 @@ function showStarterUpgrade(reason = "") {
 window.addEventListener("DOMContentLoaded", async () => {
   await populateTemplateDropdown();
 });
+
+
+function startActivityImageRotation() {
+  const img = document.getElementById("activityImage");
+  if (!img) return;
+
+  // click to advance
+  img.onclick = () => advanceActivityImage();
+
+  // auto-rotate every 6 seconds
+  clearInterval(activityImageTimer);
+  activityImageTimer = setInterval(advanceActivityImage, 6000);
+}
+
+function advanceActivityImage() {
+  const img = document.getElementById("activityImage");
+  if (!img) return;
+
+  activityImageIndex =
+    (activityImageIndex + 1) % activityImages.length;
+
+  img.style.opacity = 0;
+
+  setTimeout(() => {
+    img.src = activityImages[activityImageIndex];
+    img.style.opacity = 1;
+  }, 200);
+}

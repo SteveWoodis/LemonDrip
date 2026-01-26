@@ -55,6 +55,158 @@ body {
 .ios-card-header:hover {
   background: #ececf0;
 }
+.hidden {
+  display: none !important;
+}
+/* -----------------------------
+   Home Card
+----------------------------- */
+
+.home-card {
+  max-width: 1100px;
+}
+
+.home-hero {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 2rem;
+  align-items: center;
+}
+
+.home-text h2 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.home-tagline {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.home-description {
+  color: #444;
+  margin-bottom: 1.25rem;
+}
+
+.home-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.home-image img {
+  width: 100%;
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  object-fit: cover;
+}
+
+.home-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.feature {
+  background: #f7fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  font-size: 0.9rem;
+}
+
+.feature strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+/* Mobile */
+@media (max-width: 800px) {
+  .home-hero {
+    grid-template-columns: 1fr;
+  }
+}
+/* -----------------------------
+   Home – Recent Activity
+----------------------------- */
+
+.home-activity {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.home-activity h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.activity-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.activity-list li {
+  padding: 0.55rem 0.25rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #eef1f7;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.activity-list li:last-child {
+  border-bottom: none;
+}
+
+.activity-time {
+  color: #777;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.activity-muted {
+  color: #777;
+  font-style: italic;
+}
+
+.activity-footer {
+  margin-top: 0.75rem;
+}
+/* -----------------------------
+   Home – Activity Image Rotator
+----------------------------- */
+
+.activity-visual {
+  margin: 1rem 0 1.25rem;
+  position: relative;
+  cursor: pointer;
+}
+
+.activity-visual img {
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  transition: opacity 0.4s ease;
+}
+
+.activity-image-hint {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 10px;
+}
 
 .ios-card-header-main {
   display: flex;

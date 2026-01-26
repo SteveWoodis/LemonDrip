@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" href="images/favicon.ico">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LemonDrip Event Manager</title>
   <link rel="stylesheet" href="styles.css">
@@ -9,20 +10,91 @@
 <body>
 	<div class="app-shell">
   <header>
-   <div class="brand">
+      <div class="brand">
         <span class="brand-title">🍋 LemonDrip Events</span>
-        <span class="brand-subtitle">Event Manager & Reports</span>
+        <span class="brand-subtitle">Event Manager & Reports App</span>
       </div>
 		  <div class="nav-buttons">
-			<div class="header-buttons">
-		  <button id="btnAdd" onclick='openAddEventForUser()'>➕ Add Event</button>
-		  <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
-		  <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
-		  <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
-		  
-		</div>
-	</div>
+			   <div class="header-buttons">
+          <button id="btnHome" onclick="navigateTo('homeSection')">➕ Home</button>
+		      <button id="btnAdd" onclick='openAddEventForUser()'>➕ Add Event</button>
+		      <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
+		      <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
+		      <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
+		     </div>
+	    </div>
   </header>
+
+<section id="homeSection" class="card home-card">
+  <div class="home-hero">
+    <div class="home-text">
+      <h2>Welcome to LemonDrip</h2>
+      <p class="home-tagline">
+        Turn real-world events into clear profit insights.
+      </p>
+
+      <p class="home-description">
+        LemonDrip helps small vendors understand which events make money —
+        by tracking sales, labor, supplies, and performance in one place.
+      </p>
+
+      <!--<div class="home-actions">
+        <button class="btn-primary" onclick="openAddEventForUser()">
+          ➕ Add New Event
+        </button>
+        <button class="btn-secondary" onclick="navigateTo('manageSection')">
+          📋 View Events
+        </button>
+      </div>-->
+    </div>
+
+    <div class="home-image">
+      <!--<img
+        src="images/Lemon-4.png"
+        alt="LemonDrip event in action"
+      />-->
+    </div>
+  </div>
+  <div class="home-activity">
+  <h3>Recent Activity</h3>
+  <div class="activity-visual">
+  <img
+    id="activityImage"
+    src="images/lemon-1.png"
+    alt="LemonDrip recent event"
+  />
+  <div class="activity-image-hint">
+    click to see more →
+  </div>
+</div>
+
+  <ul id="recentActivityList" class="activity-list">
+    <li class="activity-muted">No recent activity yet</li>
+  </ul>
+
+  <div class="activity-footer">
+    <button class="btn-ghost" onclick="navigateTo('manageSection')">
+      View all events →
+    </button>
+  </div>
+</div>
+
+  <div class="home-features">
+    <div class="feature">
+      <strong>📊 Profit Clarity</strong>
+      <span>See which events are actually worth repeating</span>
+    </div>
+    <div class="feature">
+      <strong>👥 Labor Tracking</strong>
+      <span>Know your true staffing costs</span>
+    </div>
+    <div class="feature">
+      <strong>🍋 Built from Real Events</strong>
+      <span>Designed by vendors, not spreadsheets</span>
+    </div>
+  </div>
+</section>
+
 
   <!-- ➕ Add Event Section -->
  <section id="addSection" class="card hidden">
@@ -134,36 +206,22 @@
 </section>
 
   
-  <!-- 📊 Dashboard Section -->
-  <!-- <section id="dashboardSection" class="card hidden">
-    <div id="dashboard" style="display:none;">
-      <h2 id="dashTitle"></h2>
-      <p id="dashDate"></p>
-      <p><strong>Coordinator:</strong> <span id="dashCoordinator"></span></p>
-      <!--<p><strong>Total Sales:</strong> <span id="dashSales"></span></p>
-      <p><strong>Net Profit:</strong> <span id="dashProfit"></span></p> 
-      <p><strong>Square Info:</strong> <span id="dashSquareInfo"></span></p>
-      <div id="dashDetails"></div>
-    </div>
-  </section> -->
-  
-  <!-- 📊 Event Dashboard Section -->
-<!-- 📊 Event Dashboard Section -->
 <section id="eventDashboardSection" class="card hidden dashboard-page">
-  
-  <div class="dashboard-header">
-  <div class="dashboard-buttons"></div>
-    <div id="dashEventName" class="event-title"></div>
-    <div id="dashEventDate" class="event-date"></div>
-	<div id="dashFinalizedIndicator"></div>
+  <div id="eventDashboardContainer">
+      <div class="dashboard-header">
+        <div class="dashboard-buttons"></div>
+        <div id="dashEventName" class="event-title"></div>
+        <div id="dashEventDate" class="event-date"></div>
+	      <div id="dashFinalizedIndicator"></div>
+      </div>
   </div>
- <div id="eventDashboardContainer">
-
+</section>
+<section id="laborCard" class="card hidden"
   <!-- LABOR CARD -->
   <div class="collapsible-card">
-    <button class="collapsible-header">
-      <span class="collapsible-title">Labor</span>
-    </button>
+      <button class="collapsible-header">
+        <span class="collapsible-title">Labor</span>
+      </button>
 
     <div class="collapsible-content">
 
@@ -185,14 +243,14 @@
       </div>
 
       <!-- Shifts Table -->
-      <div id="laborTableContainer"></div>
+    <div id="laborTableContainer"></div>
 
-    </div>
+  </div>
   </div>
 
 </div>
 
-</section>
+
 
 
 
