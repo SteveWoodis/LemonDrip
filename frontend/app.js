@@ -28,8 +28,97 @@ const activityImages = [
   "images/lemon-6.png"
 ];
 
+const CANONICAL_EVENT_FIELDS = {
+  "Event Name": "eventName",
+  "Event Date": "eventDate",
+  "Application Date": "applicationDate",
+  "Event Host": "eventHost",
+  "Event Rating": "eventRating",
+  "Event Type": "eventType",
+  "Status": "status",
+  "Coordinator": "coordinator",
+  "Employees": "employees",
+  "Notes": "notes",
+  "Number of Days": "numDays",
+  "Square Location": "squareLocationId"
+};
+
 let activityImageIndex = 0;
 let activityImageTimer = null;
+
+function safeLabelFromText(label) {
+  return String(label || "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_]/g, "");
+}
+
+// Canonical LABEL -> Canonical DB KEY (your backend contract)
+const CANONICAL_LABEL_TO_DBKEY = {
+  "eventName": "eventName",
+  "eventDate": "eventDate",
+  "applicationDate": "applicationDate",
+  "eventFee": "eventFee",
+  "eventHost": "eventHost",
+  "eventLocation": "eventLocation",
+  "Event Name": "eventName",
+  "Event Date": "eventDate",
+  "Application Date": "applicationDate",
+  "Event Host": "eventHost",
+  "Event Rating": "eventRating",
+  "Event Type": "eventType",
+  "Status": "status",
+  "Coordinator": "coordinator",
+  "Employees": "employees",
+  "Notes": "notes",
+  "Number of Days": "numDays",
+  "Event Fee": "eventFee",
+  "Event Location": "eventLocation",
+  "Permits": "permits",
+  "Finalized Date": "finalizedDate",
+  "Time": "time",
+  "Square Location": "squareLocationId"
+};
+
+function buildEventPayloadFromTemplate({ raw, template }) {
+  const canonical = {};
+  const customFields = {};
+
+  const fields = (template?.fields?.[0]?.fields || template?.fields || []);
+  if (!Array.isArray(fields)) {
+    return { canonical, customFields };
+  }
+
+  for (const field of fields) {
+    if (!field || !field.label) continue;
+
+    const idKey = field.id || safeLabelFromText(field.label);
+    const value = raw[idKey] ?? null;
+
+    // 1) dbKey wins
+    if (field.dbKey) {
+      canonical[field.dbKey] = value;
+      continue;
+    }
+
+    // 2) Known canonical labels
+    const mapped = CANONICAL_LABEL_TO_DBKEY[field.label];
+    if (mapped) {
+      canonical[mapped] = value;
+      continue;
+    }
+
+    // 3) Custom field
+    customFields[field.label] = value;
+  }
+
+  if (Object.keys(customFields).length) {
+    canonical.customFields = customFields;
+  }
+
+  return { canonical, customFields };
+}
+
+
 
 // ---------------------------
 // 💾 Persistent State (localStorage)// 🔗 Backend base URL
@@ -815,51 +904,87 @@ function renderTableArray(elId, arr) {
 }
 
 function coerceForApi(obj) {
-  const num = (k) =>
-    obj[k] === "" || obj[k] == null ? null : Number(obj[k]);
-  const int = (k) =>
-    obj[k] === "" || obj[k] == null ? null : parseInt(obj[k], 10);
-  const str = (k) =>
-    obj[k] == null || obj[k] === "" ? null : String(obj[k]);
-  const bool = (k) =>
-    obj[k] === true ||
-    obj[k] === "true" ||
-    obj[k] === "1"
-      ? true
-      : false;
-
-  // normalize every canonical field
-  obj["eventFee"] = int("eventFee");
-  obj["numDays"] = int("numDays");
-  obj["grossSales"] = num("grossSales");
-  obj["tips"] = num("tips");
-  obj["netSales"] = num("netSales");
-  obj["totalSales"] = num("totalSales");
-  obj["isFinalized"] = bool("isFinalized");
-  obj["healthDeptFee"] = bool("healthDeptFee");
-  obj["mileageReimbursement"] = bool("mileageReimbursement");
-  obj["eventRunnerFees"] = bool("eventRunnerFees");
-  obj["giftCardSales"] = bool("giftCardSales");
-  obj["cash"] = bool("cash");
-  obj["card"] = bool("card");
-  obj["venmo"] = bool("venmo");
-  obj["other"] = bool("other");
-  obj["cashApp"] = bool("cashApp");
-  obj["taxOverride"] = bool("taxOverride");
-  
-  Object.keys(obj).forEach((k) => {
-  obj[k] = num(k);
-});
-
-
-  return obj;
+  if (typeof obj.eventName !== "string") {
+  console.warn("⚠️ eventName is not string before coercion", obj.eventName);
 }
 
-async function submitEvent(e) {
+  const result = { ...obj };
 
+  const num = (v) =>
+    v === "" || v == null ? null : Number(v);
+
+  const int = (v) =>
+    v === "" || v == null ? null : parseInt(v, 10);
+
+  const str = (v) =>
+    v == null || v === "" ? null : String(v);
+
+  const bool = (v) =>
+    v === true || v === "true" || v === "1";
+
+  // ----------------------------
+  // Numeric / integer fields
+  // ----------------------------
+  result.eventFee = int(result.eventFee);
+  result.numDays = int(result.numDays);
+
+  result.grossSales = num(result.grossSales);
+  result.tips = num(result.tips);
+  result.netSales = num(result.netSales);
+  result.totalSales = num(result.totalSales);
+
+  // ----------------------------
+  // Boolean-like flags
+  // ----------------------------
+  result.isFinalized = bool(result.isFinalized);
+  result.healthDeptFee = bool(result.healthDeptFee);
+  result.mileageReimbursement = bool(result.mileageReimbursement);
+  result.eventRunnerFees = bool(result.eventRunnerFees);
+  result.giftCardSales = bool(result.giftCardSales);
+
+  result.cash = bool(result.cash);
+  result.card = bool(result.card);
+  result.wallet = bool(result.wallet);
+  result.other = bool(result.other);
+  result.cashApp = bool(result.cashApp);
+  result.taxOverride = bool(result.taxOverride);
+
+  // ----------------------------
+  // String fields (explicit)
+  // ----------------------------
+  result.eventName = str(result.eventName);
+  result.eventDate = str(result.eventDate);
+  result.applicationDate = str(result.applicationDate);
+  result.finalizedDate = str(result.finalizedDate);
+  result.eventHost = str(result.eventHost);
+  result.eventLocation = str(result.eventLocation);
+  result.eventRating = str(result.eventRating);
+  result.eventType = str(result.eventType);
+  result.status = str(result.status);
+  result.coordinator = str(result.coordinator);
+  result.time = str(result.time);
+  result.permits = str(result.permits);
+  result.squareLocationId = str(result.squareLocationId);
+
+  // ----------------------------
+  // customFields stays untouched
+  // ----------------------------
+  if (result.customFields && typeof result.customFields === "object") {
+    result.customFields = result.customFields;
+  }
+
+  return result;
+}
+
+
+async function submitEvent(e) {
+  if (e) e.preventDefault();
+
+  // --------------------------------------------------
+  // 0️⃣ Plan gating (unchanged logic)
+  // --------------------------------------------------
   if (window.USER_PLAN === "starter") {
     const finalizedCount = getFinalizedEventCount();
-
     if (!window.isEditing && finalizedCount >= 1) {
       showUpgradeModal(
         "You’ve completed your first event.",
@@ -868,7 +993,6 @@ async function submitEvent(e) {
       return;
     }
   }
-  if (e) e.preventDefault();
 
   const formEl = document.getElementById("eventForm");
   if (!formEl) {
@@ -876,66 +1000,114 @@ async function submitEvent(e) {
     return;
   }
 
-  // 1️⃣ Load active template
+  // --------------------------------------------------
+  // 1️⃣ Resolve active template
+  // --------------------------------------------------
   const templateName = document.getElementById("templateSelect")?.value;
-  const template = window.availableTemplates?.find(t => t.templateName === templateName);
+  
+  const template = window.availableTemplates?.find(
+    (t) => t.templateName === templateName
+  );
+  console.log("🧩 ACTIVE TEMPLATE:", template);
+  console.log("🧩 TEMPLATE.FIELDS:", template.fields);
 
   if (!template || !Array.isArray(template.fields)) {
     alert("Template is missing or invalid.");
     return;
   }
 
-  // 2️⃣ Read all form values
-  const inputs = formEl.querySelectorAll("input, select, textarea");
+  // --------------------------------------------------
+  // 2️⃣ Read ALL form values ONCE (raw map)
+  // --------------------------------------------------
   const raw = {};
 
-  inputs.forEach(input => {
-    if (!input.id.startsWith("form_")) return;
+  formEl
+    .querySelectorAll("input, select, textarea")
+    .forEach((el) => {
+      if (!el.id.startsWith("form_")) return;
 
-    const key = input.id.replace(/^form_/, "");
+      const key = el.id.replace(/^form_/, "");
 
-    if (input.multiple) {
-      raw[key] = [...input.selectedOptions].map(o => o.value);
-    } else {
-      raw[key] = input.value.trim();
-    }
-  });
+      if (el.multiple) {
+        raw[key] = [...el.selectedOptions].map((o) => o.value);
+      } else if (el.type === "checkbox") {
+        raw[key] = el.checked;
+      } else {
+        raw[key] = el.value.trim();
+      }
+    });
+// 🔍 DEBUG — raw form values
+console.log("🧪 RAW FORM VALUES:", raw);
 
-  // 3️⃣ Build canonical object EXACTLY from template dbKeys
-  const canonical = {};
-  const customFields = {};
+// --------------------------------------------------
+// 3️⃣ Build canonical payload (ID-FIRST, FINAL)
+// --------------------------------------------------
 
-  template.fields.forEach(field => {
-    const id = field.id;
-    if (!id) return;
+const canonical = {};
+const customFields = {};
 
-    const rawValue = raw[id];
+// Single source of truth: canonical backend fields
+const CANONICAL_KEYS = new Set([
+  "eventName",
+  "eventDate",
+  "applicationDate",
+  "eventHost",
+  "eventRating",
+  "eventType",
+  "status",
+  "coordinator",
+  "employees",
+  "notes",
+  "numDays",
+  "eventFee",
+  "eventLocation",
+  "permits",
+  "finalizedDate",
+  "time",
+  "squareLocationId"
+]);
 
-    // Explicit dbKey → canonical DB field
-    if (field.dbKey) {
-      canonical[field.dbKey] = rawValue ?? null;
-      return;
-    }
+Object.entries(raw).forEach(([key, value]) => {
+  if (CANONICAL_KEYS.has(key)) {
+    canonical[key] = value;
+  } else {
+    customFields[key] = value;
+  }
+});
 
-    // No dbKey → treat as vendor-custom field
-    customFields[field.label] = rawValue ?? null;
-  });
+if (Object.keys(customFields).length > 0) {
+  canonical.customFields = customFields;
+}
 
-  // 4️⃣ Special additional fields
+console.log("🧪 CANONICAL FINAL:", canonical);
+console.log("🧪 CUSTOM FIELDS FINAL:", customFields);
+
+
+  // --------------------------------------------------
+  // 4️⃣ Attach auxiliary known fields
+  // --------------------------------------------------
   const sq = document.getElementById("form_squareLocationId");
   if (sq) canonical.squareLocationId = sq.value || null;
 
-  // 5️⃣ Attach customFields only if present
-  canonical.customFields =
-    Object.keys(customFields).length > 0 ? customFields : null;
+  if (Object.keys(customFields).length > 0) {
+    canonical.customFields = customFields;
+  }
+console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
+  // --------------------------------------------------
+  // 5️⃣ REQUIRED FIELD VALIDATION (single source)
+  // --------------------------------------------------
+  const REQUIRED = ["eventName", "eventDate"];
 
-  // 6️⃣ Required fields
-  if (!canonical.eventName || !canonical.eventDate) {
-    alert("Event Name and Event Date are required.");
-    return;
+  for (const key of REQUIRED) {
+    if (!canonical[key]) {
+      alert("Event Name and Event Date are required.");
+      return;
+    }
   }
 
-  // 7️⃣ Numeric coercion for profit fields
+  // --------------------------------------------------
+  // 6️⃣ Numeric coercion (centralized)
+  // --------------------------------------------------
   const NUMERIC_KEYS = [
     "eventFee",
     "healthDeptFee",
@@ -944,7 +1116,7 @@ async function submitEvent(e) {
     "giftCardSales",
     "cash",
     "card",
-    "venmo",
+    "wallet",
     "other",
     "cashApp",
     "taxOverride",
@@ -954,37 +1126,38 @@ async function submitEvent(e) {
     "totalSales"
   ];
 
-  NUMERIC_KEYS.forEach(k => {
+  NUMERIC_KEYS.forEach((k) => {
     if (canonical[k] !== undefined && canonical[k] !== null && canonical[k] !== "") {
       canonical[k] = Number(canonical[k]);
     }
   });
 
-  // 8️⃣ Build payload for API
+  // --------------------------------------------------
+  // 7️⃣ Final payload (immutable boundary)
+  // --------------------------------------------------
   const payload = coerceForApi(canonical);
 
-  // 9️⃣ Determine POST vs PUT
-  const isEditing = window.isEditing === true && window.activeeventID;
+  // --------------------------------------------------
+  // 8️⃣ Determine POST vs PUT
+  // --------------------------------------------------
+  const isEditing =
+    window.isEditing === true && window.activeeventID;
+
   const url = isEditing
     ? `${API_BASE}/api/events/${window.activeeventID}`
     : `${API_BASE}/api/events`;
 
   const method = isEditing ? "PUT" : "POST";
 
-   
-  if (
-  window.USER_PLAN === "starter" &&
-  !isEditing &&
-  getFinalizedEventCount() >= 1
-) {
-  showUpgradeModal(
-    "Starter includes 1 event.",
-    "Upgrade to Pro to create more events."
-  );
-  return;
-}
+  console.log(
+  "🚀 FINAL PAYLOAD STRINGIFIED:",
+  JSON.stringify(payload, null, 2)
+);
 
-  // 🔟 Submit to backend
+
+  // --------------------------------------------------
+  // 9️⃣ Submit
+  // --------------------------------------------------
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -993,13 +1166,22 @@ async function submitEvent(e) {
 
   const json = await res.json();
 
+  if (!("eventName" in payload)) {
+  console.error("❌ PAYLOAD MISSING eventName", payload);
+  debugger;
+  return;
+}
+
+
   if (!res.ok) {
     console.error("🚨 Backend error:", json);
     alert(json.error || "Error saving event.");
     return;
   }
 
-  // 1️⃣1️⃣ Determine event ID
+  // --------------------------------------------------
+  // 🔟 Post-save actions
+  // --------------------------------------------------
   const eventID = isEditing
     ? window.activeeventID
     : json.eventID || json.EventID;
@@ -1009,7 +1191,6 @@ async function submitEvent(e) {
     return;
   }
 
-  // 1️⃣2️⃣ Upload permits
   await uploadEventPermits(eventID);
 
   alert(isEditing ? "Event updated!" : "Event created!");
@@ -1021,6 +1202,7 @@ async function submitEvent(e) {
   navigateTo("manageSection");
   await loadAllEvents();
 }
+
 
 
 
@@ -1505,6 +1687,7 @@ function rebuildAddEventForm(template) {
 
   formContainer.appendChild(btnContainer);
   formContainer.onsubmit = submitEvent;
+  console.log("Form information", formContainer);
 }
 //------------------------
 //Helper Function For Currency
@@ -2022,7 +2205,7 @@ function renderEventProfitSummary(event) {
       <div><strong>Tips:</strong> ${fmtMoney(sales.tips)}</div>
       <div><strong>Cash:</strong> ${fmtMoney(sales.cash)}</div>
       <div><strong>Card:</strong> ${fmtMoney(sales.card)}</div>
-      <div><strong>Venmo / Wallet:</strong> ${fmtMoney(sales.venmo)}</div>
+      <div><strong>wallet / Wallet:</strong> ${fmtMoney(sales.wallet)}</div>
       <div><strong>CashApp:</strong> ${fmtMoney(sales.cashApp)}</div>
       <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
       <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
