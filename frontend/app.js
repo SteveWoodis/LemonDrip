@@ -650,9 +650,9 @@ async function manageSearch() {
     return;
   }
 
-  const res = await fetch(`/api/events/search?q=${encodeURIComponent(q)}`);
+  const res = await fetch(`http://localhost:3000/api/events/search?q=${encodeURIComponent(q)}`);
   const results = await res.json();
-
+  console.log("What is res? ", res);
   buildTableHTML(results, "manageResults");
 }
 

@@ -458,15 +458,19 @@ app.get("/api/events/search", (req, res) => {
     if (!q) return res.json([]);
 
     const stmt = db.prepare(`
-      SELECT * FROM EventInfo
+      SELECT *
+      FROM EventInfo
       WHERE
-        eventName LIKE '%' || @q || '%' OR
-        eventDate LIKE '%' || @q || '%' OR
-        eventHost LIKE '%' || @q || '%' OR
-        status LIKE '%' || @q || '%' OR
-        eventType LIKE '%' || @q || '%' OR
-        notes LIKE '%' || @q || '%' OR
-        customFields LIKE '%' || @q || '%'    -- 🔥 CUSTOM FIELD SEARCH HERE
+        eventName     LIKE '%' || @q || '%'
+        OR eventDate  LIKE '%' || @q || '%'
+        OR eventHost  LIKE '%' || @q || '%'
+        OR status     LIKE '%' || @q || '%'
+        OR eventType  LIKE '%' || @q || '%'
+        OR notes      LIKE '%' || @q || '%'
+        OR customFields LIKE '%' || @q || '%'
+        OR CAST(eventID AS TEXT) LIKE '%' || @q || '%'
+      ORDER BY eventDate DESC
+      LIMIT 50
     `);
 
     const results = stmt.all({ q });
@@ -476,6 +480,7 @@ app.get("/api/events/search", (req, res) => {
     res.status(500).json({ error: String(err) });
   }
 });
+
 
 // Get permits for an event
 app.get("/api/events/:eventID/permits", (req, res) => {
@@ -1439,6 +1444,12 @@ async function refreshSquareLaborToken(row) {
 // Finalize event (scores & metrics)
 // -------------------------------
 app.put("/api/events/:id/finalize", (req, res) => {
+  if (USER_PLAN === "starter" && finalizedCount >= 1) {
+  return res.status(403).json({
+    error: "Starter includes 1 finalized event. Upgrade to Pro to finalize more."
+  });
+}
+
   try {
     const eventId = req.params.id;
 
