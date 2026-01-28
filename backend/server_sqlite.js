@@ -846,7 +846,14 @@ app.put("/api/events/:id", (req, res) => {
   }
 });
 
-
+/**
+ * IMPORTANT:
+ * Square only populates total_discount_money for formal discount objects.
+ * Many discounts are applied via price overrides or comps.
+ *
+ * Canonical discount formula (matches Square dashboard):
+ *   discounts = grossSales - netSales - refunds
+ */
 app.put("/api/square/sales/:eventId", async (req, res) => {
   try {
     const eventId = Number(req.params.eventId);
@@ -886,11 +893,14 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     // ─────────────────────────────────────────────
     // 2️⃣ ORDER-CENTRIC (sales truth)
     // ─────────────────────────────────────────────
-    let grossSales = 0;
-    let netSales = 0;
-    let discounts = 0;
+    let grossSales = grossSalesMoney.amount / 100;
+    let netSales = totalMoney.amount / 100;
+    let refunds = refundsMoney?.amount ? refundsMoney.amount / 100 : 0;
+    let discounts = Math.max(0, Number((grossSales - netSales - refunds).toFixed(2)));
     let squareReportedTax = 0;
     let totalCollected = 0;
+
+
 
     const orderRes = await fetch(
       "https://connect.squareup.com/v2/orders/search",
@@ -928,6 +938,9 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     }
     const orders = [...orderMap.values()];
 
+    console.log("🧾 RAW ORDER:", JSON.stringify(orders, null, 2));
+
+
     for (const o of orders) {
       for (const li of o.line_items || []) {
         const qty = Number(li.quantity || 0);
@@ -956,7 +969,6 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     // 3️⃣ PAYMENT-CENTRIC (fees + cash flow)
     // ─────────────────────────────────────────────
     let tips = 0;
-    let refunds = 0;
     let squareFees = 0;
     let cash = 0, card = 0, wallet = 0, other = 0;
 
@@ -1014,18 +1026,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
 	// Start with payment-computed fees
 	let squareFeesFinal = squareFees;
 
-	// If fees are pending, ask Balance API for authoritative fees (dashboard accurate)
-	/*if (feesPending) {
-	  squareFeesFinal = await fetchSquareFeesFromBalance({
-		token,
-		locationId: ev.squareLocationId,
-		beginISO: paymentStartISO,
-		endISO: paymentEndISO
-	  });
-	}*/
-
 	
-
 
     // ─────────────────────────────────────────────
     // 4️⃣ Atomic upsert
