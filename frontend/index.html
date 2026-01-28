@@ -206,52 +206,21 @@
 </section>
 
   
+
 <section id="eventDashboardSection" class="card hidden dashboard-page">
-  <div id="eventDashboardContainer">
-      <div class="dashboard-header">
-        <div class="dashboard-buttons"></div>
-        <div id="dashEventName" class="event-title"></div>
-        <div id="dashEventDate" class="event-date"></div>
-	      <div id="dashFinalizedIndicator"></div>
-      </div>
+
+  <!-- Dashboard Header (STATIC) -->
+  <div class="dashboard-header">
+    <div class="dashboard-buttons"></div>
+    <div id="dashEventName" class="event-title"></div>
+    <div id="dashEventDate" class="event-date"></div>
+    <div id="dashFinalizedIndicator"></div>
   </div>
+
+  <!-- Dashboard Cards (DYNAMIC) -->
+  <div id="eventDashboardContainer"></div>
+
 </section>
-<section id="laborCard" class="card hidden"
-  <!-- LABOR CARD -->
-  <div class="collapsible-card">
-      <button class="collapsible-header">
-        <span class="collapsible-title">Labor</span>
-      </button>
-
-    <div class="collapsible-content">
-
-      <!-- Add Shift Form -->
-      <div class="labor-form">
-        <label>Employee:
-          <select id="laborEmployeeSelect"></select>
-        </label>
-
-        <label>Hours Worked:
-          <input type="number" step="0.25" id="laborHours">
-        </label>
-
-        <label>Wage:
-          <input type="number" step="0.25" id="laborWage">
-        </label>
-
-        <button type="button" class="btn-primary" onclick="saveLaborShift()">Add Shift</button>
-      </div>
-
-      <!-- Shifts Table -->
-    <div id="laborTableContainer"></div>
-
-  </div>
-  </div>
-
-</div>
-
-
-
 
 
 

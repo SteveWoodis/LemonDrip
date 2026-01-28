@@ -2492,7 +2492,10 @@ async function deleteSupply(id) {
   reloadEventDashboard();
 }
 
-
+function safeAppend(container, node) {
+  if (!container || !node) return;
+  container.appendChild(node);
+}
 
 
 async function loadEventIntoDashboard(evt) {
@@ -2502,13 +2505,6 @@ async function loadEventIntoDashboard(evt) {
   }
 
   const event = normalizeEvent(evt);
-
-  /*console.log("🧪 Dashboard event object:", {
-  hasExpenses: !!event.expenses,
-  hasTotals: !!event.totals,
-  expenses: event.expenses,
-  Testtotals: event.totals
-});*/
   console.log("Dashboard event Object", event);
 
   window.activeEvent = event;
@@ -2527,8 +2523,10 @@ async function loadEventIntoDashboard(evt) {
   }
 
   // Load labor UI if available
-  if (typeof loadEmployeesForDropdown === "function") loadEmployeesForDropdown();
-  
+  if (typeof loadEmployeesForDropdown === "function") {
+    loadEmployeesForDropdown();
+  }
+
   const container = document.getElementById("eventDashboardContainer");
   if (!container) {
     console.warn("⚠️ #eventDashboardContainer not found");
@@ -2536,7 +2534,9 @@ async function loadEventIntoDashboard(evt) {
   }
   container.innerHTML = "";
 
+  // ======================
   // HEADER (top of dashboard)
+  // ======================
   const headerTitle = document.getElementById("dashEventName");
   const headerDate = document.getElementById("dashEventDate");
   const finalizedIndicator = document.getElementById("dashFinalizedIndicator");
@@ -2545,76 +2545,91 @@ async function loadEventIntoDashboard(evt) {
   if (headerDate) headerDate.textContent = eventDate;
   if (finalizedIndicator) finalizedIndicator.innerHTML = "";
 
-  if (event.isFinalized === 1) {
+  if (finalizedIndicator && event.isFinalized === 1) {
     const badge = document.createElement("div");
     badge.classList.add("finalized-badge-large");
     badge.textContent = "FINALIZED";
-    finalizedIndicator.appendChild(badge);
+    safeAppend(finalizedIndicator, badge);
 
     if (event.finalizedDate) {
       const fd = document.createElement("div");
       fd.classList.add("finalized-date-label");
       fd.textContent = `Finalized on: ${event.finalizedDate}`;
-      finalizedIndicator.appendChild(fd);
+      safeAppend(finalizedIndicator, fd);
     }
   }
 
+  // ======================
   // DASHBOARD BUTTONS
-  // DASHBOARD BUTTONS
-const buttonContainer = document.querySelector(".dashboard-buttons");
-if (buttonContainer) {
-  buttonContainer.innerHTML = "";
+  // ======================
+  const buttonContainer = document.querySelector(".dashboard-buttons");
+  if (buttonContainer) {
+    buttonContainer.innerHTML = "";
 
-  // Pull Square
-  const squareBtn = document.createElement("button");
-  squareBtn.textContent = "🔄 Pull Square Sales";
-  squareBtn.classList.add("btn-primary");
-  squareBtn.addEventListener("click", async () => {
-    try {
-      await pullSquareSales(eventID);
-      await reloadEventDashboard();
-    } catch (err) {
-      console.error("Square pull error:", err);
-      alert("Failed to pull Square sales.");
-    }
-  });
+    // Pull Square
+    const squareBtn = document.createElement("button");
+    squareBtn.textContent = "🔄 Pull Square Sales";
+    squareBtn.classList.add("btn-primary");
+    squareBtn.addEventListener("click", async () => {
+      try {
+        await pullSquareSales(eventID);
+        await reloadEventDashboard();
+      } catch (err) {
+        console.error("Square pull error:", err);
+        alert("Failed to pull Square sales.");
+      }
+    });
 
-  // Finalize
-  //Set # of events to display
-  const finalizeBtn = document.createElement("button");
-  finalizeBtn.textContent = "✅ Finalize Event";
-  finalizeBtn.classList.add("btn-primary");
-  finalizeBtn.addEventListener("click", async () => {
-    if (window.USER_PLAN === "starter" && event.isFinalized === 0) {
-      const finalizedCount = getFinalizedEventCount();
-      if (finalizedCount >= 1) {
+    // Finalize
+    const finalizeBtn = document.createElement("button");
+    finalizeBtn.textContent = "✅ Finalize Event";
+    finalizeBtn.classList.add("btn-primary");
+    finalizeBtn.addEventListener("click", async () => {
+      if (window.USER_PLAN === "starter" && event.isFinalized === 0) {
+        const finalizedCount = getFinalizedEventCount();
+        if (finalizedCount >= 1) {
+          showUpgradeModal(
+            "Starter includes 1 finalized event.",
+            "Upgrade to Pro to finalize more events."
+          );
+          return;
+        }
+      }
+
+      try {
+      const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
+        method: "PUT"
+      });
+
+      const out = await res.json();
+      console.log("Finalize Limit", out);
+
+      if (res.status === 403 && out.code === "FINALIZE_LIMIT_REACHED") {
         showUpgradeModal(
           "Starter includes 1 finalized event.",
           "Upgrade to Pro to finalize more events."
         );
         return;
       }
-    }
 
-    try {
-      const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, { method: "PUT" });
-      const out = await res.json();
-      if (!res.ok) return alert(out.error || "Could not finalize.");
+      if (!res.ok) {
+        alert(out.error || "Could not finalize event.");
+        return;
+      }
 
       alert("Event finalized!");
       await reloadEventDashboard();
+
     } catch (err) {
       console.error("Finalize error:", err);
-      alert("Error finalizing event.");
+      alert("Unexpected error finalizing event.");
     }
-  });
+    }); 
 
-  // Report (Pro only)
-   
+    // Report (Pro only)
     const reportBtn = document.createElement("button");
     reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
-    
     reportBtn.addEventListener("click", () => {
       if (window.USER_PLAN !== "pro") {
         showStarterUpgrade("Post-Event Reports are a Pro feature.");
@@ -2622,19 +2637,17 @@ if (buttonContainer) {
       }
       openPostEventReport(event);
     });
-    buttonContainer.appendChild(reportBtn);
 
-  // Edit
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "✏️ Edit Event";
-  editBtn.classList.add("btn-secondary");
-  editBtn.addEventListener("click", () => editEvent(event));
+    // Edit
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "✏️ Edit Event";
+    editBtn.classList.add("btn-secondary");
+    editBtn.addEventListener("click", () => editEvent(event));
 
-  buttonContainer.appendChild(squareBtn);
-  buttonContainer.appendChild(finalizeBtn);
-
-  buttonContainer.appendChild(editBtn);
-    
+    safeAppend(buttonContainer, squareBtn);
+    safeAppend(buttonContainer, finalizeBtn);
+    safeAppend(buttonContainer, reportBtn);
+    safeAppend(buttonContainer, editBtn);
   }
 
   // ======================
@@ -2654,30 +2667,24 @@ if (buttonContainer) {
     .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
     .join("");
 
-  container.appendChild(
-    createCollapsibleCard("Event Summary", summaryHTML)
-  );
+  safeAppend(container, createCollapsibleCard("Event Summary", summaryHTML));
 
   // ======================
-  // 2) CUSTOM FIELDS CARD (if any)
+  // 2) CUSTOM FIELDS CARD
   // ======================
   if (event.customFields && Object.keys(event.customFields).length) {
     const customHTML = Object.entries(event.customFields)
       .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
       .join("");
 
-    container.appendChild(
-      createCollapsibleCard("Custom Fields", customHTML)
-    );
+    safeAppend(container, createCollapsibleCard("Custom Fields", customHTML));
   }
 
   // ======================
   // 3) DRINK SALES CARD
   // ======================
-  let drinkHTML = "";
-  if (!event.drinkSales || event.drinkSales.length === 0) {
-    drinkHTML = "<p>No drink sales recorded.</p>";
-  } else {
+  let drinkHTML = "<p>No drink sales recorded.</p>";
+  if (event.drinkSales && event.drinkSales.length) {
     const totalRevenue = event.drinkSales.reduce(
       (sum, r) => sum + (Number(r.totalCost) || 0),
       0
@@ -2694,101 +2701,68 @@ if (buttonContainer) {
       ${buildTableHTMLString(event.drinkSales)}
     `;
   }
-  container.appendChild(
-    createCollapsibleCard("Itemized Drink Sales", drinkHTML)
-  );
 
+  safeAppend(container, createCollapsibleCard("Itemized Drink Sales", drinkHTML));
 
   // ======================
-// 💰 FEES CARD (Editable)
-// ======================
-container.appendChild(
-  createCollapsibleCard("Additional Fees", buildFeesEditor(event))
+  // 4) ADDITIONAL FEES CARD
+  // ======================
+  safeAppend(
+    container,
+    createCollapsibleCard("Additional Fees", buildFeesEditor(event))
   );
-// ======================
-// 5) DISCOUNTS CARD (Editable)
-// ======================
-  const discountEditorHTML = buildDiscountsEditor(event);
 
-  let discHTML = "";
-  if (!event.discounts || event.discounts.length === 0) {
-    discHTML = "<p>No discounts recorded.</p>";
-  } else {
-    const totalDiscounts = event.discounts.reduce(
-      (sum, r) => sum + (Number(r.discountAmount) || 0),
-      0
-    );
-    discHTML = `
-      <div><strong>Total Discounts:</strong> ${fmt(totalDiscounts)}</div>
-      <hr>
-      ${buildTableHTMLString(event.discounts)}
-    `;
-  }
- 
-   container.appendChild(
+  // ======================
+  // 5) DISCOUNTS CARD
+  // ======================
+  safeAppend(
+    container,
     createCollapsibleCard("Discounts", buildDiscountsEditor(event))
-   );
+  );
 
   // ======================
   // 6) TIPS CARD
   // ======================
-  let tipsHTML = "";
-  if (!event.tips || event.tips.length === 0) {
-    tipsHTML = "<p>No tips recorded.</p>";
-  } else {
-    const totalTips = event.tips.reduce(
-      (sum, r) => sum + (Number(r.tipAmount) || 0),
-      0
-    );
-    tipsHTML = `
-      <div><strong>Total Tips:</strong> ${fmt(totalTips)}</div>
-      <hr>
-      ${buildTableHTMLString(event.tips)}
-    `;
-  }
-  container.appendChild(
-  createCollapsibleCard("Tips", buildTipsEditor(event))
-);
-  
+  safeAppend(
+    container,
+    createCollapsibleCard("Tips", buildTipsEditor(event))
+  );
+
   // ======================
   // 7) SUPPLIES CARD
   // ======================
- container.appendChild(
-  renderSupplyCostsCard(event.supplies || [])
-);
+  safeAppend(
+    container,
+    renderSupplyCostsCard(event.supplies || [])
+  );
 
   // ======================
   // 8) EMPLOYEES / LABOR CARD
   // ======================
- // Labor card host
-const laborHostId = "laborTableHost";
-container.appendChild(
-  createCollapsibleCard("Labor", `<div id="${laborHostId}"></div>`)
-);
-
-// Now load labor into THIS host
-loadLaborForEvent(eventID, document.getElementById(laborHostId));
-
-
-
-
-  // ======================
-  // 8)EXPENSES / COST CARD
-  // ======================
-
-if (event.expenses && Object.keys(event.expenses).length) {
-  container.appendChild(renderExpensesCard(event.expenses));
-}
-
-
-// ===============================
-// Profit Summary Calculation FIX
-// ===============================
-if (event.sales && event.expenses ) {
-  container.appendChild(
-    renderEventProfitSummary(event)
+  const laborHostId = "laborTableHost";
+  safeAppend(
+    container,
+    createCollapsibleCard("Labor", `<div id="${laborHostId}"></div>`)
   );
-}
+
+  const laborHost = document.getElementById(laborHostId);
+  if (laborHost) {
+    loadLaborForEvent(eventID, laborHost);
+  }
+
+  // ======================
+  // 9) EXPENSES CARD
+  // ======================
+  if (event.expenses && Object.keys(event.expenses).length) {
+    safeAppend(container, renderExpensesCard(event.expenses));
+  }
+
+  // ======================
+  // 10) PROFIT SUMMARY CARD
+  // ======================
+  if (event.sales && event.expenses) {
+    safeAppend(container, renderEventProfitSummary(event));
+  }
 }
 
 

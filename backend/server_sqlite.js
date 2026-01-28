@@ -1444,34 +1444,51 @@ async function refreshSquareLaborToken(row) {
 // Finalize event (scores & metrics)
 // -------------------------------
 app.put("/api/events/:id/finalize", (req, res) => {
-  if (USER_PLAN === "starter" && finalizedCount >= 1) {
-  return res.status(403).json({
-    error: "Starter includes 1 finalized event. Upgrade to Pro to finalize more."
-  });
-}
-
   try {
-    const eventId = req.params.id;
+    const eventId = Number(req.params.id);
 
+    // --------------------------------------------------
+    // 1️⃣ Event existence check
+    // --------------------------------------------------
     const event = db
       .prepare(`SELECT * FROM EventInfo WHERE EventID = ?`)
       .get(eventId);
 
-    if (!event) return res.status(404).json({ error: "Event not found." });
+    if (!event) {
+      return res.status(404).json({ error: "Event not found." });
+    }
 
+    // --------------------------------------------------
+    // 2️⃣ Enforce finalize limit (Starter rule)
+    // --------------------------------------------------
+    const { count } = db
+      .prepare(`SELECT COUNT(*) as count FROM EventInfo WHERE isFinalized = 1`)
+      .get();
+
+    if (count >= 1 && event.isFinalized !== 1) {
+      return res.status(403).json({
+        code: "FINALIZE_LIMIT_REACHED",
+        message: "Finalize limit reached"
+      });
+    }
+
+    // --------------------------------------------------
+    // 3️⃣ Square data required
+    // --------------------------------------------------
     const square = db
       .prepare(`SELECT * FROM SalesSummary WHERE EventID = ?`)
       .get(eventId);
 
     if (!square) {
       return res.status(400).json({
-        error: "Square sales have not been pulled for this event.",
+        error: "Square sales have not been pulled for this event."
       });
     }
 
-   const report = buildPostEventReport(eventId);
-
-   
+    // --------------------------------------------------
+    // 4️⃣ Build report + calculate scores
+    // --------------------------------------------------
+    const report = buildPostEventReport(eventId);
 
     const internalScore =
       (event.teamArrivalRating || 0) * 0.2 +
@@ -1480,37 +1497,41 @@ app.put("/api/events/:id/finalize", (req, res) => {
       (event.teamCleanUpRating || 0) * 0.15 +
       (event.teamProfessionalismRating || 0) * 0.2;
 
-      const profitSignal =
+    const profitSignal =
       report.totals.totalNetRevenue > 0
-       ? report.taxes.finalNetProfit / report.totals.totalNetRevenue
+        ? report.taxes.finalNetProfit / report.totals.totalNetRevenue
         : 0;
-        
+
     const externalScore =
       (event.vendorAccessRating || 0) * 0.2 +
       (event.eventOrganizationRating || 0) * 0.2 +
       (event.crowdQualityRating || 0) * 0.2 +
       (event.weatherImpactRating || 0) * 0.15 +
-      (event.hostCommunicationRating || 0) * 0.15; 
-      
+      (event.hostCommunicationRating || 0) * 0.15;
+
     const eventScore = internalScore * 0.5 + externalScore * 0.5;
 
-    db.prepare(
-      `
+    // --------------------------------------------------
+    // 5️⃣ Finalize event (atomic update)
+    // --------------------------------------------------
+    db.prepare(`
       UPDATE EventInfo SET
-    internalScore = ?,
-    externalScore = ?,
-    eventScore = ?,
-    isFinalized = 1,
-    finalizedDate = CURRENT_TIMESTAMP
-    WHERE EventID = ?
-    `
-    ).run(
+        internalScore = ?,
+        externalScore = ?,
+        eventScore = ?,
+        isFinalized = 1,
+        finalizedDate = CURRENT_TIMESTAMP
+      WHERE EventID = ?
+    `).run(
       internalScore,
       externalScore,
       eventScore,
       eventId
     );
 
+    // --------------------------------------------------
+    // 6️⃣ Respond
+    // --------------------------------------------------
     res.json({
       success: true,
       message: "Event successfully finalized.",
@@ -1522,6 +1543,7 @@ app.put("/api/events/:id/finalize", (req, res) => {
     res.status(500).json({ error: "Failed to finalize event." });
   }
 });
+
 
 	// ---------------------------------------------------------
 	// Generic helper to save "sub-table" rows for an event
