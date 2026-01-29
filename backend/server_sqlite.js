@@ -893,43 +893,63 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     // ─────────────────────────────────────────────
     // 2️⃣ ORDER-CENTRIC (sales truth)
     // ─────────────────────────────────────────────
-    let grossSales = grossSalesMoney.amount / 100;
-    let netSales = totalMoney.amount / 100;
-    let refunds = refundsMoney?.amount ? refundsMoney.amount / 100 : 0;
-    let discounts = Math.max(0, Number((grossSales - netSales - refunds).toFixed(2)));
+    let grossSales = 0;
+    let netSales = 0;
+    let refunds = 0;
     let squareReportedTax = 0;
     let totalCollected = 0;
 
 
 
-    const orderRes = await fetch(
-      "https://connect.squareup.com/v2/orders/search",
-      {
-        method: "POST",
-        headers: {
-          "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          location_ids: [ev.squareLocationId],
-          query: {
-            filter: {
-              state_filter: { states: ["COMPLETED"] },
-              date_time_filter: {
-                closed_at: {
-                  start_at: orderStartISO,
-                  end_at: orderEndISO
-                }
+    try {
+  const orderRes = await fetch(
+    "https://connect.squareup.com/v2/orders/search",
+    {
+      method: "POST",
+      headers: {
+        "Square-Version": "2025-01-15",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        location_ids: [ev.squareLocationId],
+        query: {
+          filter: {
+            state_filter: { states: ["COMPLETED"] },
+            date_time_filter: {
+              closed_at: {
+                start_at: orderStartISO,
+                end_at: orderEndISO
               }
             }
           }
-        })
-      }
-    );
+        }
+      })
+    }
+  );
 
-    const orderJson = await orderRes.json();
-    const rawOrders = orderJson.orders || [];
+  // 👇 ALSO must be inside try
+  if (!orderRes.ok) {
+    const raw = await orderRes.text();
+    throw new Error(
+      `Square Orders API ${orderRes.status}: ${raw}`
+    );
+  }
+
+  const orderJson = await orderRes.json();
+  const orders = orderJson.orders || [];
+
+  // continue processing orders here
+
+} catch (err) {
+  console.error("❌ Square raw error:", err);
+
+  return res.status(500).json({
+    error: "Square sales sync failed",
+    detail: err.message,
+    stack: err.stack// || String(err)
+  });
+}
 
     // Deduplicate orders
     const orderMap = new Map();
@@ -944,15 +964,16 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     for (const o of orders) {
       for (const li of o.line_items || []) {
         const qty = Number(li.quantity || 0);
-        const base = li.base_price_money?.amount || 0;
-        grossSales += (base * qty) / 100;
-      }
 
-      for (const d of o.discounts || []) {
-        if (d.applied_money)
-          discounts += d.applied_money.amount / 100;
-      }
+        if (li.base_price_money){
+        grossSales += (li.base_price_money.amount * qty) / 100;
+        }
 
+        if (li.total_money) {
+          netSales += li.total_money.amount * qty / 100;
+        }
+
+      }
       if (o.net_amounts?.total_money?.amount != null) {
         totalCollected += o.net_amounts.total_money.amount / 100;
         //console.log("This is the output for Orders", netSales);
@@ -961,11 +982,11 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
 
       if (o.total_tax_money)
         squareReportedTax += o.total_tax_money.amount / 100;
-		
     }
-    
 
-    // ─────────────────────────────────────────────
+     
+      
+		// ─────────────────────────────────────────────
     // 3️⃣ PAYMENT-CENTRIC (fees + cash flow)
     // ─────────────────────────────────────────────
     let tips = 0;
@@ -1072,6 +1093,7 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
       safe(squareFeesFinal),
 	  feesPending ? 1: 0
     );
+    saveDrinkSales(eventId, drinkRows);
 
     res.json({
       success: true,
@@ -2017,13 +2039,23 @@ function buildPostEventReport(eventId) {
 
   // =========================
   // 5) Discounts (line items)
+  /**
+ * DISCOUNT INVARIANT
+ * ------------------
+ * discounts = grossSales - netSales - refunds
+ *
+ * • Computed once during Square ingest
+ * • Stored in SalesSummary
+ * • Never recalculated
+ * • Never summed from line items
+ * • Never overridden by UI tables
+ */
   // =========================
-  const discountItems = db.prepare(`
-    SELECT discountName, discountAmount
-    FROM Discounts
-    WHERE eventID = ?
-  `).all(eventId);
-  const discounts = discountItems;
+  const discountNotes = db.prepare(`
+  SELECT discountName, discountAmount
+  FROM Discounts
+  WHERE eventID = ?
+`).all(eventId);
 
   // =========================
   // 6) Tips (event-level)
@@ -2059,7 +2091,7 @@ function buildPostEventReport(eventId) {
   const allTotals = {
     drinkRevenue: drinkSales.reduce((sum, r) => sum + (r.totalCost || 0), 0),
     additionalFees: additionalFees.reduce((sum, r) => sum + (r.feeAmount || 0), 0),
-    discounts: discountItems.reduce((sum, r) => sum + (r.discountAmount || 0), 0),
+    discounts: sales.discounts ?? 0,
     tipsTotal: tipItems.reduce((sum, r) => sum + (r.tipAmount || 0), 0),
     suppliesTotal: supplies.reduce((sum, r) => sum + (r.totalCost || 0), 0),
     laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0),
@@ -2164,6 +2196,7 @@ const taxes = {
   taxNotes: taxConfig.taxNotes ?? null
 };
 
+const discountsFinal = Number(sales.discounts || 0);
 
 
   return {
@@ -2172,7 +2205,7 @@ const taxes = {
       grossSales: sales.grossSales ?? null,
       netSales: sales.netSales ?? null,
       refunds: sales.refunds ?? null,
-      discounts: sales.discounts ?? null,
+      discounts: discountsFinal,
       tips: sales.tips ?? null,
       cash: sales.cash ?? null,
       card: sales.card ?? null,
@@ -2186,7 +2219,7 @@ const taxes = {
     },
     drinkSales,
     additionalFees,
-    discounts,
+    discounts: discountNotes,
     supplies,
     labor,
     taxes,
@@ -2198,7 +2231,7 @@ const taxes = {
 console.log("🧾 EventExpenses loaded:", {
   eventID: eventId,
   manual,
-  totalExpenses: expenses.totalExpenses
+  sales:discountsComputed
 });
 
 }
@@ -2364,3 +2397,33 @@ app.delete("/api/supplies/:id", (req, res) => {
     res.status(500).json({ error: "Failed to delete supply cost" });
   }
 });
+function saveDrinkSales(eventID, rows) {
+  db.prepare(`DELETE FROM DrinkSales WHERE eventID = ?`).run(eventID);
+
+  if (!rows.length) return;
+
+  const insert = db.prepare(`
+    INSERT INTO DrinkSales (
+      eventID,
+      drinkName,
+      unitPrice,
+      quantitySold,
+      totalCost
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const tx = db.transaction(list => {
+    for (const r of list) {
+      insert.run(
+        eventID,
+        r.drinkName,
+        r.unitPrice,
+        r.quantitySold,
+        r.totalCost
+      );
+    }
+  });
+
+  tx(rows);
+}
