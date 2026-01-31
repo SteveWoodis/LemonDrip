@@ -2097,11 +2097,12 @@ function buildPostEventReport(eventId) {
   // 8) Labor
   // =========================
   const labor = db.prepare(`
-    SELECT e.EmployeeName, ee.hoursWorked, ee.hourlyRate, ee.totalPay
-    FROM EventEmployees ee
-    JOIN EmployeeTracker e ON ee.EmployeeID = e.EmployeeID
-    WHERE ee.eventID = ?
-  `).all(eventId);
+  SELECT employeeName, hoursWorked, hourlyRate,
+         (hoursWorked * hourlyRate) AS totalPay
+  FROM EventLabor
+  WHERE eventID = ?
+`).all(eventId);
+
 
 
   const laborTotal = db.prepare(`

@@ -103,6 +103,18 @@ function getInputNumber(fieldName) {
   return Number.isFinite(num) ? num : undefined;
 }
 
+// ---------------------------
+// 🔌 Global App Event Wiring
+// ---------------------------
+
+window.addEventListener("DOMContentLoaded", () => {
+
+  document.addEventListener("labor:updated", e => {
+    updateExpensesLaborRow(e.detail.laborFees);
+    updateProfitSummary();
+  });
+
+});
 
 
 function buildEventPayloadFromTemplate({ raw, template }) {
@@ -1733,6 +1745,7 @@ function fmt(x) {
 function createCollapsibleCard(title, contentHTML = "") {
   const wrapper = document.createElement("div");
   wrapper.className = "sheet-card";
+  wrapper.id = title.toLowerCase().replace(/\s+/g, "") + "Card";
 
   // Header Button
   const header = document.createElement("button");
@@ -2224,7 +2237,8 @@ function renderEventProfitSummary(event) {
 }
 
 function updateExpensesDOM(expenses) {
-  const el = document.querySelector(".expenses-card");
+ const el = document.getElementById("expensesCard");
+ 
   if (!el) return;
 
   const autoLaborEl = el.querySelector(".auto-labor-fees");
@@ -2243,9 +2257,10 @@ if (totalExpensesEl) {
 function updateExpensesLaborRow(laborFees) {
   if (!window.activeEvent) return;
 
-  const expenses = window.activeEvent.expenses || {};
+  const expenses = { ...(window.activeEvent.expenses || {}) };
+   const n = v => Number(v) || 0;   // ⭐ ADD THIS LINE
 
-  expenses.laborFees = Number(laborFees) || 0;
+  expenses.laborFees = n(laborFees);
 
   expenses.totalExpenses =
     (expenses.healthDeptFee || 0) +
@@ -2261,6 +2276,8 @@ function updateExpensesLaborRow(laborFees) {
 
   // Re-render Expenses card
   updateExpensesDOM(expenses);
+  updateProfitSummary();
+
 }
 
 function updateProfitSummary() {
@@ -2285,12 +2302,14 @@ function updateProfitSummary() {
     ? renderExpensesEditMode(expenses)
     : renderExpensesViewMode(expenses);
 
-  document.addEventListener("labor:updated", e => {
-    updateExpensesLaborRow(e.detail.laborFees);
-    updateProfitSummary();
-  });
-  return createCollapsibleCard("Expenses", content);
+  const card = createCollapsibleCard("Expenses", content);
+
+  // ✅ consistent lowercase id
+  card.id = "expensesCard";
+
+  return card;   // ✅ MUST return
 }
+
 
 
 function renderExpensesViewMode(expenses) {
@@ -2364,6 +2383,17 @@ function renderLaborCard(event) {
   html += `<p class="muted">No labor entries yet.</p>`;
   }
 
+  function calcRowSubtotal(row) {
+  const hours = Number(row.querySelector(".labor-hours")?.value || 0);
+  const rate  = Number(row.querySelector(".labor-rate")?.value || 0);
+
+  const subtotal = hours * rate;
+
+  row.querySelector(".labor-subtotal").textContent =
+    `$${subtotal.toFixed(2)}`;
+
+  return subtotal;
+}
 
     html += `
       <tr>
@@ -2417,6 +2447,7 @@ function renderLaborCard(event) {
     </div>
   `;
 
+
   const card = createCollapsibleCard("Labor", html);
   console.log("Labor body exists?", !!document.getElementById("laborTableBody"));
 
@@ -2430,9 +2461,10 @@ function renderLaborCard(event) {
 function wireLaborCard(eventID) {
   const body = document.getElementById("laborTableBody");
   const totalEl = document.getElementById("laborTotal");
+  const addBtn = document.getElementById("addLaborRow");
+  const saveBtn = document.getElementById("saveLabor");
 
-
-  if (!body || !totalEl) {
+  if (!body || !totalEl || !addBtn || !saveBtn) {
     console.warn("⚠️ Labor DOM not ready, skipping wireLaborCard");
     return;
   }
@@ -2441,30 +2473,34 @@ function wireLaborCard(eventID) {
     let total = 0;
 
     body.querySelectorAll("tr").forEach(row => {
-      const hours = Number(
-        row.querySelector('[data-field="hoursWorked"]')?.value || 0);
-      const rate = Number(
-        row.querySelector('[data-field="hourlyRate"]')?.value || 0);
+      const hours = Number(row.querySelector('[data-field="hoursWorked"]')?.value || 0);
+      const rate  = Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
 
-      total += hours * rate;
+      const sub = Number((hours * rate).toFixed(2));
+      const subEl = row.querySelector(".labor-subtotal");
+      if (subEl) subEl.textContent = fmt(sub);
+
+      total += sub;
     });
+
     total = Number(total.toFixed(2));
     totalEl.textContent = fmt(total);
 
-
-   updateExpensesLaborRow(total);
-   updateProfitSummary();
+    // ✅ push labor total into Expenses auto row + Profit Summary
+    updateExpensesLaborRow(total);
+    updateProfitSummary();
   }
 
   body.addEventListener("input", recalc);
+
   body.addEventListener("click", e => {
     if (e.target.classList.contains("remove-labor-row")) {
-      e.target.closest("tr").remove();
+      e.target.closest("tr")?.remove();
       recalc();
     }
   });
 
-  document.getElementById("addLaborRow").onclick = () => {
+  addBtn.onclick = () => {
     body.insertAdjacentHTML("beforeend", `
       <tr>
         <td><input data-field="employeeName"></td>
@@ -2476,36 +2512,35 @@ function wireLaborCard(eventID) {
     `);
   };
 
-  document.getElementById("saveLabor").onclick = async () => {
+  saveBtn.onclick = async () => {
     if (window.activeEvent?.isFinalized === 1) {
       alert("This event is finalized and labor cannot be edited.");
       return;
     }
 
     const laborRows = [];
-
     body.querySelectorAll("tr").forEach(row => {
-      const employeeName =
-        row.querySelector('[data-field="employeeName"]')?.value || "";
-
-      const hoursWorked =
-        Number(row.querySelector('[data-field="hoursWorked"]')?.value || 0);
-
-      const hourlyRate =
-        Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
+      const employeeName = row.querySelector('[data-field="employeeName"]')?.value || "";
+      const hoursWorked  = Number(row.querySelector('[data-field="hoursWorked"]')?.value || 0);
+      const hourlyRate   = Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
 
       if (!employeeName && hoursWorked === 0 && hourlyRate === 0) return;
-
       laborRows.push({ employeeName, hoursWorked, hourlyRate });
     });
 
-    await fetch(`${API_BASE}/api/events/${eventID}/labor`, {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/labor`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ laborRows })
     });
 
-    await reloadEventDashboard();
+    if (!res.ok) {
+      const out = await res.json().catch(() => ({}));
+      alert(out.error || "Failed to save labor.");
+      return;
+    }
+
+    await reloadEventDashboard(); // will show saved rows AFTER backend report fix
   };
 
   recalc();
