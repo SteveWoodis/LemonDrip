@@ -2226,7 +2226,7 @@ function renderEventProfitSummary(event) {
       <div><strong>Square / Vendor Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
       <div><strong>Total Net Revenue:</strong> ${fmtMoney(totals.totalNetRevenue)}</div>
       <hr>
-      <div><strong>Total Expenses:</strong> (${fmtMoney(event.totals.totalExpenses)})</div>
+      <div><strong>Total Expenses:</strong> (${fmtMoney(event.expenses.totalExpenses)})</div>
       <div class="profit-final">
         <strong>Gross Profit:</strong>
         <strong>${fmtMoney(totals.grossProfit)}</strong>
@@ -2358,7 +2358,6 @@ function updateProfitSummaryDOM(totals) {
 
 function renderLaborCard(event) {
   const rows = event.labor || [];
-  
 
   let html = `
     <table class="labor-table">
@@ -2374,60 +2373,30 @@ function renderLaborCard(event) {
       <tbody id="laborTableBody">
   `;
 
+  // empty state
+  if (!rows.length) {
+    html += `
+      <tr>
+        <td colspan="5" class="muted">
+          No labor entries yet.
+        </td>
+      </tr>
+    `;
+  }
+
+  // render rows
   for (const row of rows) {
     const subtotal =
       (Number(row.hoursWorked) || 0) *
       (Number(row.hourlyRate) || 0);
 
-      if (!rows.length) {
-  html += `<p class="muted">No labor entries yet.</p>`;
-  }
-
-  function calcRowSubtotal(row) {
-  const hours = Number(row.querySelector(".labor-hours")?.value || 0);
-  const rate  = Number(row.querySelector(".labor-rate")?.value || 0);
-
-  const subtotal = hours * rate;
-
-  row.querySelector(".labor-subtotal").textContent =
-    `$${subtotal.toFixed(2)}`;
-
-  return subtotal;
-}
-
     html += `
       <tr>
-        <td>
-          <input
-            type="text"
-            data-field="employeeName"
-            value="${row.employeeName || ""}"
-          />
-        </td>
-        <td>
-          <input
-            type="number"
-            step="0.25"
-            min="0"
-            data-field="hoursWorked"
-            value="${row.hoursWorked ?? ""}"
-          />
-        </td>
-        <td>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            data-field="hourlyRate"
-            value="${row.hourlyRate ?? ""}"
-          />
-        </td>
-        <td class="labor-subtotal">
-          ${fmt(subtotal)}
-        </td>
-        <td>
-          <button class="btn-danger remove-labor-row">✖</button>
-        </td>
+        <td><input data-field="employeeName" value="${row.employeeName || ""}"></td>
+        <td><input type="number" data-field="hoursWorked" value="${row.hoursWorked ?? ""}"></td>
+        <td><input type="number" data-field="hourlyRate" value="${row.hourlyRate ?? ""}"></td>
+        <td class="labor-subtotal">${fmt(subtotal)}</td>
+        <td><button class="remove-labor-row">✖</button></td>
       </tr>
     `;
   }
@@ -2442,20 +2411,14 @@ function renderLaborCard(event) {
     </div>
 
     <div class="labor-actions">
-      <button class="btn-secondary" id="addLaborRow">➕ Add Worker</button>
-      <button class="btn-primary" id="saveLabor">💾 Save Labor</button>
+      <button id="addLaborRow">➕ Add Worker</button>
+      <button id="saveLabor">💾 Save Labor</button>
     </div>
   `;
 
-
-  const card = createCollapsibleCard("Labor", html);
-  console.log("Labor body exists?", !!document.getElementById("laborTableBody"));
-
-
-  setTimeout(() => wireLaborCard(event.eventID), 0);
-
-  return card;
+  return createCollapsibleCard("Labor", html);
 }
+
 
 
 function wireLaborCard(eventID) {
@@ -2510,6 +2473,7 @@ function wireLaborCard(eventID) {
         <td><button class="btn-danger remove-labor-row">✖</button></td>
       </tr>
     `);
+    recalc();
   };
 
   saveBtn.onclick = async () => {
@@ -3047,7 +3011,12 @@ async function loadEventIntoDashboard(evt) {
   // 8) EMPLOYEES / LABOR CARD
   // ======================
   // ✅ Labor Card (editable)
-safeAppend(container, renderLaborCard(event));
+// 8) EMPLOYEES / LABOR CARD
+const laborCard = renderLaborCard(event);
+safeAppend(container, laborCard);
+
+// ⭐ WIRE ONLY AFTER IT EXISTS
+wireLaborCard(eventID);
 
 
   // ======================

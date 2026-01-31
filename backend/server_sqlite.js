@@ -2136,25 +2136,29 @@ function buildPostEventReport(eventId) {
     // 9A) Load calculated totals (already done elsewhere)
 
 const expenses = {
-  // Manual (persisted)
+  // Manual
   healthDeptFee: manual.healthDeptFee ?? 0,
   eventFee: manual.eventFee ?? 0,
   mileageReimbursement: manual.mileageReimbursement ?? 0,
   eventRunnerFees: manual.eventRunnerFees ?? 0,
   employeeBonus: manual.employeeBonus ?? 0,
 
-
-
   // Calculated
   supplyFees: allTotals.suppliesTotal ?? 0,
   additionalFees: allTotals.additionalFees ?? 0,
-  laborFees: allTotals.laborTotal ?? 0
+  laborFees: Number((allTotals.laborTotal ?? 0).toFixed(2))
 };
 
-//expenses.totalExpenses =  Object.values(expenses).reduce((sum, v) => sum + (v || 0), 0);
-
-expenses.laborFees = Number(laborTotal.toFixed(2));
-expenses.totalExpenses += expenses.laborFees;
+// ✅ compute once, explicitly
+expenses.totalExpenses =
+  expenses.healthDeptFee +
+  expenses.eventFee +
+  expenses.mileageReimbursement +
+  expenses.eventRunnerFees +
+  expenses.employeeBonus +
+  expenses.supplyFees +
+  expenses.additionalFees +
+  expenses.laborFees;
 
 
 // =========================
@@ -2253,16 +2257,8 @@ const discountsFinal = Number(sales.discounts || 0);
     labor,
     taxes,
     totals,
-    expenses
+    expenses,
     };
-
-
-console.log("🧾 EventExpenses loaded:", {
-  eventID: eventId,
-  manual,
-  sales:discountsComputed
-});
-
 }
 
 
