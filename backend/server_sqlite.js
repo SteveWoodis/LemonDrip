@@ -116,6 +116,16 @@ function initDb() {
       FOREIGN KEY (eventID) REFERENCES EventInfo(eventID),
       FOREIGN KEY (employeeID) REFERENCES EmployeeTracker(employeeID)
     );
+    CREATE TABLE IF NOT EXISTS EventLabor (
+      laborID INTEGER PRIMARY KEY AUTOINCREMENT,
+      eventID INTEGER NOT NULL,
+      employeeName TEXT,
+      hoursWorked REAL DEFAULT 0,
+      hourlyRate REAL DEFAULT 0,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
   `);
 
   console.log(`✅ SQLite (better-sqlite3) connected: ${DB_PATH}`);
@@ -890,18 +900,19 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     const paymentStartISO = orderStartISO;
     const paymentEndISO   = paymentEnd.toISOString();
 
-    // ─────────────────────────────────────────────
-    // 2️⃣ ORDER-CENTRIC (sales truth)
-    // ─────────────────────────────────────────────
-    let grossSales = 0;
-    let netSales = 0;
-    let refunds = 0;
-    let squareReportedTax = 0;
-    let totalCollected = 0;
+ // ─────────────────────────────────────────────
+// 2️⃣ ORDER-CENTRIC (sales truth)
+// ─────────────────────────────────────────────
+let grossSales = 0;
+let netSales = 0;
+let refunds = 0;
+let squareReportedTax = 0;
+let totalCollected = 0;
+let discounts =0;
 
+let orders = [];
 
-
-    try {
+try {
   const orderRes = await fetch(
     "https://connect.squareup.com/v2/orders/search",
     {
@@ -928,61 +939,46 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     }
   );
 
-  // 👇 ALSO must be inside try
   if (!orderRes.ok) {
     const raw = await orderRes.text();
-    throw new Error(
-      `Square Orders API ${orderRes.status}: ${raw}`
-    );
+    throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
   }
 
   const orderJson = await orderRes.json();
-  const orders = orderJson.orders || [];
-
-  // continue processing orders here
+  orders = orderJson.orders || [];
 
 } catch (err) {
-  console.error("❌ Square raw error:", err);
-
+  console.error("❌ Square Orders fetch failed:", err);
   return res.status(500).json({
-    error: "Square sales sync failed",
-    detail: err.message,
-    stack: err.stack// || String(err)
+    error: "Square sales sync failed.",
+    detail: err.message
   });
 }
 
+
     // Deduplicate orders
     const orderMap = new Map();
-    for (const o of rawOrders) {
-      if (!orderMap.has(o.id)) orderMap.set(o.id, o);
+   for (const o of orders) {
+  for (const li of o.line_items || []) {
+    const qty = Number(li.quantity || 0);
+
+    if (li.base_price_money) {
+      grossSales += (li.base_price_money.amount * qty) / 100;
     }
-    const orders = [...orderMap.values()];
 
-    console.log("🧾 RAW ORDER:", JSON.stringify(orders, null, 2));
-
-
-    for (const o of orders) {
-      for (const li of o.line_items || []) {
-        const qty = Number(li.quantity || 0);
-
-        if (li.base_price_money){
-        grossSales += (li.base_price_money.amount * qty) / 100;
-        }
-
-        if (li.total_money) {
-          netSales += li.total_money.amount * qty / 100;
-        }
-
-      }
-      if (o.net_amounts?.total_money?.amount != null) {
-        totalCollected += o.net_amounts.total_money.amount / 100;
-        //console.log("This is the output for Orders", netSales);
-
-      }
-
-      if (o.total_tax_money)
-        squareReportedTax += o.total_tax_money.amount / 100;
+    if (li.total_money) {
+      netSales += (li.total_money.amount * qty) / 100;
     }
+  }
+
+  if (o.net_amounts?.total_money?.amount != null) {
+    totalCollected += o.net_amounts.total_money.amount / 100;
+  }
+
+  if (o.total_tax_money) {
+    squareReportedTax += o.total_tax_money.amount / 100;
+  }
+}
 
      
       
@@ -1038,6 +1034,8 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
 		}
 		
 	}
+  discounts = grossSales - netSales - refunds;
+
 	
       cursor = payJson.cursor || null;
     } while (cursor);
@@ -1053,16 +1051,17 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     // 4️⃣ Atomic upsert
     // ─────────────────────────────────────────────
     const safe = v => Number.isFinite(v) ? v : null;
+    if (!Number.isFinite(grossSales) || !Number.isFinite(netSales)) {
+      throw new Error("Invalid Square totals computed");
+    }
 
     db.prepare(`
       INSERT INTO SalesSummary (
         eventID,
         grossSales, netSales, discounts, refunds, tips,
-        totalCollected,
-        cash, card, wallet, other,
-        squareReportedTax, squareFeesFinal, feesPending
+        totalCollected
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(eventID) DO UPDATE SET
         grossSales = excluded.grossSales,
         netSales = excluded.netSales,
@@ -1070,29 +1069,17 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         refunds = excluded.refunds,
         tips = excluded.tips,
         totalCollected = excluded.totalCollected,
-        cash = excluded.cash,
-        card = excluded.card,
-        wallet = excluded.wallet,
-        other = excluded.other,
-        squareReportedTax = excluded.squareReportedTax,
-        squareFeesFinal = excluded.squareFeesFinal,
-		feesPending = excluded.feesPending
+       DatePulledAt = CURRENT_TIMESTAMP
     `).run(
       eventId,
-      safe(grossSales),
-      safe(netSales),
-      safe(discounts),
-      safe(refunds),
-      safe(tips),
-      safe(totalCollected),
-      safe(cash),
-      safe(card),
-      safe(wallet),
-      safe(other),
-      safe(squareReportedTax),
-      safe(squareFeesFinal),
-	  feesPending ? 1: 0
+      grossSales,
+      netSales,
+      discounts,
+      refunds,
+      tips,
+     totalCollected
     );
+    const drinkRows = [];
     saveDrinkSales(eventId, drinkRows);
 
     res.json({
@@ -1108,11 +1095,8 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
         discounts,
         refunds,
         tips,
-        totalCollected,
-        squareReportedTax,
-        squareFees: squareFeesFinal,
-		feesPending
-      }
+        totalCollected
+        }
     });
 
   } catch (err) {
@@ -1197,7 +1181,74 @@ function saveEventLabor(eventID, laborList) {
   }
 }
 
+//HELPER FUNCTION SECTION
 // Helper: base URL (still here if you need sandbox later)
+
+
+async function refreshSquareLaborToken(row) {
+  if (!row.refreshToken) {
+    throw new Error(
+      "Cannot refresh Square OAuth token: no refreshToken stored."
+    );
+  }
+
+  try {
+    const tokenRes = await axios.post(
+      "https://connect.squareup.com/oauth2/token",
+      {
+        client_id: SQUARE_APP_ID,
+        client_secret: SQUARE_APP_SECRET,
+        grant_type: "refresh_token",
+        refresh_token: row.refreshToken,
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    const payload = tokenRes.data;
+
+    const newAccessToken = payload.access_token;
+    const newRefreshToken = payload.refresh_token;
+    const newMerchantId = payload.merchant_id;
+    const newExpiresAt = payload.expires_at;
+
+    db.prepare(
+      `
+      UPDATE SquareAuth
+      SET accessToken = ?,
+          refreshToken = ?,
+          merchantId = ?,
+          expiresAt = ?,
+          updatedAt = datetime('now')
+      WHERE id = ?
+    `
+    ).run(
+      newAccessToken,
+      newRefreshToken,
+      newMerchantId,
+      newExpiresAt,
+      row.id
+    );
+
+    console.log("✅ Square OAuth token refreshed for merchant:", newMerchantId);
+
+    // Return the updated row
+    return db
+      .prepare(
+        "SELECT id, accessToken, refreshToken, merchantId, expiresAt FROM SquareAuth WHERE id = ?"
+      )
+      .get(row.id);
+  } catch (err) {
+    console.error(
+      "❌ Error refreshing Square OAuth token:",
+      err.response?.data || err.message
+    );
+    throw new Error("Failed to refresh Square OAuth token.");
+  }
+}
+
+
 function getSquareBaseUrl() {
   const env = process.env.SQUARE_ENV || "production";
   return env === "sandbox"
@@ -1400,68 +1451,35 @@ async function fetchSquareLaborForEvent(eventID) {
 }
 
 
-async function refreshSquareLaborToken(row) {
-  if (!row.refreshToken) {
-    throw new Error(
-      "Cannot refresh Square OAuth token: no refreshToken stored."
-    );
-  }
 
-  try {
-    const tokenRes = await axios.post(
-      "https://connect.squareup.com/oauth2/token",
-      {
-        client_id: SQUARE_APP_ID,
-        client_secret: SQUARE_APP_SECRET,
-        grant_type: "refresh_token",
-        refresh_token: row.refreshToken,
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+app.put("/api/events/:eventId/labor", (req, res) => {
+  const { eventId } = req.params;
+  const { laborRows } = req.body;
 
-    const payload = tokenRes.data;
+  const deleteStmt = db.prepare(
+    `DELETE FROM EventLabor WHERE eventID = ?`
+  );
+  const insertStmt = db.prepare(`
+    INSERT INTO EventLabor (eventID, employeeName, hoursWorked, hourlyRate)
+    VALUES (?, ?, ?, ?)
+  `);
 
-    const newAccessToken = payload.access_token;
-    const newRefreshToken = payload.refresh_token;
-    const newMerchantId = payload.merchant_id;
-    const newExpiresAt = payload.expires_at;
+  const tx = db.transaction(() => {
+    deleteStmt.run(eventId);
+    for (const row of laborRows) {
+      insertStmt.run(
+        eventId,
+        row.employeeName,
+        row.hoursWorked,
+        row.hourlyRate
+      );
+    }
+  });
 
-    db.prepare(
-      `
-      UPDATE SquareAuth
-      SET accessToken = ?,
-          refreshToken = ?,
-          merchantId = ?,
-          expiresAt = ?,
-          updatedAt = datetime('now')
-      WHERE id = ?
-    `
-    ).run(
-      newAccessToken,
-      newRefreshToken,
-      newMerchantId,
-      newExpiresAt,
-      row.id
-    );
+  tx();
+  res.json({ success: true });
+});
 
-    console.log("✅ Square OAuth token refreshed for merchant:", newMerchantId);
-
-    // Return the updated row
-    return db
-      .prepare(
-        "SELECT id, accessToken, refreshToken, merchantId, expiresAt FROM SquareAuth WHERE id = ?"
-      )
-      .get(row.id);
-  } catch (err) {
-    console.error(
-      "❌ Error refreshing Square OAuth token:",
-      err.response?.data || err.message
-    );
-    throw new Error("Failed to refresh Square OAuth token.");
-  }
-}
 
 // -------------------------------
 // Finalize event (scores & metrics)
@@ -2085,6 +2103,15 @@ function buildPostEventReport(eventId) {
     WHERE ee.eventID = ?
   `).all(eventId);
 
+
+  const laborTotal = db.prepare(`
+  SELECT SUM(hoursWorked * hourlyRate) AS total
+  FROM EventLabor
+  WHERE eventID = ?
+`).get(eventId)?.total || 0;
+
+
+
   // =========================
   // 11) Totals for Profit Summary
   // =========================
@@ -2115,17 +2142,18 @@ const expenses = {
   eventRunnerFees: manual.eventRunnerFees ?? 0,
   employeeBonus: manual.employeeBonus ?? 0,
 
+
+
   // Calculated
   supplyFees: allTotals.suppliesTotal ?? 0,
   additionalFees: allTotals.additionalFees ?? 0,
   laborFees: allTotals.laborTotal ?? 0
-
- 
 };
 
-expenses.totalExpenses =
-  Object.values(expenses).reduce((sum, v) => sum + (v || 0), 0);
+//expenses.totalExpenses =  Object.values(expenses).reduce((sum, v) => sum + (v || 0), 0);
 
+expenses.laborFees = Number(laborTotal.toFixed(2));
+expenses.totalExpenses += expenses.laborFees;
 
 
 // =========================
@@ -2138,7 +2166,7 @@ const grossProfit =
   // =========================
   // 12) Return Unified Report
   // =========================
-  totals.totalExpenses = expenses.totalExpenses;
+  //totals.totalExpenses = expenses.totalExpenses;
   totals.grossProfit = grossProfit;
 
   // =========================
@@ -2258,12 +2286,12 @@ app.get("/api/events/:id/report", async (req, res) => {
 
 app.put("/api/events/:eventId/expenses", (req, res) => {
   const eventId = req.params.eventId;
-  const {
-    healthDeptFee = 0,
-    eventFee = 0,
-    mileageReimbursement = 0,
-    eventRunnerFees = 0,
-    employeeBonus = 0
+   const {
+    healthDeptFee,
+    eventFee,
+    mileageReimbursement,
+    eventRunnerFees,
+    employeeBonus
   } = req.body;
 
   try {
@@ -2281,11 +2309,11 @@ app.put("/api/events/:eventId/expenses", (req, res) => {
     `);
 
     stmt.run(
-      healthDeptFee,
-      eventFee,
-      mileageReimbursement,
-      eventRunnerFees,
-      employeeBonus,
+      healthDeptFee ?? null,
+      eventFee ?? null,
+      mileageReimbursement ?? null,
+      eventRunnerFees ?? null,
+      employeeBonus ?? null,
       eventId
     );
 
@@ -2397,6 +2425,8 @@ app.delete("/api/supplies/:id", (req, res) => {
     res.status(500).json({ error: "Failed to delete supply cost" });
   }
 });
+
+
 function saveDrinkSales(eventID, rows) {
   db.prepare(`DELETE FROM DrinkSales WHERE eventID = ?`).run(eventID);
 
@@ -2427,3 +2457,34 @@ function saveDrinkSales(eventID, rows) {
 
   tx(rows);
 }
+app.put("/api/events/:eventId/labor", (req, res) => {
+  const { eventId } = req.params;
+  const { laborRows = [], laborFees = 0 } = req.body;
+
+  try {
+    const tx = db.transaction(() => {
+      db.prepare(`DELETE FROM Labor WHERE eventID = ?`).run(eventId);
+
+      const insert = db.prepare(`
+        INSERT INTO Labor (eventID, employeeName, hoursWorked, hourlyRate)
+        VALUES (?, ?, ?, ?)
+      `);
+
+      for (const r of laborRows) {
+        insert.run(eventId, r.employeeName, r.hoursWorked, r.hourlyRate);
+      }
+
+      db.prepare(`
+        UPDATE EventExpenses
+        SET laborFees = ?
+        WHERE eventID = ?
+      `).run(laborFees, eventId);
+    });
+
+    tx();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Labor save failed:", err);
+    res.status(500).json({ error: "Failed to save labor" });
+  }
+});

@@ -79,6 +79,32 @@ const CANONICAL_LABEL_TO_DBKEY = {
   "Square Location": "squareLocationId"
 };
 
+
+//=============================================
+//   HELPER SECTION
+/**
+ * Safely read a numeric input by data-field name
+ * - Returns undefined if field not found
+ * - Returns undefined if empty string
+ * - Returns a Number (including 0) if valid
+ */
+//=============================================
+
+function getInputNumber(fieldName) {
+  const input = document.querySelector(`[data-field="${fieldName}"]`);
+  if (!input) return undefined;
+
+  const raw = input.value;
+
+  // Treat empty as "no change"
+  if (raw === "" || raw === null) return undefined;
+
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+
+
 function buildEventPayloadFromTemplate({ raw, template }) {
   const canonical = {};
   const customFields = {};
@@ -2157,33 +2183,6 @@ function addDiscountRow(name = "", amount = "") {
   tbody.appendChild(tr);
 }
 
-/*function collectAdjustmentsFromUI() {
-  // Discounts
-  const discountRows = document.querySelectorAll(".discount-row");
-  const discounts = [];
-  discountRows.forEach(row => {
-    const nameEl = row.querySelector(".discount-name");
-    const amtEl  = row.querySelector(".discount-amount");
-    const name   = nameEl?.value.trim();
-    const amount = Number(amtEl?.value || 0);
-    if (name && !Number.isNaN(amount)) {
-      discounts.push({ discountName: name, discountAmount: amount });
-    }
-  });
-
-  // Similar pattern for Fees (feeName, feeAmount)
-  // and Tips (tipAmount only)…
-
-  const fees = []; // TODO: collect from .fee-row
-  const tips = []; // TODO: collect from .tip-row
-
-  return {
-    additionalFees: fees,
-    discounts,
-    tips
-  };
-}
-*/
 
 function renderEventProfitSummary(event) {
   const sales = event.sales || {};
@@ -2224,12 +2223,72 @@ function renderEventProfitSummary(event) {
   );
 }
 
+function updateExpensesDOM(expenses) {
+  const el = document.querySelector(".expenses-card");
+  if (!el) return;
+
+  const autoLaborEl = el.querySelector(".auto-labor-fees");
+if (autoLaborEl) {
+  autoLaborEl.textContent = fmt(expenses.laborFees);
+}
+
+const totalExpensesEl = el.querySelector(".total-expenses");
+if (totalExpensesEl) {
+  totalExpensesEl.textContent = fmt(expenses.totalExpenses);
+}
+
+}
+
+
+function updateExpensesLaborRow(laborFees) {
+  if (!window.activeEvent) return;
+
+  const expenses = window.activeEvent.expenses || {};
+
+  expenses.laborFees = Number(laborFees) || 0;
+
+  expenses.totalExpenses =
+    (expenses.healthDeptFee || 0) +
+    (expenses.eventFee || 0) +
+    (expenses.mileageReimbursement || 0) +
+    (expenses.employeeBonus || 0) +
+    (expenses.eventRunnerFees || 0) +
+    (expenses.additionalFees || 0) +
+    (expenses.supplyFees || 0) +
+    (expenses.laborFees || 0);
+
+  window.activeEvent.expenses = expenses;
+
+  // Re-render Expenses card
+  updateExpensesDOM(expenses);
+}
+
+function updateProfitSummary() {
+  if (!window.activeEvent) return;
+
+  const { sales, expenses, totals } = window.activeEvent;
+
+  const totalNetRevenue = Number(totals.totalNetRevenue || 0);
+  const totalExpenses = Number(expenses.totalExpenses || 0);
+
+  totals.grossProfit = totalNetRevenue - totalExpenses;
+
+  window.activeEvent.totals = totals;
+
+  updateProfitSummaryDOM(totals);
+}
+
+
 
   function renderExpensesCard(expenses = {}) {
   const content = expensesEditMode
     ? renderExpensesEditMode(expenses)
     : renderExpensesViewMode(expenses);
 
+  document.addEventListener("labor:updated", e => {
+    updateExpensesLaborRow(e.detail.laborFees);
+    updateProfitSummary();
+  });
   return createCollapsibleCard("Expenses", content);
 }
 
@@ -2239,25 +2298,219 @@ function renderExpensesViewMode(expenses) {
     v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
 
   return `
-    <div class="expenses-card">
+  <div class="expenses-card">
+    <div>Health Dept Fee: ${fmtMoney(expenses.healthDeptFee)}</div>
+    <div>Event Fee: ${fmtMoney(expenses.eventFee)}</div>
+    <div>Mileage: ${fmtMoney(expenses.mileageReimbursement)}</div>
+    <div>Employee Bonus: ${fmtMoney(expenses.employeeBonus)}</div>
+    <div>Event Runner Fees: ${fmtMoney(expenses.eventRunnerFees)}</div>
+    <hr>
+    <div>Additional Fees (auto): ${fmtMoney(expenses.additionalFees)}</div>
+    <div>
+      Labor Fees (auto):
+      <span class="auto-labor-fees">${fmtMoney(expenses.laborFees)}</span>
+    </div>
+    <div>Supply Costs (auto): ${fmtMoney(expenses.supplyFees)}</div>
+    <hr>
+    <strong>
+      Total Expenses:
+      <span class="total-expenses">${fmtMoney(expenses.totalExpenses)}</span>
+    </strong>
 
-      <div>Health Dept Fee: ${fmtMoney(expenses.healthDeptFee)}</div>
-      <div>Event Fee: ${fmtMoney(expenses.eventFee)}</div>
-      <div>Mileage: ${fmtMoney(expenses.mileageReimbursement)}</div>
-      <div>Employee Bonus: ${fmtMoney(expenses.employeeBonus)}</div>
-      <div>Event Runner Fees: ${fmtMoney(expenses.eventRunnerFees)}</div>
-      <hr>
-      <div>Additional Fees (auto): ${fmtMoney(expenses.additionalFees)}</div>
-      <div>Labor Fees (auto): ${fmtMoney(expenses.laborFees)}</div>
-      <div>Supply Costs (auto): ${fmtMoney(expenses.supplyFees)}</div>
-      <hr>
-      <strong>Total Expenses: ${fmtMoney(expenses.totalExpenses)}</strong>
-      <button class="btn-secondary" onclick="enterExpensesEditMode()">
-        ✏️ Edit Expenses
-      </button>
+    <button class="btn-secondary" onclick="enterExpensesEditMode()">
+      ✏️ Edit Expenses
+    </button>
+  </div>
+`;
+
+  console.log("ExPENSES REPORT", expenses);
+}
+
+function updateProfitSummaryDOM(totals) {
+  const el = document.querySelector(".profit-summary");
+  if (!el) return;
+
+  const grossProfit1 = el.querySelector(".gross-profit");
+  if (grossProfit1) {
+    grossProfit1.textContent = fmt(totals.grossProfit);
+  }
+}
+
+
+function renderLaborCard(event) {
+  const rows = event.labor || [];
+  
+
+  let html = `
+    <table class="labor-table">
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Hours</th>
+          <th>Rate</th>
+          <th>Subtotal</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="laborTableBody">
+  `;
+
+  for (const row of rows) {
+    const subtotal =
+      (Number(row.hoursWorked) || 0) *
+      (Number(row.hourlyRate) || 0);
+
+      if (!rows.length) {
+  html += `<p class="muted">No labor entries yet.</p>`;
+  }
+
+
+    html += `
+      <tr>
+        <td>
+          <input
+            type="text"
+            data-field="employeeName"
+            value="${row.employeeName || ""}"
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.25"
+            min="0"
+            data-field="hoursWorked"
+            value="${row.hoursWorked ?? ""}"
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            data-field="hourlyRate"
+            value="${row.hourlyRate ?? ""}"
+          />
+        </td>
+        <td class="labor-subtotal">
+          ${fmt(subtotal)}
+        </td>
+        <td>
+          <button class="btn-danger remove-labor-row">✖</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  html += `
+      </tbody>
+    </table>
+
+    <div class="labor-footer">
+      <strong>Total Labor:</strong>
+      <span id="laborTotal">$0.00</span>
+    </div>
+
+    <div class="labor-actions">
+      <button class="btn-secondary" id="addLaborRow">➕ Add Worker</button>
+      <button class="btn-primary" id="saveLabor">💾 Save Labor</button>
     </div>
   `;
+
+  const card = createCollapsibleCard("Labor", html);
+  console.log("Labor body exists?", !!document.getElementById("laborTableBody"));
+
+
+  setTimeout(() => wireLaborCard(event.eventID), 0);
+
+  return card;
 }
+
+
+function wireLaborCard(eventID) {
+  const body = document.getElementById("laborTableBody");
+  const totalEl = document.getElementById("laborTotal");
+
+
+  if (!body || !totalEl) {
+    console.warn("⚠️ Labor DOM not ready, skipping wireLaborCard");
+    return;
+  }
+
+  function recalc() {
+    let total = 0;
+
+    body.querySelectorAll("tr").forEach(row => {
+      const hours = Number(
+        row.querySelector('[data-field="hoursWorked"]')?.value || 0);
+      const rate = Number(
+        row.querySelector('[data-field="hourlyRate"]')?.value || 0);
+
+      total += hours * rate;
+    });
+    total = Number(total.toFixed(2));
+    totalEl.textContent = fmt(total);
+
+
+   updateExpensesLaborRow(total);
+   updateProfitSummary();
+  }
+
+  body.addEventListener("input", recalc);
+  body.addEventListener("click", e => {
+    if (e.target.classList.contains("remove-labor-row")) {
+      e.target.closest("tr").remove();
+      recalc();
+    }
+  });
+
+  document.getElementById("addLaborRow").onclick = () => {
+    body.insertAdjacentHTML("beforeend", `
+      <tr>
+        <td><input data-field="employeeName"></td>
+        <td><input type="number" step="0.25" min="0" data-field="hoursWorked"></td>
+        <td><input type="number" step="0.01" min="0" data-field="hourlyRate"></td>
+        <td class="labor-subtotal">$0.00</td>
+        <td><button class="btn-danger remove-labor-row">✖</button></td>
+      </tr>
+    `);
+  };
+
+  document.getElementById("saveLabor").onclick = async () => {
+    if (window.activeEvent?.isFinalized === 1) {
+      alert("This event is finalized and labor cannot be edited.");
+      return;
+    }
+
+    const laborRows = [];
+
+    body.querySelectorAll("tr").forEach(row => {
+      const employeeName =
+        row.querySelector('[data-field="employeeName"]')?.value || "";
+
+      const hoursWorked =
+        Number(row.querySelector('[data-field="hoursWorked"]')?.value || 0);
+
+      const hourlyRate =
+        Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
+
+      if (!employeeName && hoursWorked === 0 && hourlyRate === 0) return;
+
+      laborRows.push({ employeeName, hoursWorked, hourlyRate });
+    });
+
+    await fetch(`${API_BASE}/api/events/${eventID}/labor`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ laborRows })
+    });
+
+    await reloadEventDashboard();
+  };
+
+  recalc();
+}
+
 
 function renderExpensesEditMode(expenses) {
   return `
@@ -2291,6 +2544,8 @@ function renderExpensesEditMode(expenses) {
   `;
 }
 
+
+
 function enterExpensesEditMode() {
   expensesEditMode = true;
   reloadEventDashboard();
@@ -2307,12 +2562,26 @@ async function saveExpenses() {
   alert("This event has been finalized and can no longer be edited.");
   return;
 }
-  const inputs = document.querySelectorAll(".expenses-card input");
   const payload = {};
 
-  inputs.forEach(input => {
-    payload[input.dataset.field] = Number(input.value) || 0;
-  });
+  const healthDeptFee = getInputNumber("healthDeptFee");
+  const eventFee = getInputNumber("eventFee");
+  const mileage = getInputNumber("mileageReimbursement");
+  const runnerFees = getInputNumber("eventRunnerFees");
+  const employeeBonus = getInputNumber("employeeBonus");
+
+  if (healthDeptFee !== undefined) payload.healthDeptFee = healthDeptFee;
+  if (eventFee !== undefined) payload.eventFee = eventFee;
+  if (mileage !== undefined) payload.mileageReimbursement = mileage;
+  if (runnerFees !== undefined) payload.eventRunnerFees = runnerFees;
+  if (employeeBonus !== undefined) payload.employeeBonus = employeeBonus;
+
+  console.log("Payload length", payload);
+
+  if (Object.keys(payload).length === 0) {
+    alert("No changes to save.");
+    return;
+  }
 
   try {
     await fetch(`${API_BASE}/api/events/${window.currentEventId}/expenses`, {
@@ -2327,6 +2596,9 @@ async function saveExpenses() {
     console.error("Failed to save expenses", err);
     alert("Failed to save expenses");
   }
+
+  console.log("🧾 Expense save payload:", payload);
+
 }
 
 
@@ -2739,16 +3011,9 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   // 8) EMPLOYEES / LABOR CARD
   // ======================
-  const laborHostId = "laborTableHost";
-  safeAppend(
-    container,
-    createCollapsibleCard("Labor", `<div id="${laborHostId}"></div>`)
-  );
+  // ✅ Labor Card (editable)
+safeAppend(container, renderLaborCard(event));
 
-  const laborHost = document.getElementById(laborHostId);
-  if (laborHost) {
-    loadLaborForEvent(eventID, laborHost);
-  }
 
   // ======================
   // 9) EXPENSES CARD
@@ -3358,10 +3623,8 @@ async function loadLaborForEvent(
 
     const rows = await res.json();
 
-    if (!rows || !rows.length) {
-      hostEl.innerHTML = "<p>No shifts recorded.</p>";
-      return;
-    }
+   renderLaborCard({ eventID, labor: rows || [] });
+ 
 
     let html = `
       <table class="labor-table">
