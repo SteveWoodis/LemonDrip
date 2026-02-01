@@ -324,7 +324,8 @@ normalized.expenses = normalized.expenses ?? {
   supplyFees: 0,
   additionalFees: 0,
   laborFees: 0,
-  totalExpenses: 0
+  totalExpenses: 0,
+  coordinatorFee: 0
 };
 
 // ✅ Guarantee totals object
@@ -1830,6 +1831,7 @@ async function reloadEventDashboard() {
       supplies: report.supplies,
       labor: report.labor
     });
+    console.log("REFRESHED EVENT", refreshedEvent);
 
     loadEventIntoDashboard(refreshedEvent);
 
@@ -2204,6 +2206,7 @@ function renderEventProfitSummary(event) {
 
   const fmtMoney = (v) =>
     v == null ? "-" : `$${Number(v || 0).toFixed(2)}`;
+    console.log("TOTALS = ", totals);
 
   return createCollapsibleCard(
     "Event Profit Summary",
@@ -2222,11 +2225,10 @@ function renderEventProfitSummary(event) {
       <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
       <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
       <hr>
-      <div><strong>State Food Tax:</strong> (${fmtMoney(sales.squareReportedTax)})</div>
-      <div><strong>Square / Vendor Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
-      <div><strong>Total Net Revenue:</strong> ${fmtMoney(totals.totalNetRevenue)}</div>
+      <div><strong>-State Food Tax:</strong> (${fmtMoney(sales.squareReportedTax)})</div>
+      <div><strong>-Square / Vendor Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
+      <div><strong>-Total Expenses:</strong> (${fmtMoney(event.expenses.totalExpenses)})</div>
       <hr>
-      <div><strong>Total Expenses:</strong> (${fmtMoney(event.expenses.totalExpenses)})</div>
       <div class="profit-final">
         <strong>Gross Profit:</strong>
         <strong>${fmtMoney(totals.grossProfit)}</strong>
@@ -2267,6 +2269,7 @@ function updateExpensesLaborRow(laborFees) {
     (expenses.eventFee || 0) +
     (expenses.mileageReimbursement || 0) +
     (expenses.employeeBonus || 0) +
+    (expenses.coordinatorFee || 0) +
     (expenses.eventRunnerFees || 0) +
     (expenses.additionalFees || 0) +
     (expenses.supplyFees || 0) +
@@ -2323,6 +2326,7 @@ function renderExpensesViewMode(expenses) {
     <div>Mileage: ${fmtMoney(expenses.mileageReimbursement)}</div>
     <div>Employee Bonus: ${fmtMoney(expenses.employeeBonus)}</div>
     <div>Event Runner Fees: ${fmtMoney(expenses.eventRunnerFees)}</div>
+    <div>coordinatorFee: ${fmtMoney(expenses.coordinatorFee)}</div>
     <hr>
     <div>Additional Fees (auto): ${fmtMoney(expenses.additionalFees)}</div>
     <div>
@@ -2344,6 +2348,44 @@ function renderExpensesViewMode(expenses) {
 
   console.log("ExPENSES REPORT", expenses);
 }
+
+function renderExpensesEditMode(expenses) {
+  return `
+    <div class="expenses-card">
+
+      <label>Health Dept Fee</label>
+      <input type="number" data-field="healthDeptFee"
+        value="${expenses.healthDeptFee ?? 0}">
+
+      <label>Event Fee</label>
+      <input type="number" data-field="eventFee"
+        value="${expenses.eventFee ?? 0}">
+
+      <label>Mileage Reimbursement</label>
+      <input type="number" data-field="mileageReimbursement"
+        value="${expenses.mileageReimbursement ?? 0}">
+
+      <label>Employee Bonus</label>
+      <input type="number" data-field="employeeBonus"
+        value="${expenses.employeeBonus ?? 0}">
+
+      <label>Event Runner Fees</label>
+      <input type="number" data-field="eventRunnerFees"
+        value="${expenses.eventRunnerFees ?? 0}">
+
+      <label>Coordinator Fee</label>
+      <input type="number" data-field="coordinatorFee"
+        value="${expenses.coordinatorFee ?? 0}">
+      <hr>
+
+      <button class="btn-primary" onclick="saveExpenses()">💾 Save</button>
+      <button class="btn-secondary" onclick="cancelExpensesEdit()">Cancel</button>
+    </div>
+  `;
+}
+
+
+
 
 function updateProfitSummaryDOM(totals) {
   const el = document.querySelector(".profit-summary");
@@ -2418,6 +2460,7 @@ function renderLaborCard(event) {
 
   return createCollapsibleCard("Labor", html);
 }
+
 
 
 
@@ -2511,38 +2554,6 @@ function wireLaborCard(eventID) {
 }
 
 
-function renderExpensesEditMode(expenses) {
-  return `
-    <div class="expenses-card">
-
-      <label>Health Dept Fee</label>
-      <input type="number" data-field="healthDeptFee"
-        value="${expenses.healthDeptFee ?? 0}">
-
-      <label>Event Fee</label>
-      <input type="number" data-field="eventFee"
-        value="${expenses.eventFee ?? 0}">
-
-      <label>Mileage Reimbursement</label>
-      <input type="number" data-field="mileageReimbursement"
-        value="${expenses.mileageReimbursement ?? 0}">
-
-      <label>Employee Bonus</label>
-      <input type="number" data-field="employeeBonus"
-        value="${expenses.employeeBonus ?? 0}">
-
-      <label>Event Runner Fees</label>
-      <input type="number" data-field="eventRunnerFees"
-        value="${expenses.eventRunnerFees ?? 0}">
-
-      <hr>
-
-      <button class="btn-primary" onclick="saveExpenses()">💾 Save</button>
-      <button class="btn-secondary" onclick="cancelExpensesEdit()">Cancel</button>
-    </div>
-  `;
-}
-
 
 
 function enterExpensesEditMode() {
@@ -2568,12 +2579,14 @@ async function saveExpenses() {
   const mileage = getInputNumber("mileageReimbursement");
   const runnerFees = getInputNumber("eventRunnerFees");
   const employeeBonus = getInputNumber("employeeBonus");
+  const coordinatorFee = getInputNumber("coordinatorFee");
 
   if (healthDeptFee !== undefined) payload.healthDeptFee = healthDeptFee;
   if (eventFee !== undefined) payload.eventFee = eventFee;
   if (mileage !== undefined) payload.mileageReimbursement = mileage;
   if (runnerFees !== undefined) payload.eventRunnerFees = runnerFees;
   if (employeeBonus !== undefined) payload.employeeBonus = employeeBonus;
+  if (coordinatorFee !== undefined) payload.coordinatorFee = coordinatorFee;
 
   console.log("Payload length", payload);
 
@@ -2589,14 +2602,17 @@ async function saveExpenses() {
       body: JSON.stringify(payload)
     });
     expensesEditMode = false;
-    reloadEventDashboard();
+    await reloadEventDashboard();
 
   } catch (err) {
     console.error("Failed to save expenses", err);
     alert("Failed to save expenses");
   }
 
-  console.log("🧾 Expense save payload:", payload);
+ // window.activeEvent.expenses = payload;
+//updateExpensesDOM(payload);
+//updateProfitSummary();
+
 
 }
 

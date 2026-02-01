@@ -1978,15 +1978,16 @@ function buildPostEventReport(eventId) {
   `).run(eventId);
 
   const manual = db.prepare(`
-    SELECT
-      healthDeptFee,
-      eventFee,
-      mileageReimbursement,
-      eventRunnerFees,
-      employeeBonus
-    FROM EventExpenses
-    WHERE eventID = ?
-  `).get(eventId) || {};
+  SELECT
+    healthDeptFee,
+    eventFee,
+    mileageReimbursement,
+    eventRunnerFees,
+    employeeBonus,
+    coordinatorFee
+  FROM EventExpenses
+  WHERE eventID = ?
+`).get(eventId) || {};
 
   // =========================
   // 2) Sales Summary (Square)
@@ -2142,6 +2143,7 @@ const expenses = {
   mileageReimbursement: manual.mileageReimbursement ?? 0,
   eventRunnerFees: manual.eventRunnerFees ?? 0,
   employeeBonus: manual.employeeBonus ?? 0,
+  coordinatorFee: manual.coordinatorFee ?? 0,
 
   // Calculated
   supplyFees: allTotals.suppliesTotal ?? 0,
@@ -2150,10 +2152,11 @@ const expenses = {
 };
 
 // ✅ compute once, explicitly
-expenses.totalExpenses =
+  expenses.totalExpenses =
   expenses.healthDeptFee +
   expenses.eventFee +
   expenses.mileageReimbursement +
+  expenses.coordinatorFee +
   expenses.eventRunnerFees +
   expenses.employeeBonus +
   expenses.supplyFees +
@@ -2161,18 +2164,10 @@ expenses.totalExpenses =
   expenses.laborFees;
 
 
-// =========================
-// 10) Gross Profit
-// =========================
-const grossProfit =
-  (totalNetRevenue || 0) - (expenses.totalExpenses || 0);
 
 
-  // =========================
-  // 12) Return Unified Report
-  // =========================
-  //totals.totalExpenses = expenses.totalExpenses;
-  totals.grossProfit = grossProfit;
+
+
 
   // =========================
 // 13) Tax Configuration
@@ -2191,6 +2186,7 @@ const taxConfig = db.prepare(`
 // =========================
 // 11) Tax Computation
 // =========================
+const grossProfit =  totalNetRevenue - expenses.totalExpenses;
 const taxableProfit = grossProfit;
 
 const federalTaxRate = taxConfig.federalTaxRate ?? 0;
@@ -2231,6 +2227,29 @@ const taxes = {
 
 const discountsFinal = Number(sales.discounts || 0);
 
+// =========================
+// 10) Accounting Profit Center
+// =========================
+
+
+
+const netProfit = grossProfit - taxes.totalTax;
+
+const finalProfit = netProfit - expenses.coordinatorFee;
+
+const accounting = {
+  grossProfit,
+  netProfit,
+  finalProfit
+};
+
+
+  // =========================
+  // 12) Return Unified Report
+  // =========================
+  //totals.totalExpenses = expenses.totalExpenses;
+  totals.grossProfit = grossProfit;
+
 
   return {
     event: sanitizedEvent,
@@ -2258,6 +2277,7 @@ const discountsFinal = Number(sales.discounts || 0);
     taxes,
     totals,
     expenses,
+    accounting
     };
 }
 
@@ -2288,6 +2308,7 @@ app.put("/api/events/:eventId/expenses", (req, res) => {
     eventFee,
     mileageReimbursement,
     eventRunnerFees,
+    coordinatorFee,
     employeeBonus
   } = req.body;
 
@@ -2300,7 +2321,7 @@ app.put("/api/events/:eventId/expenses", (req, res) => {
         mileageReimbursement = ?,
         eventRunnerFees = ?,
         employeeBonus = ?,
-
+        coordinatorFee = ?,
         updatedAt = CURRENT_TIMESTAMP
       WHERE eventID = ?
     `);
@@ -2311,6 +2332,7 @@ app.put("/api/events/:eventId/expenses", (req, res) => {
       mileageReimbursement ?? null,
       eventRunnerFees ?? null,
       employeeBonus ?? null,
+      coordinatorFee ?? null,
       eventId
     );
 
