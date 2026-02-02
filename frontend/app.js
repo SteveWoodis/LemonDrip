@@ -338,6 +338,8 @@ normalized.totals = normalized.totals ?? {
 
    return normalized;
 }
+
+
 function getFinalizedEventCount() {
   return (window.events || []).filter(e => Number(e.isFinalized) === 1).length;
 }
@@ -2333,7 +2335,7 @@ function renderExpensesViewMode(expenses) {
       Labor Fees (auto):
       <span class="auto-labor-fees">${fmtMoney(expenses.laborFees)}</span>
     </div>
-    <div>Supply Costs (auto): ${fmtMoney(expenses.supplyFees)}</div>
+    <div>Supply Fees: (auto): ${fmtMoney(expenses.supplyFees)}</div>
     <hr>
     <strong>
       Total Expenses:

@@ -865,6 +865,15 @@ app.put("/api/events/:id", (req, res) => {
  *   discounts = grossSales - netSales - refunds
  */
 app.put("/api/square/sales/:eventId", async (req, res) => {
+let grossSales = 0;
+let netSales = 0;
+let refunds = 0;
+let squareReportedTax = 0;
+let totalCollected = 0;
+ let discounts =0;
+let orders = [];
+let drinkRows = [];
+
   try {
     const eventId = Number(req.params.eventId);
 
@@ -885,33 +894,23 @@ app.put("/api/square/sales/:eventId", async (req, res) => {
     // ─────────────────────────────────────────────
 
     // Local midnight → local 23:59:59
-    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
-    const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
+  const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
+const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
 
-    // Convert to UTC ISO for Square
-    const orderStartISO   = localStart.toISOString();
-    const orderEndISO     = localEnd.toISOString();
+const orderStartISO = localStart.toISOString();
+const orderEndISO   = localEnd.toISOString();
 
-    // Payments can settle slightly after midnight local,
-    // so allow a small buffer (NOT a full extra day)
-    const paymentEnd = new Date(localEnd);
-    paymentEnd.setHours(paymentEnd.getHours() + 2);
+const paymentStartISO = orderStartISO;
 
-    const paymentStartISO = orderStartISO;
-    const paymentEndISO   = paymentEnd.toISOString();
+const paymentEnd = new Date(localEnd);
+paymentEnd.setHours(paymentEnd.getHours() + 2);
+const paymentEndISO = paymentEnd.toISOString();
+
+console.log("Pulling orders for location:", ev.squareLocationId);
 
  // ─────────────────────────────────────────────
 // 2️⃣ ORDER-CENTRIC (sales truth)
 // ─────────────────────────────────────────────
-let grossSales = 0;
-let netSales = 0;
-let refunds = 0;
-let squareReportedTax = 0;
-let totalCollected = 0;
-let discounts =0;
-
-let orders = [];
-
 try {
   const orderRes = await fetch(
     "https://connect.squareup.com/v2/orders/search",
@@ -923,19 +922,24 @@ try {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        location_ids: [ev.squareLocationId],
-        query: {
-          filter: {
-            state_filter: { states: ["COMPLETED"] },
-            date_time_filter: {
-              closed_at: {
-                start_at: orderStartISO,
-                end_at: orderEndISO
-              }
-            }
-          }
-        }
-      })
+  location_ids: [ev.squareLocationId],
+
+  // ⭐ ADD THIS LINE
+  return_entries: true,
+
+  /*query: {
+    filter: {
+      state_filter: { states: ["COMPLETED"] },
+      //date_time_filter: {
+        //closed_at: {
+        //  start_at: orderStartISO,
+        //  end_at: orderEndISO
+       // }
+      //}
+    }
+  }*/
+})
+
     }
   );
 
@@ -946,6 +950,46 @@ try {
 
   const orderJson = await orderRes.json();
   orders = orderJson.orders || [];
+  console.log("Orders returned:", orders.length);
+
+
+  // ─────────────────────────────────────────────
+// 🥤 BUILD ITEMIZED DRINK SALES
+// ─────────────────────────────────────────────
+
+const drinkMap = new Map();
+for (const order of orders) {
+
+  for (const li of order.line_items || []) {
+
+    const name = li.name || "Unknown";
+
+    const qty = Number(li.quantity || 0);
+
+    const unitPrice =
+      (li.base_price_money?.amount || 0) / 100;
+
+    const total =
+      (li.total_money?.amount || 0) / 100;
+
+    // combine identical drinks
+    if (!drinkMap.has(name)) {
+      drinkMap.set(name, {
+        drinkName: name,
+        unitPrice,
+        quantitySold: qty,
+        totalCost: total
+      });
+    } else {
+      const d = drinkMap.get(name);
+      d.quantitySold += qty;
+      d.totalCost += total;
+    }
+  }
+}
+
+drinkRows = Array.from(drinkMap.values());
+
 
 } catch (err) {
   console.error("❌ Square Orders fetch failed:", err);
@@ -954,14 +998,12 @@ try {
     detail: err.message
   });
 }
-
-
     // Deduplicate orders
     const orderMap = new Map();
+   
    for (const o of orders) {
   for (const li of o.line_items || []) {
     const qty = Number(li.quantity || 0);
-
     if (li.base_price_money) {
       grossSales += (li.base_price_money.amount * qty) / 100;
     }
@@ -979,9 +1021,6 @@ try {
     squareReportedTax += o.total_tax_money.amount / 100;
   }
 }
-
-     
-      
 		// ─────────────────────────────────────────────
     // 3️⃣ PAYMENT-CENTRIC (fees + cash flow)
     // ─────────────────────────────────────────────
@@ -1035,17 +1074,13 @@ try {
 		
 	}
   discounts = grossSales - netSales - refunds;
-
-	
-      cursor = payJson.cursor || null;
+  cursor = payJson.cursor || null;
     } while (cursor);
 	
 	const feesPending = allPayments.some(pay => pay.processing_fee == null);
 
 	// Start with payment-computed fees
 	let squareFeesFinal = squareFees;
-
-	
 
     // ─────────────────────────────────────────────
     // 4️⃣ Atomic upsert
@@ -1079,8 +1114,10 @@ try {
       tips,
      totalCollected
     );
-    const drinkRows = [];
+  
     saveDrinkSales(eventId, drinkRows);
+    console.log("Saving drink rows:", drinkRows.length, "for event", eventId);
+
 
     res.json({
       success: true,
@@ -1101,12 +1138,9 @@ try {
 
   } catch (err) {
     console.error("❌ Square sync failed:", err);
-    res.status(500).json({ error: "Square sales sync failed." });
+    res.status(500).json({ error: err.message });
   }
 });
-
-
-
 
 
 
@@ -2446,36 +2480,30 @@ app.delete("/api/supplies/:id", (req, res) => {
 });
 
 
-function saveDrinkSales(eventID, rows) {
-  db.prepare(`DELETE FROM DrinkSales WHERE eventID = ?`).run(eventID);
+function saveDrinkSales(eventId, rows) {
+  db.prepare(`
+    DELETE FROM DrinkSales
+    WHERE eventID = ?
+  `).run(eventId);
 
-  if (!rows.length) return;
-
-  const insert = db.prepare(`
-    INSERT INTO DrinkSales (
-      eventID,
-      drinkName,
-      unitPrice,
-      quantitySold,
-      totalCost
-    )
+  const stmt = db.prepare(`
+    INSERT INTO DrinkSales
+    (eventID, drinkName, unitPrice, quantitySold, totalCost)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  const tx = db.transaction(list => {
-    for (const r of list) {
-      insert.run(
-        eventID,
-        r.drinkName,
-        r.unitPrice,
-        r.quantitySold,
-        r.totalCost
-      );
-    }
-  });
-
-  tx(rows);
+  for (const r of rows) {
+    stmt.run(
+      eventId,
+      r.drinkName,
+      r.unitPrice,
+      r.quantitySold,
+      r.totalCost
+    );
+  }
 }
+
+
 app.put("/api/events/:eventId/labor", (req, res) => {
   const { eventId } = req.params;
   const { laborRows = [], laborFees = 0 } = req.body;
