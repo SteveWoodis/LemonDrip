@@ -856,143 +856,6 @@ app.put("/api/events/:id", (req, res) => {
   }
 });
 
-//=========================================
-// - Purpose
-// - To Load rows
-//- To Return subtotal
-// - To Power Expenses + Profit Summary
-//=============================================
-app.get("/api/supplies/:eventId", (req, res) => {
-  try {
-    const eventId = Number(req.params.eventId);
-
-    const event = db
-      .prepare(`SELECT isFinalized FROM EventInfo WHERE eventID = ?`)
-      .get(eventId);
-
-    if (!event) {
-      return res.status(404).json({ error: "Event not found." });
-    }
-
-    const rows = db
-      .prepare(`
-        SELECT
-          supplyCostID,
-          itemName,
-          category,
-          quantity,
-          unitCost,
-          totalCost,
-          notes
-        FROM SupplyCosts
-        WHERE eventID = ?
-        ORDER BY supplyCostID
-      `)
-      .all(eventId);
-
-    const subtotal = rows.reduce(
-      (sum, r) => sum + (r.totalCost || 0),
-      0
-    );
-
-    res.json({
-      eventId,
-      isFinalized: event.isFinalized,
-      rows,
-      subtotal
-    });
-
-  } catch (err) {
-    console.error("❌ Fetch supply costs failed:", err);
-    res.status(500).json({ error: "Failed to fetch supply costs." });
-  }
-});
-
-//===================================
-//Rules
-//❌ Block if finalized
-//✔ Delete old rows
-//✔ Insert new rows
-//❌ Never accept totalCost from client
-//====================================
-app.put("/api/supplies/:eventId", (req, res) => {
-  try {
-    const eventId = Number(req.params.eventId);
-    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
-
-    const event = db
-      .prepare(`SELECT isFinalized FROM EventInfo WHERE eventID = ?`)
-      .get(eventId);
-
-    if (!event) {
-      return res.status(404).json({ error: "Event not found." });
-    }
-
-    if (event.isFinalized) {
-      return res.status(400).json({
-        error: "Cannot modify supply costs after event is finalized."
-      });
-    }
-
-    const deleteStmt = db.prepare(
-      `DELETE FROM SupplyCosts WHERE eventID = ?`
-    );
-
-    const insertStmt = db.prepare(`
-      INSERT INTO SupplyCosts (
-        eventID,
-        itemName,
-        category,
-        quantity,
-        unitCost,
-        notes
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    const tx = db.transaction(() => {
-      deleteStmt.run(eventId);
-
-      for (const r of rows) {
-        if (!r.itemName || !Number.isFinite(r.unitCost)) continue;
-
-        insertStmt.run(
-          eventId,
-          r.itemName,
-          r.category || null,
-          Number(r.quantity || 1),
-          Number(r.unitCost),
-          r.notes || null
-        );
-      }
-    });
-
-    tx();
-
-    const subtotal = db
-      .prepare(`
-        SELECT COALESCE(SUM(totalCost), 0) AS subtotal
-        FROM SupplyCosts
-        WHERE eventID = ?
-      `)
-      .get(eventId).subtotal;
-
-    res.json({
-      success: true,
-      eventId,
-      subtotal
-    });
-
-  } catch (err) {
-    console.error("❌ Save supply costs failed:", err);
-    res.status(500).json({ error: "Failed to save supply costs." });
-  }
-});
-
-
-
-
-
 /**
  * IMPORTANT:
  * Square only populates total_discount_money for formal discount objects.
@@ -1001,112 +864,122 @@ app.put("/api/supplies/:eventId", (req, res) => {
  * Canonical discount formula (matches Square dashboard):
  *   discounts = grossSales - netSales - refunds
  */
+/**
+ * PULL ITEMIZED DRINK SALES FROM SQUARE
+ * Location forced to LVYBM098599TD
+ * Orders API = source of truth
+ */
+/**
+ * PULL ITEMIZED DRINK SALES FROM SQUARE
+ * Location forced to LVYBM098599TD
+ * Orders API = source of truth
+ */
 app.put("/api/square/sales/:eventId", async (req, res) => {
+  console.log("🟢 [Square Sync] Route hit");
+
   try {
     const eventId = Number(req.params.eventId);
+    console.log("➡️ Event ID:", eventId);
 
-    const ev = db.prepare(`
+     const ev = db.prepare(`
       SELECT eventDate, squareLocationId
       FROM EventInfo
       WHERE eventID = ?
     `).get(eventId);
 
-    if (!ev) return res.status(404).json({ error: "Event not found." });
-    console.log(" Before GUARD", ev);
-    if (!ev.squareLocationId)
-      return res.status(400).json({ error: "Event has no Square Location ID." });
-    const locationId = ev.squareLocationId;
+    if (!ev) {
+      console.error("❌ Event not found in DB:", eventId);
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    console.log("📅 Event date (local):", ev.eventDate);
 
     const token = process.env.SQUARE_ACCESS_TOKEN;
-     console.log("🏪 AFTER guard:", locationId);
+   console.log("🏪 AFTER guard:", ev.squareLocationId);
+     const locationId = ev.squareLocationId;
+     
+    if (!token) {
+      throw new Error("Missing SQUARE_ACCESS_TOKEN");
+    }
 
-
+    
     // ─────────────────────────────────────────────
-    // 1️⃣ LOCAL EVENT DAY → UTC WINDOW
+    // 1️⃣ EVENT DAY → ISO WINDOW (LOCAL → UTC)
     // ─────────────────────────────────────────────
-
-    // Local midnight → local 23:59:59
     const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
     const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
 
-    // Convert to UTC ISO for Square
-    const orderStartISO   = localStart.toISOString();
-    const orderEndISO     = localEnd.toISOString();
+    const startISO = localStart.toISOString();
+    const endISO   = localEnd.toISOString();
 
-    // Payments can settle slightly after midnight local,
-    // so allow a small buffer (NOT a full extra day)
-    const paymentEnd = new Date(localEnd);
-    paymentEnd.setHours(paymentEnd.getHours() + 2);
+    console.log("⏱️ Order window ISO:", {
+      startISO,
+      endISO
+    });
 
-    const paymentStartISO = orderStartISO;
-    const paymentEndISO   = paymentEnd.toISOString();
+    // ─────────────────────────────────────────────
+    // 2️⃣ FETCH ORDERS (ITEMIZED SALES)
+    // ─────────────────────────────────────────────
+    console.log("📡 Calling Square Orders API…");
 
- // ─────────────────────────────────────────────
-// 2️⃣ ORDER-CENTRIC (sales truth)
-// ─────────────────────────────────────────────
-let grossSales = 0;
-let netSales = 0;
-let refunds = 0;
-let squareReportedTax = 0;
-let totalCollected = 0;
-let discounts =0;
-
-let orders = [];
-
-try {
-  const orderRes = await fetch(
-    "https://connect.squareup.com/v2/orders/search",
-    {
-      method: "POST",
-      headers: {
-        "Square-Version": "2025-01-15",
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        location_ids: [ev.squareLocationId],
-        query: {
-          filter: {
-            state_filter: { states: ["COMPLETED"] },
-            date_time_filter: {
-              closed_at: {
-                start_at: orderStartISO,
-                end_at: orderEndISO
+    const orderRes = await fetch(
+      "https://connect.squareup.com/v2/orders/search",
+      {
+        method: "POST",
+        headers: {
+          "Square-Version": "2025-01-15",
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          location_ids: [locationId],
+          return_entries: true,
+          query: {
+            filter: {
+              state_filter: { states: ["COMPLETED"] },
+              date_time_filter: {
+                closed_at: {
+                  start_at: startISO,
+                  end_at: endISO
+                }
               }
             }
           }
-        }
-      })
+        })
+      }
+    );
+
+    console.log("📬 Square response status:", orderRes.status);
+
+    if (!orderRes.ok) {
+      const raw = await orderRes.text();
+      console.error("❌ Square Orders API error body:", raw);
+      throw new Error(`Square Orders API ${orderRes.status}`);
     }
-  );
 
-  if (!orderRes.ok) {
-    const raw = await orderRes.text();
-    throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
-  }
+    const orderJson = await orderRes.json();
+    const orders = orderJson.orders || [];
 
-  const orderJson = await orderRes.json();
-  orders = orderJson.orders || [];
+    console.log("📦 Orders returned:", orders.length);
 
-} catch (err) {
-  console.error("❌ Square Orders fetch failed:", err);
-  return res.status(500).json({
-    error: "Square sales sync failed.",
-    detail: err.message
-  });
-}
+    if (!orders.length) {
+      console.warn("⚠️ No orders returned for this window");
+    }
 
-//=========================================
-//This is the part I need help with.
-//==========================================
- console.log("📦 Orders returned:", orders.length);
-
-    // Deduplicate orders
+    // ─────────────────────────────────────────────
+    // 3️⃣ BUILD ITEMIZED DRINK SALES
+    // ─────────────────────────────────────────────
     const drinkMap = new Map();
+    let grossSales = 0;
+    let netSales = 0;
 
-   for (const o of orders) {
-  for (const li of o.line_items || []) {
-   const name = li.name || "Unknown Item";
+    for (const order of orders) {
+      console.log("🧾 Order ID:", order.id, 
+        "Line items:", order.line_items?.length || 0
+      );
+
+      for (const li of order.line_items || []) {
+        const name = li.name || "Unknown Item";
         const qty = Number(li.quantity || 0);
 
         const base =
@@ -1137,147 +1010,76 @@ try {
           d.quantitySold += qty;
           d.totalCost += total;
         }
-
-   }
-
-  if (o.total_tax_money) {
-    squareReportedTax += o.total_tax_money.amount / 100;
-    console.log("TAXES!", o.total_tax_money.amount);
-  }
-}
-const drinkRows = Array.from(drinkMap.values());
-  
-     
-   console.log("Food Tax", squareReportedTax);   
-		// ─────────────────────────────────────────────
-    // 3️⃣ PAYMENT-CENTRIC (fees + cash flow)
-    // ─────────────────────────────────────────────
-    let tips = 0;
-    let squareFees = 0;
-    let cash = 0, card = 0, wallet = 0, other = 0;
-
-    let cursor = null;
-	let allPayments = [];
-
-    do {
-      const url = new URL("https://connect.squareup.com/v2/payments");
-     url.searchParams.set("begin_time", paymentStartISO);
-      url.searchParams.set("end_time", paymentEndISO);
-	  url.searchParams.set("location_id", ev.squareLocationId);
-      url.searchParams.set("limit", "100");
-      if (cursor) url.searchParams.set("cursor", cursor);
-
-      const payRes = await fetch(url, {
-        headers: {
-          "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const payJson = await payRes.json();
-      const payments = payJson.payments || [];
-	 allPayments.push(...payments);
-	
-		for (const pay of payments) {
-		  const amt = (pay.amount_money?.amount || 0) / 100;
-		  totalCollected += amt;
-     
-		  switch (pay.source_type) {
-			case "CASH":   cash += amt; break;
-			case "CARD":   card += amt; break;
-			case "WALLET": wallet += amt; break;
-			default:       other += amt;
-		  }
-
-		  if (pay.tip_money)
-			tips += pay.tip_money.amount / 100;
-
-		  if (pay.refunded_money)
-			refunds += pay.refunded_money.amount / 100;
-
-		  for (const f of pay.processing_fee || []) {
-				squareFees += (f.amount_money.amount || 0) / 100;
-				
-		}
-		
-	}
-  discounts = grossSales - netSales - refunds;
-
-	
-      cursor = payJson.cursor || null;
-    } while (cursor);
-	
-	const feesPending = allPayments.some(pay => pay.processing_fee == null);
-
-	// Start with payment-computed fees
-	let squareFeesFinal = squareFees;
-
-	
-
-    // ─────────────────────────────────────────────
-    // 4️⃣ Atomic upsert
-    // ─────────────────────────────────────────────
-    const safe = v => Number.isFinite(v) ? v : null;
-    if (!Number.isFinite(grossSales) || !Number.isFinite(netSales)) {
-      throw new Error("Invalid Square totals computed");
+      }
     }
+
+    const drinkRows = Array.from(drinkMap.values());
+
+    console.log("📊 Aggregated drink rows:", drinkRows.length);
+    console.table(drinkRows);
+
+    console.log("💰 Totals computed:", {
+      grossSales,
+      netSales,
+      discounts: grossSales - netSales
+    });
+
+    // ─────────────────────────────────────────────
+    // 4️⃣ SAVE RESULTS (ATOMIC)
+    // ─────────────────────────────────────────────
+    const discounts = grossSales - netSales;
+    const refunds = 0;
+
+    console.log("💾 Writing SalesSummary + DrinkSales to DB…");
 
     db.prepare(`
       INSERT INTO SalesSummary (
         eventID,
-        grossSales, netSales, discounts, refunds, tips,
-        totalCollected, squareFees
+        grossSales,
+        netSales,
+        discounts,
+        refunds,
+        DatePulledAt
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(eventID) DO UPDATE SET
         grossSales = excluded.grossSales,
         netSales = excluded.netSales,
         discounts = excluded.discounts,
         refunds = excluded.refunds,
-        tips = excluded.tips,
-        totalCollected = excluded.totalCollected,
-      squareFees = excluded.squareFees,
-       DatePulledAt = CURRENT_TIMESTAMP
+        DatePulledAt = CURRENT_TIMESTAMP
     `).run(
       eventId,
       grossSales,
       netSales,
       discounts,
-      refunds,
-      tips,
-     totalCollected,
-     squareFeesFinal
+      refunds
     );
-    
+
     saveDrinkSales(eventId, drinkRows);
 
+    console.log("✅ Square sync completed successfully");
+
+    // ─────────────────────────────────────────────
+    // 5️⃣ RESPONSE
+    // ─────────────────────────────────────────────
     res.json({
       success: true,
-      localDay: ev.eventDate,
-      windows: {
-        orders: { start: orderStartISO, end: orderEndISO },
-        payments: { start: paymentStartISO, end: paymentEndISO }
-      },
-      sales: {
+      locationId,
+      eventDate: ev.eventDate,
+      totals: {
         grossSales,
         netSales,
-        discounts,
-        refunds,
-        tips,
-        totalCollected,
-         squareFees: squareFeesFinal   // ✅ ADD THIS
-        },
-        drinkSales: drinkRows
+        discounts
+      },
+      drinkSales: drinkRows
     });
 
   } catch (err) {
-    console.error("❌ Square sync failed:", err);
-    res.status(500).json({ error: "Square sales sync failed." });
+    console.error("❌ Square drink sync failed:", err);
+    res.status(500).json({ error: err.message });
   }
 });
-
-
-
 
 
 
@@ -2190,11 +1992,9 @@ function buildPostEventReport(eventId) {
     const totalCollected = sales.totalCollected ?? 0;
     const squareFees = sales.squareFees ?? 0;
     const vendorFees = 0; // future-proof, manual for now
-    let refunds = 0;
-    refunds = sales.refunds;
 
     const computedTotalNetRevenue =
-      totalCollected - squareFees - refunds;
+      totalCollected - squareFees - vendorFees;
 
     const totalNetRevenue =
       Number.isFinite(computedTotalNetRevenue)
@@ -2229,7 +2029,20 @@ function buildPostEventReport(eventId) {
     WHERE eventID = ?
   `).all(eventId);
 
-   // =========================
+  // =========================
+  // 5) Discounts (line items)
+  /**
+ * DISCOUNT INVARIANT
+ * ------------------
+ * discounts = grossSales - netSales - refunds
+ *
+ * • Computed once during Square ingest
+ * • Stored in SalesSummary
+ * • Never recalculated
+ * • Never summed from line items
+ * • Never overridden by UI tables
+ */
+  // =========================
   const discountNotes = db.prepare(`
   SELECT discountName, discountAmount
   FROM Discounts
@@ -2249,7 +2062,7 @@ function buildPostEventReport(eventId) {
   // 7) Supplies
   // =========================
   const supplies = db.prepare(`
-    SELECT itemName, unitCost, quantity, totalCost
+    SELECT itemName, unitCost, quantityUsed, totalCost
     FROM SupplyCosts
     WHERE eventID = ?
   `).all(eventId);
@@ -2551,14 +2364,14 @@ app.delete("/api/additional-fees/:id", (req, res) => {
 
 app.post("/api/events/:eventId/supplies", (req, res) => {
   const { eventId } = req.params;
-  const { itemName, unitCost = 0 } = req.body;
-  
+  const { itemName, unitCost = 0, quantityUsed = 0 } = req.body;
+  const totalCost = Number(unitCost) * Number(quantityUsed);
 
   try {
     const result = db.prepare(`
-      INSERT INTO SupplyCosts (eventID, itemName, unitCost, quantity)
+      INSERT INTO SupplyCosts (eventID, itemName, unitCost, quantityUsed, totalCost)
       VALUES (?, ?, ?, ?, ?)
-    `).run(eventId, itemName, Number(unitCost), Number(quantity));
+    `).run(eventId, itemName, Number(unitCost), Number(quantityUsed), totalCost);
 
     res.json({ id: result.lastInsertRowid });
   } catch (err) {
@@ -2569,23 +2382,23 @@ app.post("/api/events/:eventId/supplies", (req, res) => {
 
 app.put("/api/supplies/:id", (req, res) => {
   const { id } = req.params;
-  const { itemName, unitCost, quantity } = req.body;
+  const { itemName, unitCost, quantityUsed } = req.body;
 
   try {
     const row = db
-    .prepare("SELECT unitCost, quantity FROM SupplyCosts WHERE id = ?")
+    .prepare("SELECT unitCost, quantityUsed FROM SupplyCosts WHERE id = ?")
     .get(id);
 
 
     const newUnitCost = unitCost ?? row.unitCost;
-    const newQty = quantity ?? row.quantity;
-   
+    const newQty = quantityUsed ?? row.quantityUsed;
+    const totalCost = Number(newUnitCost) * Number(newQty);
 
     db.prepare(`
       UPDATE SupplyCosts
-      SET itemName = ?, unitCost = ?, quantity = ?
+      SET itemName = ?, unitCost = ?, quantityUsed = ?, totalCost = ?
       WHERE id = ?
-    `).run(itemName ?? row.itemName, newUnitCost, newQty, id);
+    `).run(itemName ?? row.itemName, newUnitCost, newQty, totalCost, id);
 
     res.json({ success: true });
   } catch (err) {
@@ -2606,37 +2419,28 @@ app.delete("/api/supplies/:id", (req, res) => {
 });
 
 
-function saveDrinkSales(eventID, rows) {
-  db.prepare(`DELETE FROM DrinkSales WHERE eventID = ?`).run(eventID);
+function saveDrinkSales(eventId, rows) {
+  db.prepare(`
+    DELETE FROM DrinkSales
+    WHERE eventID = ?
+  `).run(eventId);
 
-  if (!rows.length) return;
-
-  const insert = db.prepare(`
-    INSERT INTO DrinkSales (
-      eventID,
-      drinkName,
-      unitPrice,
-      quantitySold,
-      totalCost
-    )
+  const stmt = db.prepare(`
+    INSERT INTO DrinkSales
+    (eventID, drinkName, unitPrice, quantitySold, totalCost)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  const tx = db.transaction(list => {
-    for (const r of list) {
-      insert.run(
-        eventID,
-        r.drinkName,
-        r.unitPrice,
-        r.quantitySold,
-        r.totalCost
-      );
-    }
-  });
-
-  tx(rows);
+  for (const r of rows) {
+    stmt.run(
+      eventId,
+      r.drinkName,
+      r.unitPrice,
+      r.quantitySold,
+      r.totalCost
+    );
+  }
 }
-
 
 
 app.put("/api/events/:eventId/labor", (req, res) => {

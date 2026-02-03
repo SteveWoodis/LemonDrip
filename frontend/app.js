@@ -7,6 +7,7 @@
 // events - array to store objects
 // formTemplate - Object to store Templates created by Design Event action
 // ---------------------------
+
 let activeEvent = null;
 let currentAction = "manage";
 let events = [];
@@ -338,6 +339,7 @@ normalized.totals = normalized.totals ?? {
 
    return normalized;
 }
+
 function getFinalizedEventCount() {
   return (window.events || []).filter(e => Number(e.isFinalized) === 1).length;
 }
@@ -2225,13 +2227,13 @@ function renderEventProfitSummary(event) {
       <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
       <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
       <hr>
+      <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
       <div><strong>-State Food Tax:</strong> (${fmtMoney(sales.squareReportedTax)})</div>
-      <div><strong>-Square / Vendor Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
+      <div><strong>-Point of Sale Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
       <div><strong>-Total Expenses:</strong> (${fmtMoney(event.expenses.totalExpenses)})</div>
       <hr>
       <div class="profit-final">
-        <strong>Gross Profit:</strong>
-        <strong>${fmtMoney(totals.grossProfit)}</strong>
+        <strong>Event Profit/Loss: </strong>${fmtMoney(sales.totalNetRevenue)}
       </div>
     </div>
     `
