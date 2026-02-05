@@ -19,8 +19,7 @@ const crypto = require("crypto");
 dotenv.config();
 console.log("DEBUG: Loaded APP ID =", process.env.SQUARE_APP_ID);
 
-const DB_PATH = process.env.LEMONDRIP_DB_PATH || path.join(__dirname, "lemonDrip.db");
-
+const DB_PATH = process.env.LEMONDRIP_DB_PATH || path.join(__dirname, "lemondrip.db");
 const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
 const SQUARE_APP_SECRET = process.env.SQUARE_APP_SECRET;
 const SQUARE_OAUTH_REDIRECT =
@@ -60,7 +59,7 @@ function initDb() {
 
     CREATE TABLE IF NOT EXISTS SalesSummary (
       SalesID INTEGER PRIMARY KEY AUTOINCREMENT,
-      EventID INTEGER NOT NULL UNIQUE,
+      eventID INTEGER NOT NULL UNIQUE,
       SquareTxnID TEXT,
       grossSales REAL,
       netSales REAL,
@@ -69,7 +68,7 @@ function initDb() {
       tips REAL,
       totalCollected REAL,
       DatePulledAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(EventID) REFERENCES EventInfo(EventID)
+      FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
     );
 
     CREATE TABLE IF NOT EXISTS SquareAuth (
@@ -125,6 +124,15 @@ function initDb() {
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS EventSupplies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      eventID INTEGER NOT NULL,
+      itemName TEXT NOT NULL,
+      unitCost REAL NOT NULL DEFAULT 0,
+      quantityUsed REAL NOT NULL DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
 
   `);
 
@@ -212,7 +220,7 @@ app.post("/api/events/upload-permits", upload.array("permits"),  (req, res) => {
 
 	const tx = db.transaction(files => {
 	  for (const f of files) {
-		insert.run(eventId, f.originalname, f.path);
+		insert.run(eventID, f.originalname, f.path);
 	  }
 	});
 
@@ -864,7 +872,7 @@ app.put("/api/events/:id", (req, res) => {
  * Canonical discount formula (matches Square dashboard):
  *   discounts = grossSales - netSales - refunds
  */
-app.put("/api/square/sales/:eventId", async (req, res) => {
+app.put("/api/square/sales/:eventID", async (req, res) => {
 let grossSales = 0;
 let netSales = 0;
 let refunds = 0;
@@ -875,13 +883,13 @@ let orders = [];
 let drinkRows = [];
 
   try {
-    const eventId = Number(req.params.eventId);
+    const eventID = Number(req.params.eventID);
 
     const ev = db.prepare(`
       SELECT eventDate, squareLocationId
       FROM EventInfo
       WHERE eventID = ?
-    `).get(eventId);
+    `).get(eventID);
 
     if (!ev) return res.status(404).json({ error: "Event not found." });
     if (!ev.squareLocationId)
@@ -1106,7 +1114,7 @@ drinkRows = Array.from(drinkMap.values());
         totalCollected = excluded.totalCollected,
        DatePulledAt = CURRENT_TIMESTAMP
     `).run(
-      eventId,
+      eventID,
       grossSales,
       netSales,
       discounts,
@@ -1115,8 +1123,8 @@ drinkRows = Array.from(drinkMap.values());
      totalCollected
     );
   
-    saveDrinkSales(eventId, drinkRows);
-    console.log("Saving drink rows:", drinkRows.length, "for event", eventId);
+    saveDrinkSales(eventID, drinkRows);
+    console.log("Saving drink rows:", drinkRows.length, "for event", eventID);
 
 
     res.json({
@@ -1486,8 +1494,8 @@ async function fetchSquareLaborForEvent(eventID) {
 
 
 
-app.put("/api/events/:eventId/labor", (req, res) => {
-  const { eventId } = req.params;
+app.put("/api/events/:eventID/labor", (req, res) => {
+  const { eventID } = req.params;
   const { laborRows } = req.body;
 
   const deleteStmt = db.prepare(
@@ -1499,10 +1507,10 @@ app.put("/api/events/:eventId/labor", (req, res) => {
   `);
 
   const tx = db.transaction(() => {
-    deleteStmt.run(eventId);
+    deleteStmt.run(eventID);
     for (const row of laborRows) {
       insertStmt.run(
-        eventId,
+        eventID,
         row.employeeName,
         row.hoursWorked,
         row.hourlyRate
@@ -1520,14 +1528,14 @@ app.put("/api/events/:eventId/labor", (req, res) => {
 // -------------------------------
 app.put("/api/events/:id/finalize", (req, res) => {
   try {
-    const eventId = Number(req.params.id);
+    const eventID = Number(req.params.id);
 
     // --------------------------------------------------
     // 1️⃣ Event existence check
     // --------------------------------------------------
     const event = db
-      .prepare(`SELECT * FROM EventInfo WHERE EventID = ?`)
-      .get(eventId);
+      .prepare(`SELECT * FROM EventInfo WHERE eventID = ?`)
+      .get(eventID);
 
     if (!event) {
       return res.status(404).json({ error: "Event not found." });
@@ -1551,8 +1559,8 @@ app.put("/api/events/:id/finalize", (req, res) => {
     // 3️⃣ Square data required
     // --------------------------------------------------
     const square = db
-      .prepare(`SELECT * FROM SalesSummary WHERE EventID = ?`)
-      .get(eventId);
+      .prepare(`SELECT * FROM SalesSummary WHERE eventID = ?`)
+      .get(eventID);
 
     if (!square) {
       return res.status(400).json({
@@ -1563,7 +1571,7 @@ app.put("/api/events/:id/finalize", (req, res) => {
     // --------------------------------------------------
     // 4️⃣ Build report + calculate scores
     // --------------------------------------------------
-    const report = buildPostEventReport(eventId);
+    const report = buildPostEventReport(eventID);
 
     const internalScore =
       (event.teamArrivalRating || 0) * 0.2 +
@@ -1596,12 +1604,12 @@ app.put("/api/events/:id/finalize", (req, res) => {
         eventScore = ?,
         isFinalized = 1,
         finalizedDate = CURRENT_TIMESTAMP
-      WHERE EventID = ?
+      WHERE eventID = ?
     `).run(
       internalScore,
       externalScore,
       eventScore,
-      eventId
+      eventID
     );
 
     // --------------------------------------------------
@@ -1802,7 +1810,7 @@ if (!exists) {
         weatherImpactRating = ?,
         hostCommunicationRating = ?,
         externalNotes = ?
-      WHERE EventID = ?
+      WHERE eventID = ?
     `
     ).run(
       r.teamArrivalRating,
@@ -1975,344 +1983,211 @@ function coerceEvent(body) {
  * ✅ Square values come ONLY from SalesSummary table.
  */
 
-function buildPostEventReport(eventId) {
+function buildPostEventReport(eventID) {
   // =========================
-  // 1) Base EventInfo record
+  // 1) Base EventInfo
   // =========================
   const event = db
     .prepare(`SELECT * FROM EventInfo WHERE eventID = ?`)
-    .get(eventId);
+    .get(eventID);
 
   if (!event) return null;
 
   const sanitizedEvent = {
-  eventID: event.eventID,
-  companyID: event.companyID,
-  eventName: event.eventName,
-  eventType: event.eventType,
-  eventDate: event.eventDate,
-  numDays: event.numDays,
-  coordinator: event.coordinator,
-  eventLocation: event.eventLocation,
-  status: event.status,
-  isFinalized: event.isFinalized,
-  finalizedDate: event.finalizedDate,
-  squareLocationId: event.squareLocationId,
-  time: event.time,
-  notes: event.notes,
-  customFields: event.customFields
-};
+    eventID: event.eventID,
+    companyID: event.companyID,
+    eventName: event.eventName,
+    eventType: event.eventType,
+    eventDate: event.eventDate,
+    numDays: event.numDays,
+    coordinator: event.coordinator,
+    eventLocation: event.eventLocation,
+    status: event.status,
+    isFinalized: event.isFinalized,
+    finalizedDate: event.finalizedDate,
+    squareLocationId: event.squareLocationId,
+    time: event.time,
+    notes: event.notes,
+    customFields: event.customFields
+  };
 
-
-  // Ensure EventExpenses row exists for this event
+  // =========================
+  // 2) Ensure Expenses Row
+  // =========================
   db.prepare(`
     INSERT INTO EventExpenses (eventID)
     VALUES (?)
     ON CONFLICT(eventID) DO NOTHING
-  `).run(eventId);
+  `).run(eventID);
 
   const manual = db.prepare(`
-  SELECT
-    healthDeptFee,
-    eventFee,
-    mileageReimbursement,
-    eventRunnerFees,
-    employeeBonus,
-    coordinatorFee
-  FROM EventExpenses
-  WHERE eventID = ?
-`).get(eventId) || {};
+    SELECT
+      healthDeptFee,
+      eventFee,
+      mileageReimbursement,
+      eventRunnerFees,
+      employeeBonus,
+      coordinatorFee
+    FROM EventExpenses
+    WHERE eventID = ?
+  `).get(eventID) || {};
 
   // =========================
-  // 2) Sales Summary (Square)
+  // 3) Sales Summary
   // =========================
   const sales = db.prepare(`
-    SELECT
-      grossSales,
-      netSales,
-      refunds,
-      discounts,
-      tips,
-      cash,
-      card,
-      wallet,
-      cashApp,
-      other,
-      totalCollected,
-      squareReportedTax,
-      squareFees,
-      totalNetRevenue
+    SELECT *
     FROM SalesSummary
     WHERE eventID = ?
-  `).get(eventId) || {};
+  `).get(eventID) || {};
+
+  const totalCollected = sales.totalCollected ?? 0;
+  const squareFees = sales.squareFees ?? 0;
+
+  const totalNetRevenue = totalCollected - squareFees;
+
+  db.prepare(`
+    UPDATE SalesSummary
+    SET totalNetRevenue = ?
+    WHERE eventID = ?
+  `).run(totalNetRevenue, eventID);
 
   // =========================
-    // 2B) Calculated Total Net Revenue
-    // =========================
-    const totals = {};
-    const totalCollected = sales.totalCollected ?? 0;
-    const squareFees = sales.squareFees ?? 0;
-    const vendorFees = 0; // future-proof, manual for now
-
-    const computedTotalNetRevenue =
-      totalCollected - squareFees - vendorFees;
-
-    const totalNetRevenue =
-      Number.isFinite(computedTotalNetRevenue)
-        ? computedTotalNetRevenue
-        : 0;
-
-    // Persist it (authoritative)
-    db.prepare(`
-      UPDATE SalesSummary
-      SET totalNetRevenue = ?
-      WHERE eventID = ?
-    `).run(
-      totalNetRevenue,
-      eventId
-    );
-
-  // =========================
-  // 3) Drink Sales
+  // 4) Fetch All Line Items
   // =========================
   const drinkSales = db.prepare(`
     SELECT drinkName, unitPrice, quantitySold, totalCost
     FROM DrinkSales
     WHERE eventID = ?
-  `).all(eventId);
+  `).all(eventID);
 
-  // =========================
-  // 4) Additional Fees
-  // =========================
   const additionalFees = db.prepare(`
     SELECT feeName, feeAmount
     FROM AdditionalFees
     WHERE eventID = ?
-  `).all(eventId);
+  `).all(eventID);
 
-  // =========================
-  // 5) Discounts (line items)
-  /**
- * DISCOUNT INVARIANT
- * ------------------
- * discounts = grossSales - netSales - refunds
- *
- * • Computed once during Square ingest
- * • Stored in SalesSummary
- * • Never recalculated
- * • Never summed from line items
- * • Never overridden by UI tables
- */
-  // =========================
   const discountNotes = db.prepare(`
-  SELECT discountName, discountAmount
-  FROM Discounts
-  WHERE eventID = ?
-`).all(eventId);
+    SELECT discountName, discountAmount
+    FROM Discounts
+    WHERE eventID = ?
+  `).all(eventID);
 
-  // =========================
-  // 6) Tips (event-level)
-  // =========================
   const tipItems = db.prepare(`
     SELECT tipAmount
     FROM TipTracker
     WHERE eventID = ?
-  `).all(eventId);
+  `).all(eventID);
 
-  // =========================
-  // 7) Supplies
-  // =========================
-  const supplies = db.prepare(`
-    SELECT itemName, unitCost, quantityUsed, totalCost
-    FROM SupplyCosts
-    WHERE eventID = ?
-  `).all(eventId);
-
-  // =========================
-  // 8) Labor
-  // =========================
   const labor = db.prepare(`
-  SELECT employeeName, hoursWorked, hourlyRate,
-         (hoursWorked * hourlyRate) AS totalPay
-  FROM EventLabor
-  WHERE eventID = ?
-`).all(eventId);
+    SELECT employeeName, hoursWorked, hourlyRate,
+           (hoursWorked * hourlyRate) AS totalPay
+    FROM EventLabor
+    WHERE eventID = ?
+  `).all(eventID);
 
-
-
-  const laborTotal = db.prepare(`
-  SELECT SUM(hoursWorked * hourlyRate) AS total
-  FROM EventLabor
-  WHERE eventID = ?
-`).get(eventId)?.total || 0;
-
-
+  const supplies = db.prepare(`
+    SELECT *
+    FROM v_event_supplies
+    WHERE eventID = ?
+  `).all(eventID);
 
   // =========================
-  // 11) Totals for Profit Summary
+  // 5) Aggregate Totals
   // =========================
-  const allTotals = {
-    drinkRevenue: drinkSales.reduce((sum, r) => sum + (r.totalCost || 0), 0),
-    additionalFees: additionalFees.reduce((sum, r) => sum + (r.feeAmount || 0), 0),
+  const totals = {
+    drinkRevenue: drinkSales.reduce((s, r) => s + (r.totalCost || 0), 0),
+    additionalFees: additionalFees.reduce((s, r) => s + (r.feeAmount || 0), 0),
     discounts: sales.discounts ?? 0,
-    tipsTotal: tipItems.reduce((sum, r) => sum + (r.tipAmount || 0), 0),
-    suppliesTotal: supplies.reduce((sum, r) => sum + (r.totalCost || 0), 0),
-    laborTotal: labor.reduce((sum, r) => sum + (r.totalPay || 0), 0),
+    tipsTotal: tipItems.reduce((s, r) => s + (r.tipAmount || 0), 0),
+    suppliesTotal: supplies.reduce((s, r) => s + (r.totalCost || 0), 0),
+    laborTotal: labor.reduce((s, r) => s + (r.totalPay || 0), 0),
     totalNetRevenue
-    };
+  };
 
+  // =========================
+  // 6) Expenses
+  // =========================
+  const expenses = {
+    healthDeptFee: manual.healthDeptFee ?? 0,
+    eventFee: manual.eventFee ?? 0,
+    mileageReimbursement: manual.mileageReimbursement ?? 0,
+    eventRunnerFees: manual.eventRunnerFees ?? 0,
+    employeeBonus: manual.employeeBonus ?? 0,
+    coordinatorFee: manual.coordinatorFee ?? 0,
+    supplyFees: totals.suppliesTotal,
+    additionalFees: totals.additionalFees,
+    laborFees: totals.laborTotal
+  };
 
- // =========================
-// 9) Expenses (Phase 1: defaults + calculated)
-// =========================
-// =========================
-// 9) Expenses (persisted + calculated)
-// =========================
-    // 9A) Load calculated totals (already done elsewhere)
-
-const expenses = {
-  // Manual
-  healthDeptFee: manual.healthDeptFee ?? 0,
-  eventFee: manual.eventFee ?? 0,
-  mileageReimbursement: manual.mileageReimbursement ?? 0,
-  eventRunnerFees: manual.eventRunnerFees ?? 0,
-  employeeBonus: manual.employeeBonus ?? 0,
-  coordinatorFee: manual.coordinatorFee ?? 0,
-
-  // Calculated
-  supplyFees: allTotals.suppliesTotal ?? 0,
-  additionalFees: allTotals.additionalFees ?? 0,
-  laborFees: Number((allTotals.laborTotal ?? 0).toFixed(2))
-};
-
-// ✅ compute once, explicitly
   expenses.totalExpenses =
-  expenses.healthDeptFee +
-  expenses.eventFee +
-  expenses.mileageReimbursement +
-  expenses.coordinatorFee +
-  expenses.eventRunnerFees +
-  expenses.employeeBonus +
-  expenses.supplyFees +
-  expenses.additionalFees +
-  expenses.laborFees;
-
-
-
-
-
-
+    expenses.healthDeptFee +
+    expenses.eventFee +
+    expenses.mileageReimbursement +
+    expenses.eventRunnerFees +
+    expenses.employeeBonus +
+    expenses.coordinatorFee +
+    expenses.supplyFees +
+    expenses.additionalFees +
+    expenses.laborFees;
 
   // =========================
-// 13) Tax Configuration
-// =========================
-const taxConfig = db.prepare(`
-  SELECT
-    federalTaxRate,
-    stateTaxRate,
-    localTaxRate,
-    taxOverrideAmount,
-    taxNotes
-  FROM EventTaxes
-  WHERE eventID = ?
-`).get(eventId) || {};
+  // 7) Taxes
+  // =========================
+  const taxConfig = db.prepare(`
+    SELECT *
+    FROM EventTaxes
+    WHERE eventID = ?
+  `).get(eventID) || {};
 
-// =========================
-// 11) Tax Computation
-// =========================
-const grossProfit =  totalNetRevenue - expenses.totalExpenses;
-const taxableProfit = grossProfit;
+  const grossProfit = totalNetRevenue - expenses.totalExpenses;
 
-const federalTaxRate = taxConfig.federalTaxRate ?? 0;
-const stateTaxRate   = taxConfig.stateTaxRate ?? 0;
-const localTaxRate   = taxConfig.localTaxRate ?? 0;
+  const federalTax = grossProfit * (taxConfig.federalTaxRate ?? 0);
+  const stateTax = grossProfit * (taxConfig.stateTaxRate ?? 0);
+  const localTax = grossProfit * (taxConfig.localTaxRate ?? 0);
 
-const federalTax = taxableProfit * federalTaxRate;
-const stateTax   = taxableProfit * stateTaxRate;
-const localTax   = taxableProfit * localTaxRate;
+  const computedTotalTax = federalTax + stateTax + localTax;
 
-const computedTotalTax = federalTax + stateTax + localTax;
+  const totalTax =
+    taxConfig.taxOverrideAmount != null
+      ? taxConfig.taxOverrideAmount
+      : computedTotalTax;
 
-const totalTax =
-  taxConfig.taxOverrideAmount != null
-    ? taxConfig.taxOverrideAmount
-    : computedTotalTax;
+  const finalNetProfit = grossProfit - totalTax;
 
-const finalNetProfit = taxableProfit - totalTax;
-
-// =========================
-// 14) Taxes Object
-// =========================
-const taxes = {
-  federalTaxRate,
-  stateTaxRate,
-  localTaxRate,
-
-  federalTax,
-  stateTax,
-  localTax,
-
-  totalTax,
-  taxOverrideAmount: taxConfig.taxOverrideAmount ?? null,
-  finalNetProfit,
-
-  taxNotes: taxConfig.taxNotes ?? null
-};
-
-const discountsFinal = Number(sales.discounts || 0);
-
-// =========================
-// 10) Accounting Profit Center
-// =========================
-
-
-
-const netProfit = grossProfit - taxes.totalTax;
-
-const finalProfit = netProfit - expenses.coordinatorFee;
-
-const accounting = {
-  grossProfit,
-  netProfit,
-  finalProfit
-};
-
+  const taxes = {
+    federalTax,
+    stateTax,
+    localTax,
+    totalTax,
+    finalNetProfit,
+    taxNotes: taxConfig.taxNotes ?? null
+  };
 
   // =========================
-  // 12) Return Unified Report
+  // 8) Accounting
   // =========================
-  //totals.totalExpenses = expenses.totalExpenses;
-  totals.grossProfit = grossProfit;
+  const accounting = {
+    grossProfit,
+    netProfit: finalNetProfit
+  };
 
-
+  // =========================
+  // 9) Return
+  // =========================
   return {
     event: sanitizedEvent,
-    sales: {
-      grossSales: sales.grossSales ?? null,
-      netSales: sales.netSales ?? null,
-      refunds: sales.refunds ?? null,
-      discounts: discountsFinal,
-      tips: sales.tips ?? null,
-      cash: sales.cash ?? null,
-      card: sales.card ?? null,
-      wallet: sales.wallet ?? null,
-      cashApp: sales.cashApp ?? null,
-      other: sales.other ?? null,
-      totalCollected: sales.totalCollected ?? null,
-      squareFees: sales.squareFees ?? null,
-      squareReportedTax: sales.squareReportedTax ?? null,
-      totalNetRevenue: sales.totalNetRevenue
-    },
+    sales,
     drinkSales,
     additionalFees,
     discounts: discountNotes,
     supplies,
     labor,
-    taxes,
     totals,
     expenses,
+    taxes,
     accounting
-    };
+  };
 }
 
 
@@ -2335,8 +2210,8 @@ app.get("/api/events/:id/report", async (req, res) => {
   }
 });
 
-app.put("/api/events/:eventId/expenses", (req, res) => {
-  const eventId = req.params.eventId;
+app.put("/api/events/:eventID/expenses", (req, res) => {
+  const eventID = req.params.eventID;
    const {
     healthDeptFee,
     eventFee,
@@ -2367,7 +2242,7 @@ app.put("/api/events/:eventId/expenses", (req, res) => {
       eventRunnerFees ?? null,
       employeeBonus ?? null,
       coordinatorFee ?? null,
-      eventId
+      eventID
     );
 
     res.json({ success: true });
@@ -2377,15 +2252,15 @@ app.put("/api/events/:eventId/expenses", (req, res) => {
   }
 });
 
-app.post("/api/events/:eventId/additional-fees", (req, res) => {
-  const { eventId } = req.params;
+app.post("/api/events/:eventID/additional-fees", (req, res) => {
+  const { eventID } = req.params;
   const { feeName, feeAmount } = req.body;
 
   try {
     const result = db.prepare(`
       INSERT INTO AdditionalFees (eventID, feeName, feeAmount)
       VALUES (?, ?, ?)
-    `).run(eventId, feeName, Number(feeAmount) || 0);
+    `).run(eventID, feeName, Number(feeAmount) || 0);
 
     res.json({ id: result.lastInsertRowid });
   } catch (err) {
@@ -2423,68 +2298,165 @@ app.delete("/api/additional-fees/:id", (req, res) => {
   }
 });
 
-app.post("/api/events/:eventId/supplies", (req, res) => {
-  const { eventId } = req.params;
-  const { itemName, unitCost = 0, quantityUsed = 0 } = req.body;
-  const totalCost = Number(unitCost) * Number(quantityUsed);
-
+app.post("/api/events/:eventID/supplies", (req, res) => {
   try {
-    const result = db.prepare(`
-      INSERT INTO SupplyCosts (eventID, itemName, unitCost, quantityUsed, totalCost)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(eventId, itemName, Number(unitCost), Number(quantityUsed), totalCost);
+    // 1️⃣ Validate eventID
+    const eventID = Number(req.params.eventID);
+    if (!eventID) {
+      return res.status(400).json({ error: "Invalid eventID" });
+    }
 
-    res.json({ id: result.lastInsertRowid });
+    // 2️⃣ Extract & validate payload
+    const { itemName, unitCost, quantityUsed } = req.body;
+
+    if (!itemName || typeof itemName !== "string") {
+      return res.status(400).json({ error: "itemName is required" });
+    }
+
+    const uCost = Number(unitCost);
+    const qty = Number(quantityUsed);
+
+    if (!Number.isFinite(uCost) || !Number.isFinite(qty)) {
+      return res.status(400).json({ error: "Invalid unitCost or quantityUsed" });
+    }
+
+    // 3️⃣ Insert row (NO totalCost here)
+    const stmt = db.prepare(`
+      INSERT INTO EventSupplies (
+        eventID,
+        itemName,
+        unitCost,
+        quantityUsed
+      )
+      VALUES (?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(eventID, itemName.trim(), uCost, qty);
+
+    // 4️⃣ Return newly created row via VIEW
+    const newSupply = db.prepare(`
+      SELECT *
+      FROM v_event_supplies
+      WHERE id = ?
+    `).get(result.lastInsertRowid);
+
+    res.json(newSupply);
+
   } catch (err) {
-    console.error("Add supply error:", err);
-    res.status(500).json({ error: "Failed to add supply cost" });
+    console.error("❌ Add supply error:", err);
+    res.status(500).json({ error: "Failed to add supply item" });
   }
 });
 
+
 app.put("/api/supplies/:id", (req, res) => {
-  const { id } = req.params;
-  const { itemName, unitCost, quantityUsed } = req.body;
-
   try {
-    const row = db
-    .prepare("SELECT unitCost, quantityUsed FROM SupplyCosts WHERE id = ?")
-    .get(id);
+    // 1️⃣ Validate supply ID
+    const supplyID = Number(req.params.id);
+    if (!supplyID) {
+      return res.status(400).json({ error: "Invalid supply ID" });
+    }
 
+    // 2️⃣ Extract payload
+    const { itemName, unitCost, quantityUsed } = req.body;
 
-    const newUnitCost = unitCost ?? row.unitCost;
-    const newQty = quantityUsed ?? row.quantityUsed;
-    const totalCost = Number(newUnitCost) * Number(newQty);
+    if (!itemName || typeof itemName !== "string") {
+      return res.status(400).json({ error: "itemName is required" });
+    }
 
-    db.prepare(`
-      UPDATE SupplyCosts
-      SET itemName = ?, unitCost = ?, quantityUsed = ?, totalCost = ?
+    const uCost = Number(unitCost);
+    const qty = Number(quantityUsed);
+
+    if (!Number.isFinite(uCost) || !Number.isFinite(qty)) {
+      return res.status(400).json({ error: "Invalid unitCost or quantityUsed" });
+    }
+
+    // 3️⃣ Ensure row exists
+    const existing = db.prepare(`
+      SELECT id
+      FROM EventSupplies
       WHERE id = ?
-    `).run(itemName ?? row.itemName, newUnitCost, newQty, totalCost, id);
+    `).get(supplyID);
 
-    res.json({ success: true });
+    if (!existing) {
+      return res.status(404).json({ error: "Supply item not found" });
+    }
+
+    // 4️⃣ Update base table ONLY
+    db.prepare(`
+      UPDATE EventSupplies
+      SET
+        itemName = ?,
+        unitCost = ?,
+        quantityUsed = ?
+      WHERE id = ?
+    `).run(
+      itemName.trim(),
+      uCost,
+      qty,
+      supplyID
+    );
+
+    // 5️⃣ Return updated row via VIEW
+    const updatedSupply = db.prepare(`
+      SELECT *
+      FROM v_event_supplies
+      WHERE id = ?
+    `).get(supplyID);
+
+    res.json(updatedSupply);
+
   } catch (err) {
-    console.error("Update supply error:", err);
-    res.status(500).json({ error: "Failed to update supply cost" });
+    console.error("❌ Update supply error:", err);
+    res.status(500).json({ error: "Failed to update supply item" });
   }
 });
 
 app.delete("/api/supplies/:id", (req, res) => {
   try {
-    db.prepare(`DELETE FROM SupplyCosts WHERE id = ?`)
-      .run(req.params.id);
-    res.json({ success: true });
+    // 1️⃣ Validate supply ID
+    const supplyID = Number(req.params.id);
+    if (!supplyID) {
+      return res.status(400).json({ error: "Invalid supply ID" });
+    }
+
+    // 2️⃣ Ensure row exists
+    const existing = db.prepare(`
+      SELECT id, eventID
+      FROM EventSupplies
+      WHERE id = ?
+    `).get(supplyID);
+
+    if (!existing) {
+      return res.status(404).json({ error: "Supply item not found" });
+    }
+
+    // 3️⃣ Delete
+    db.prepare(`
+      DELETE FROM EventSupplies
+      WHERE id = ?
+    `).run(supplyID);
+
+    // 4️⃣ Return minimal confirmation
+    res.json({
+      success: true,
+      deletedSupplyId: supplyID,
+      eventID: existing.eventID
+    });
+
   } catch (err) {
-    console.error("Delete supply error:", err);
-    res.status(500).json({ error: "Failed to delete supply cost" });
+    console.error("❌ Delete supply error:", err);
+    res.status(500).json({ error: "Failed to delete supply item" });
   }
 });
 
 
-function saveDrinkSales(eventId, rows) {
+
+function saveDrinkSales(eventID, rows) {
   db.prepare(`
     DELETE FROM DrinkSales
     WHERE eventID = ?
-  `).run(eventId);
+  `).run(eventID);
 
   const stmt = db.prepare(`
     INSERT INTO DrinkSales
@@ -2494,7 +2466,7 @@ function saveDrinkSales(eventId, rows) {
 
   for (const r of rows) {
     stmt.run(
-      eventId,
+      eventID,
       r.drinkName,
       r.unitPrice,
       r.quantitySold,
@@ -2504,13 +2476,13 @@ function saveDrinkSales(eventId, rows) {
 }
 
 
-app.put("/api/events/:eventId/labor", (req, res) => {
-  const { eventId } = req.params;
+app.put("/api/events/:eventID/labor", (req, res) => {
+  const { eventID } = req.params;
   const { laborRows = [], laborFees = 0 } = req.body;
 
   try {
     const tx = db.transaction(() => {
-      db.prepare(`DELETE FROM Labor WHERE eventID = ?`).run(eventId);
+      db.prepare(`DELETE FROM Labor WHERE eventID = ?`).run(eventID);
 
       const insert = db.prepare(`
         INSERT INTO Labor (eventID, employeeName, hoursWorked, hourlyRate)
@@ -2518,14 +2490,14 @@ app.put("/api/events/:eventId/labor", (req, res) => {
       `);
 
       for (const r of laborRows) {
-        insert.run(eventId, r.employeeName, r.hoursWorked, r.hourlyRate);
+        insert.run(eventID, r.employeeName, r.hoursWorked, r.hourlyRate);
       }
 
       db.prepare(`
         UPDATE EventExpenses
         SET laborFees = ?
         WHERE eventID = ?
-      `).run(laborFees, eventId);
+      `).run(laborFees, eventID);
     });
 
     tx();

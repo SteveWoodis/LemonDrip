@@ -1,5 +1,9 @@
 {
   "dependencies": {
     "square": "^43.2.0"
+  },
+  "scripts": {
+    "reset:demo": "node init_lemondrip.js && node scripts/seedfromexcel.js"
   }
+
 }

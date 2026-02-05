@@ -2726,6 +2726,7 @@ function renderSupplyCostsCard(items = []) {
       <input id="newSupplyUnitCost" type="number" placeholder="Unit Cost">
       <input id="newSupplyQty" type="number" placeholder="Qty Used">
       <button onclick="addSupply()">➕ Add</button>
+      <button onclick="deleteSupply()"  Delete</button>
     </div>
 
     <hr>
@@ -2737,23 +2738,28 @@ function renderSupplyCostsCard(items = []) {
 
 async function addSupply() {
   if (window.activeEvent?.isFinalized === 1) {
-  alert("This event has been finalized and can no longer be edited.");
-  return;
+    alert("This event has been finalized and can no longer be edited.");
+    return;
   }
+
   const payload = {
     itemName: document.getElementById("newSupplyName").value,
     unitCost: Number(document.getElementById("newSupplyUnitCost").value) || 0,
     quantityUsed: Number(document.getElementById("newSupplyQty").value) || 0
   };
 
-  await fetch(`${API_BASE}/api/events/${currentEventId}/supplies`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  await fetch(
+    `${API_BASE}/api/events/${window.currentEventId}/supplies`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }
+  );
 
-  reloadEventDashboard();
+  await reloadEventDashboard();
 }
+
 
 async function updateSupply(id, changes) {
   if (window.activeEvent?.isFinalized === 1) {
@@ -3053,9 +3059,9 @@ wireLaborCard(eventID);
 }
 
 
-async function pullSquareSales(eventId) {
+async function pullSquareSales(eventID) {
   try {
-    const res = await fetch(`http://localhost:3000/api/square/sales/${eventId}`, {
+    const res = await fetch(`http://localhost:3000/api/square/sales/${eventID}`, {
       method: "PUT"
     });
 
