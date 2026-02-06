@@ -1833,8 +1833,7 @@ async function reloadEventDashboard() {
       supplies: report.supplies,
       labor: report.labor
     });
-    console.log("REFRESHED EVENT", refreshedEvent);
-
+    
     loadEventIntoDashboard(refreshedEvent);
 
   } catch (err) {
@@ -2214,7 +2213,7 @@ function renderEventProfitSummary(event) {
     "Event Profit Summary",
     `
     <div class="profit-summary">
-      <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
+      <div><strong>Gross Sales:</strong> ${fmtMoney(totals.grossSales)}</div>
       <div><strong>Returns:</strong> (${fmtMoney(sales.refunds)})</div>
       <div><strong>Discounts:</strong> (${fmtMoney(sales.discounts)})</div>
       <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
@@ -2978,8 +2977,8 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   // 3) DRINK SALES CARD
   // ======================
-  let drinkHTML = "<p>No drink sales recorded.</p>";
-  if (event.drinkSales && event.drinkSales.length) {
+   let drinkHTML = "<p>No drink sales recorded.</p>";
+    if (event.drinkSales && event.drinkSales.length) {
     const totalRevenue = event.drinkSales.reduce(
       (sum, r) => sum + (Number(r.totalCost) || 0),
       0
@@ -3158,6 +3157,80 @@ async function openPostEventReport(eventData) {
     console.error("❌ Error loading post-event report:", err);
     alert("Failed to load post-event report. Check console for details.");
   }
+}
+
+function renderDrinkSalesCard(drinkSales = []) {
+  const container = document.querySelector(".drink-sales-card");
+  if (!container) return;
+
+  if (!drinkSales.length) {
+    container.innerHTML = `
+      <p class="muted">No drink sales recorded for this event.</p>
+    `;
+    return;
+  }
+
+  let table = `
+    <table class="drink-sales-table">
+      <thead>
+        <tr>
+          <th>Drink</th>
+          <th class="right">Qty Sold</th>
+          ${IS_PRO ? `<th class="right">Unit $</th>` : ""}
+          ${IS_PRO ? `<th class="right">Total $</th>` : ""}
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  let grandTotal = 0;
+
+  for (const row of drinkSales) {
+    const qty = row.quantitySold || 0;
+
+    const unitPrice = IS_PRO
+      ? (row.unitPrice ?? 0)
+      : null;
+
+    const totalCost = IS_PRO
+      ? (row.totalCost ?? 0)
+      : null;
+
+    if (IS_PRO) {
+      grandTotal += totalCost;
+    }
+
+    table += `
+      <tr>
+        <td>${row.drinkName}</td>
+        <td class="right">${qty}</td>
+        ${IS_PRO ? `<td class="right">$${unitPrice.toFixed(2)}</td>` : ""}
+        ${IS_PRO ? `<td class="right">$${totalCost.toFixed(2)}</td>` : ""}
+      </tr>
+    `;
+  }
+
+  table += `
+      </tbody>
+    </table>
+  `;
+
+  if (IS_PRO) {
+    table += `
+      <div class="drink-sales-total">
+        <strong>Total Drink Revenue:</strong>
+        $${grandTotal.toFixed(2)}
+      </div>
+    `;
+  } else {
+    table += `
+      <div class="upgrade-hint">
+        🔒 Upgrade to <strong>Pro</strong> to see item-level pricing and revenue.
+      </div>
+    `;
+  }
+
+  container.innerHTML = table;
 }
 
 function renderPostEventReport(report) {

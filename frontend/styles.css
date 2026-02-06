@@ -76,6 +76,7 @@ body {
 .home-text h2 {
   font-size: 2rem;
   margin-bottom: 0.5rem;
+
 }
 
 .home-tagline {
@@ -190,7 +191,7 @@ body {
 
 .activity-visual img {
   width: 100%;
-  max-height: 260px;
+  max-height: 640spx;
   object-fit: cover;
   border-radius: 14px;
   box-shadow: var(--shadow-soft);

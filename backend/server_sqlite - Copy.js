@@ -873,18 +873,14 @@ app.put("/api/events/:id", (req, res) => {
  *   discounts = grossSales - netSales - refunds
  */
 app.put("/api/square/sales/:eventID", async (req, res) => {
-  let grossSales = 0;
-  let netSales = 0;
-  let refunds = 0;
-  let squareReportedTax = 0;
-  let totalCollected = 0;
-  let discounts = 0;
-
-  let orders = [];
-  let ordersUsable = false;
-  let drinkRows = [];
-  const USER_PLAN = process.env.USER_PLAN || "starter";
-  const IS_PRO = USER_PLAN === "pro";
+let grossSales = 0;
+let netSales = 0;
+let refunds = 0;
+let squareReportedTax = 0;
+let totalCollected = 0;
+ let discounts =0;
+let orders = [];
+let drinkRows = [];
 
   try {
     const eventID = Number(req.params.eventID);
@@ -895,164 +891,156 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
       WHERE eventID = ?
     `).get(eventID);
 
-    if (!ev) {
-      return res.status(404).json({ error: "Event not found." });
-    }
-    if (!ev.squareLocationId) {
+    console.log("SQUARE LOCATION", ev.squareLocationId);
+
+    if (!ev) return res.status(404).json({ error: "Event not found." });
+    if (!ev.squareLocationId)
       return res.status(400).json({ error: "Event has no Square Location ID." });
-    }
 
     const token = process.env.SQUARE_ACCESS_TOKEN;
 
     // ─────────────────────────────────────────────
-    // 1️⃣ DATE WINDOWS
+    // 1️⃣ LOCAL EVENT DAY → UTC WINDOW
     // ─────────────────────────────────────────────
-    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
-    const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
 
-    const orderStartISO = localStart.toISOString();
-    const orderEndISO   = localEnd.toISOString();
+    // Local midnight → local 23:59:59
+  const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
+const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
 
-    const paymentStartISO = orderStartISO;
-    const paymentEnd = new Date(localEnd);
-    paymentEnd.setHours(paymentEnd.getHours() + 2);
-    const paymentEndISO = paymentEnd.toISOString();
+const orderStartISO = localStart.toISOString();
+const orderEndISO   = localEnd.toISOString();
 
-    console.log("orderStart", orderStartISO);
+const paymentStartISO = orderStartISO;
 
-    // ─────────────────────────────────────────────
-    // 2️⃣ ORDERS (ITEMIZED SALES)
-    // ─────────────────────────────────────────────
-    try {
-      const orderRes = await fetch(
-        "https://connect.squareup.com/v2/orders/search",
-        {
-          method: "POST",
-          headers: {
-            "Square-Version": "2025-01-15",
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            location_ids: [ev.squareLocationId],
-            return_entries: true,
-            query: {
-              filter: {
-                state_filter: { states: ["COMPLETED"] },
-                date_time_filter: {
-                  closed_at: {
-                    start_at: orderStartISO,
-                    end_at: orderEndISO
-                  }
-                }
-              }
-            }
-          })
-        }
-      );
- //const raw = await orderRes.text();
-     // console.log("orderRes",raw);
+const paymentEnd = new Date(localEnd);
+paymentEnd.setHours(paymentEnd.getHours() + 2);
+const paymentEndISO = paymentEnd.toISOString();
 
- 
+console.log("Pulling orders for location:", ev.squareLocationId);
 
-    if (!orderRes.ok) {
-      const raw = await orderRes.text();
-      throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
-    }
-    const orderJson = await orderRes.json();
-
-
-   orders = (orderJson.order_entries || []).map(e => e.order ?? e);
-
-    console.log("Orders returned:", orders.length);
-
-    ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
-
-
-    console.log("ordersUsable:", ordersUsable);
-
-    } catch (err) {
-      console.error("❌ Orders fetch failed:", err);
-      return res.status(500).json({ error: "Orders fetch failed" });
-    }
-
-    
-
-    // ─────────────────────────────────────────────
-    // 🥤 DRINK SALES + GROSS SALES (ORDERS PATH)
-    // ─────────────────────────────────────────────
-    // ─────────────────────────────────────────────
-// 🥤 BUILD ITEMIZED DRINK SALES (Starter vs Pro)
+ // ─────────────────────────────────────────────
+// 2️⃣ ORDER-CENTRIC (sales truth)
 // ─────────────────────────────────────────────
-const drinkMap = new Map();
-let totalDrinkCost = 0;
+try {
+  const orderRes = await fetch(
+    "https://connect.squareup.com/v2/orders/search",
+    {
+      method: "POST",
+      headers: {
+        "Square-Version": "2025-01-15",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+  location_ids: [ev.squareLocationId],
 
+  // ⭐ ADD THIS LINE
+  return_entries: true,
+
+  query: {
+    filter: {
+      state_filter: { states: ["COMPLETED"] },
+      date_time_filter: {
+        closed_at: {
+          start_at: orderStartISO,
+          end_at: orderEndISO
+        }
+      }
+    }
+  }
+})
+
+    }
+  );
+
+  if (!orderRes.ok) {
+    const raw = await orderRes.text();
+    throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
+  }
+
+  const orderJson = await orderRes.json();
+  orders = orderJson.orders || [];
+  console.log("Orders returned:", orders.length);
+
+
+  // ─────────────────────────────────────────────
+// 🥤 BUILD ITEMIZED DRINK SALES
+// ─────────────────────────────────────────────
+
+const drinkMap = new Map();
 for (const order of orders) {
+
   for (const li of order.line_items || []) {
+
     const name = li.name || "Unknown";
+
     const qty = Number(li.quantity || 0);
 
-    // Starter-safe defaults
-    let unitPrice = null;
-    let rowCost = null;
+    const unitPrice =
+      (li.base_price_money?.amount || 0) / 100;
 
-    if (IS_PRO) {
-      const resolvedUnitPrice =
-        (li.base_price_money?.amount ??
-         li.variation_total_price_money?.amount ??
-         0) / 100;
+    const total =
+      (li.total_money?.amount || 0) / 100;
 
-      unitPrice = resolvedUnitPrice;
-      rowCost = resolvedUnitPrice * qty;
-      totalDrinkCost += rowCost;
-    }
-
+    // combine identical drinks
     if (!drinkMap.has(name)) {
       drinkMap.set(name, {
         drinkName: name,
-        unitPrice,           // null for Starter
+        unitPrice,
         quantitySold: qty,
-        rowCost,             // null for Starter
-        totalCost: rowCost   // will accumulate in Pro
+        totalCost: total
       });
     } else {
       const d = drinkMap.get(name);
       d.quantitySold += qty;
-
-      if (IS_PRO) {
-        d.rowCost = unitPrice * qty;
-        d.totalCost += d.rowCost;
-      }
+      d.totalCost += total;
     }
   }
 }
 
 drinkRows = Array.from(drinkMap.values());
 
-console.table(
-  drinkRows.map(d => ({
-    drink: d.drinkName,
-    qty: d.quantitySold,
-    unitPrice: d.unitPrice,
-    rowCost: d.rowCost,
-    totalCost: d.totalCost
-  }))
-);
 
-console.log("Drink totalCost:", totalDrinkCost);
+} catch (err) {
+  console.error("❌ Square Orders fetch failed:", err);
+  return res.status(500).json({
+    error: "Square sales sync failed.",
+    detail: err.message
+  });
+}
+    // Deduplicate orders
+    const orderMap = new Map();
+   
+   for (const o of orders) {
 
-    // ─────────────────────────────────────────────
-    // 3️⃣ PAYMENTS (CASH TRUTH)
+  if (o.total_gross_sales_money?.amount != null) {
+    grossSales += o.total_gross_sales_money.amount / 100;
+  }
+
+  if (o.total_net_sales_money?.amount != null) {
+    netSales += o.total_net_sales_money.amount / 100;
+  }
+
+  if (o.total_tax_money?.amount != null) {
+    squareReportedTax += o.total_tax_money.amount / 100;
+  }
+}
+
+		// ─────────────────────────────────────────────
+    // 3️⃣ PAYMENT-CENTRIC (fees + cash flow)
     // ─────────────────────────────────────────────
     let tips = 0;
     let squareFees = 0;
+    let cash = 0, card = 0, wallet = 0, other = 0;
+
     let cursor = null;
+	let allPayments = [];
 
     do {
       const url = new URL("https://connect.squareup.com/v2/payments");
-      url.searchParams.set("begin_time", paymentStartISO);
+     url.searchParams.set("begin_time", paymentStartISO);
       url.searchParams.set("end_time", paymentEndISO);
-      url.searchParams.set("location_id", ev.squareLocationId);
+	  url.searchParams.set("location_id", ev.squareLocationId);
       url.searchParams.set("limit", "100");
       if (cursor) url.searchParams.set("cursor", cursor);
 
@@ -1063,67 +1051,55 @@ console.log("Drink totalCost:", totalDrinkCost);
         }
       });
 
-     // const rawP = await payRes.text();
-     // console.log("Response",rawP);
-
-
       const payJson = await payRes.json();
-
-
       const payments = payJson.payments || [];
+	 allPayments.push(...payments);
+	
+		for (const pay of payments) {
+		  const amt = (pay.amount_money?.amount || 0) / 100;
+      totalCollected += amt;
+		
+     
+		  switch (pay.source_type) {
+			case "CASH":   cash += amt; break;
+			case "CARD":   card += amt; break;
+			case "WALLET": wallet += amt; break;
+			default:       other += amt;
+		  }
 
-      for (const pay of payments) {
-        const amt = (pay.amount_money?.amount || 0) / 100;
-        totalCollected += amt;
+		  if (pay.tip_money)
+			tips += pay.tip_money.amount / 100;
 
-        if (pay.tip_money) {
-          tips += pay.tip_money.amount / 100;
-        }
+		  if (pay.refunded_money)
+			refunds += pay.refunded_money.amount / 100;
 
-        if (pay.refunded_money) {
-          refunds += pay.refunded_money.amount / 100;
-        }
-
-        for (const f of pay.processing_fee || []) {
-          squareFees += (f.amount_money.amount || 0) / 100;
-        }
-      }
-
-      cursor = payJson.cursor || null;
+		  for (const f of pay.processing_fee || []) {
+				squareFees += (f.amount_money.amount || 0) / 100;
+				
+		}
+		
+	}
+  discounts = grossSales - netSales - refunds;
+  cursor = payJson.cursor || null;
     } while (cursor);
+	
+	const feesPending = allPayments.some(pay => pay.processing_fee == null);
+
+	// Start with payment-computed fees
+	let squareFeesFinal = squareFees;
 
     // ─────────────────────────────────────────────
-    // 4️⃣ FALLBACK GROSS SALES
+    // 4️⃣ Atomic upsert
     // ─────────────────────────────────────────────
-    if (!ordersUsable) {
-      console.warn("⚠ Orders unavailable — deriving grossSales from payments");
-      grossSales = totalCollected + refunds;
+    const safe = v => Number.isFinite(v) ? v : null;
+    if (!Number.isFinite(grossSales) || !Number.isFinite(netSales)) {
+      throw new Error("Invalid Square totals computed");
     }
 
-    netSales = totalCollected - refunds;
-    discounts = grossSales - netSales - refunds;
-    console.log("DISCOUNT: ", discounts);
-
-    console.log({
-      ordersLength: orders.length,
-      ordersUsable,
-      grossSales,
-      netSales,
-      totalCollected,
-      refunds
-    });
-
-    // ─────────────────────────────────────────────
-    // 5️⃣ SAVE SUMMARY
-    // ─────────────────────────────────────────────
     db.prepare(`
       INSERT INTO SalesSummary (
         eventID,
-        grossSales,
-        netSales,
-        discounts,
-        refunds,
-        tips,
+        grossSales, netSales, discounts, refunds, tips,
         totalCollected
       )
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1134,7 +1110,7 @@ console.log("Drink totalCost:", totalDrinkCost);
         refunds = excluded.refunds,
         tips = excluded.tips,
         totalCollected = excluded.totalCollected,
-        DatePulledAt = CURRENT_TIMESTAMP
+       DatePulledAt = CURRENT_TIMESTAMP
     `).run(
       eventID,
       grossSales,
@@ -1142,14 +1118,20 @@ console.log("Drink totalCost:", totalDrinkCost);
       discounts,
       refunds,
       tips,
-      totalCollected
+     totalCollected
     );
-    console.table(drinkRows);
-
+  
     saveDrinkSales(eventID, drinkRows);
+    console.log("Saving drink rows:", drinkRows.length, "for event", eventID);
+
 
     res.json({
       success: true,
+      localDay: ev.eventDate,
+      windows: {
+        orders: { start: orderStartISO, end: orderEndISO },
+        payments: { start: paymentStartISO, end: paymentEndISO }
+      },
       sales: {
         grossSales,
         netSales,
@@ -1157,15 +1139,15 @@ console.log("Drink totalCost:", totalDrinkCost);
         refunds,
         tips,
         totalCollected
-      }
+        }
     });
 
   } catch (err) {
     console.error("❌ Square sync failed:", err);
     res.status(500).json({ error: err.message });
   }
-});
 
+});
 
 
 
@@ -2060,6 +2042,7 @@ function buildPostEventReport(eventID) {
   `).get(eventID) || {};
  
   const grossSales = Number(sales.grossSales) || 0;
+  console.log("GROSS SALES: ", sales.grossSales);
   const totalCollected = sales.totalCollected ?? 0;
   const squareFees = sales.squareFees ?? 0;
 
