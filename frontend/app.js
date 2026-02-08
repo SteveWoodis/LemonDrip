@@ -13,6 +13,8 @@ let events = [];
 let formTemplate = { templateName: "Custom Event Form", fields: [] };
 let lastLoadedEvents = [];
 let expensesEditMode = false;
+window.availableTemplates = [];
+
 window.USER_PLAN = "starter"; // or "pro"
 
 // -----------------------------
@@ -789,6 +791,8 @@ async function editEvent(eventData) {
   window.activeeventID = eventData.eventID || eventData["Event ID"];
   window.isEditing = true;
 
+  console.log("What is the activeeventID? ", window.activeeventID);
+
   // Show Add/Edit form
   openAddEventForUser();
 
@@ -1047,15 +1051,16 @@ async function submitEvent(e) {
   const templateName = document.getElementById("templateSelect")?.value;
   
   const template = window.availableTemplates?.find(
-    (t) => t.templateName === templateName
+    (t) => t.TemplateName === templateName
   );
-  console.log("🧩 ACTIVE TEMPLATE:", template);
-  console.log("🧩 TEMPLATE.FIELDS:", template.fields);
+ 
+const fields = template?.fields ?? template?.Fields;
 
-  if (!template || !Array.isArray(template.fields)) {
-    alert("Template is missing or invalid.");
-    return;
-  }
+if (!template || !Array.isArray(fields)) {
+  alert("Template is missing or invalid.");
+  return;
+}
+
 
   // --------------------------------------------------
   // 2️⃣ Read ALL form values ONCE (raw map)
@@ -1504,28 +1509,42 @@ async function loadTemplates() {
 async function populateTemplateDropdown() {
   try {
     const res = await fetch(`${API_BASE}/api/formTemplates`);
-    let templates = await res.json();
+    const templates = await res.json();
 
-    templates = toCamelCaseKeys(templates);
+    if (!Array.isArray(templates)) {
+      console.error("❌ Templates failed to load:", templates);
+      return;
+    }
     window.availableTemplates = templates;
-
+    console.log(`$(templates.length) templates loaded`);
     const dropdown = document.getElementById("templateSelect");
-    if (!dropdown) return;
+    const loadBtn = document.getElementById("loadTemplateBtn");
 
-    dropdown.innerHTML = '<option value="">-- Select Template --</option>';
+    if (dropdown && loadBtn) {
+      loadBtn.disabled = true; // start disabled
 
-    templates.forEach(tpl => {
-      const opt = document.createElement("option");
-      opt.value = tpl.templateName;
-      opt.textContent = tpl.templateName;
-      dropdown.appendChild(opt);
-    });
+      dropdown.addEventListener("change", () => {
+        loadBtn.disabled = !dropdown.value;
+      });
+    }
+
+
+   dropdown.innerHTML = "";
+
+    
+  for (const t of templates) {
+    const opt = document.createElement("option");
+    opt.value = t.TemplateName;
+    opt.textContent = t.TemplateName;
+    dropdown.appendChild(opt);
+  }
 
     console.log(`✅ ${templates.length} templates loaded`);
   } catch (err) {
     console.error("❌ Error loading templates:", err);
   }
 }
+
 
 
 // ⚡ When user picks a template
@@ -1544,28 +1563,42 @@ function stripEventColorFromTemplate(tpl) {
 }
 
 function useSelectedTemplate() {
-  const selected = document.getElementById("templateSelect").value;
+  const templates = window.availableTemplates;
+
+  if (!Array.isArray(templates)) {
+    console.error("❌ Templates not loaded yet");
+    return;
+  }
+
+  const dropdown = document.getElementById("templateSelect");
+  if (!dropdown) {
+    console.error("❌ Template dropdown not found");
+    return;
+  }
+
+  const selected = dropdown.value;
   if (!selected) {
+    console.warn("ℹ️ No template selected");
     alert("Please select a template first.");
     return;
   }
-  console.log("Template value", selected);
 
-  const template = window.availableTemplates.find(
-    (t) => t.templateName === selected
-  );
-  if (!template) {
+  const tpl = templates.find(t => t.TemplateName === selected);
+
+  if (!tpl) {
+    console.warn("❌ Template not found:", selected);
     alert("Template not found!");
     return;
   }
 
-  console.log(
-    "📋 Loading template into Add Event form:",
-    template
-  );
-  rebuildAddEventForm(stripEventColorFromTemplate(template));
-  alert(`✅ Loaded template: "${template.templateName}"`);
+  console.log("📋 Loading template into Add Event form:", tpl);
+
+  rebuildAddEventForm(stripEventColorFromTemplate(tpl));
+
+  alert(`✅ Loaded template: "${tpl.TemplateName}"`);
 }
+
+
 
 function activateTemplate() {
   const selector = document.getElementById("templateSelect");
@@ -1582,38 +1615,40 @@ function activateTemplate() {
     return;
   }
   const tpl = window.availableTemplates.find(
-    (t) => t.templateName === selectedName
+    (t) => t.TemplateName === selectedName
   );
   if (!tpl) {
     alert("Template not found!");
     return;
   }
-  console.log("Activating template:", tpl.templateName);
+  console.log("Activating template:", tpl.TemplateName);
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
   alert(`✅ "${tpl.TemplateName}" activated!`);
 }
 
 function rebuildAddEventForm(template) {
   const formContainer = document.getElementById("eventForm");
-
+  
   // 🧠 Keep existing event data if present
   const existing = window.activeEvent || {};
 
   // Only clear the form if we’re not editing an event
   formContainer.innerHTML = "";
+  const fields = template?.fields ?? template?.Fields ?? template?.FIELDS ?? null;
+console.log("✅ fields resolved:", fields);
+
+
+  console.log("WHAT IS TEMPLATE VALUE: ", template);
+  console.log(" The Fields of Template:", fields);
 
   if (
-    !template ||
-    !template.fields ||
-    !Array.isArray(template.fields)
-  ) {
+    !template || !Array.isArray(fields)) {
     console.error("❌ Invalid template structure:", template);
-    formContainer.innerHTML =
-      "<p>Template could not be loaded.</p>";
+    formContainer.innerHTML = "<p>Template could not be loaded.</p>";
     return;
   }
 
-  (template.fields[0]?.fields || template.fields).forEach(
+  (fields[0]?.fields || fields).forEach(
     (field) => {
       // Skip deprecated "Event Color"
       if (
@@ -2213,7 +2248,7 @@ function renderEventProfitSummary(event) {
     "Event Profit Summary",
     `
     <div class="profit-summary">
-      <div><strong>Gross Sales:</strong> ${fmtMoney(totals.grossSales)}</div>
+      <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
       <div><strong>Returns:</strong> (${fmtMoney(sales.refunds)})</div>
       <div><strong>Discounts:</strong> (${fmtMoney(sales.discounts)})</div>
       <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
@@ -2803,6 +2838,7 @@ async function loadEventIntoDashboard(evt) {
 
   window.activeEvent = event;
   window.currentEventId = event.eventID;
+ 
 
   const eventID = event.eventID;
   const eventName = event.eventName || "Unnamed Event";
@@ -2852,7 +2888,8 @@ async function loadEventIntoDashboard(evt) {
       safeAppend(finalizedIndicator, fd);
     }
   }
-
+ window.activeEventID = event.eventID;
+  window.activeEvent   = event;
   // ======================
   // DASHBOARD BUTTONS
   // ======================
@@ -2860,20 +2897,32 @@ async function loadEventIntoDashboard(evt) {
   if (buttonContainer) {
     buttonContainer.innerHTML = "";
 
-    // Pull Square
-    const squareBtn = document.createElement("button");
-    squareBtn.textContent = "🔄 Pull Square Sales";
-    squareBtn.classList.add("btn-primary");
-    squareBtn.addEventListener("click", async () => {
+    // Pull Square Sales
+    const squareSalesBtn = document.createElement("button");
+    squareSalesBtn.textContent = "🔄 Pull Square Sales";
+    squareSalesBtn.classList.add("btn-primary");
+    squareSalesBtn.addEventListener("click", async () => {
       try {
         await pullSquareSales(eventID);
         await reloadEventDashboard();
       } catch (err) {
-        console.error("Square pull error:", err);
+        console.error("Square Sales pull error:", err);
         alert("Failed to pull Square sales.");
       }
     });
-
+    // Pull Square Labor
+    const squareLaborBtn = document.createElement("button");
+    squareLaborBtn.textContent = "🔄 Pull Square Labor";
+    squareLaborBtn.classList.add("btn-primary");
+    squareLaborBtn.addEventListener("click", async () => {
+      try {
+        await pullSquareLabor(eventID);
+        await reloadEventDashboard();
+      } catch (err) {
+        console.error("Square Labor pull error:", err);
+        alert("Failed to pull Square Labor.");
+      }
+    });
     // Finalize
     const finalizeBtn = document.createElement("button");
     finalizeBtn.textContent = "✅ Finalize Event";
@@ -2938,7 +2987,8 @@ async function loadEventIntoDashboard(evt) {
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
-    safeAppend(buttonContainer, squareBtn);
+    safeAppend(buttonContainer, squareSalesBtn);
+    safeAppend(buttonContainer,squareLaborBtn);
     safeAppend(buttonContainer, finalizeBtn);
     safeAppend(buttonContainer, reportBtn);
     safeAppend(buttonContainer, editBtn);
@@ -3088,6 +3138,63 @@ async function pullSquareSales(eventID) {
     throw err;
   }
 }
+async function loadEventLabor(eventID) {
+  if (!eventID) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/labor`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      console.error("❌ Failed to load labor:", json);
+      return;
+    }
+
+    // 1️⃣ Render labor rows
+    renderLaborTable(json.rows);
+
+    // 2️⃣ Update totals
+    updateLaborTotals(json.totalLaborCost);
+
+    // 3️⃣ Cascade updates
+    updateExpensesFromLabor(json.totalLaborCost);
+    updateProfitSummary();
+
+  } catch (err) {
+    console.error("❌ Labor reload failed:", err);
+  }
+}
+
+async function pullSquareLabor() {
+  const eventID = window.activeEventID;
+  console.log("🧠 Square Labor Pull → eventID:", eventID);
+
+  if (!Number.isFinite(Number(eventID))) {
+    alert("No active event selected.");
+    return;
+  }
+
+  const res = await fetch(
+    `${API_BASE}/api/square/labor/${eventID}`,
+    { method: "PUT" }
+  );
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    console.error("❌ Square labor pull failed:", json);
+    alert(json.error || "Failed to pull Square labor.");
+    return;
+  }
+
+  alert("✅ Square labor pulled successfully.");
+  await loadEventLabor(eventID);
+}
 
 
 /* ============================================================
@@ -3157,80 +3264,6 @@ async function openPostEventReport(eventData) {
     console.error("❌ Error loading post-event report:", err);
     alert("Failed to load post-event report. Check console for details.");
   }
-}
-
-function renderDrinkSalesCard(drinkSales = []) {
-  const container = document.querySelector(".drink-sales-card");
-  if (!container) return;
-
-  if (!drinkSales.length) {
-    container.innerHTML = `
-      <p class="muted">No drink sales recorded for this event.</p>
-    `;
-    return;
-  }
-
-  let table = `
-    <table class="drink-sales-table">
-      <thead>
-        <tr>
-          <th>Drink</th>
-          <th class="right">Qty Sold</th>
-          ${IS_PRO ? `<th class="right">Unit $</th>` : ""}
-          ${IS_PRO ? `<th class="right">Total $</th>` : ""}
-        </tr>
-      </thead>
-      <tbody>
-  `;
-
-  let grandTotal = 0;
-
-  for (const row of drinkSales) {
-    const qty = row.quantitySold || 0;
-
-    const unitPrice = IS_PRO
-      ? (row.unitPrice ?? 0)
-      : null;
-
-    const totalCost = IS_PRO
-      ? (row.totalCost ?? 0)
-      : null;
-
-    if (IS_PRO) {
-      grandTotal += totalCost;
-    }
-
-    table += `
-      <tr>
-        <td>${row.drinkName}</td>
-        <td class="right">${qty}</td>
-        ${IS_PRO ? `<td class="right">$${unitPrice.toFixed(2)}</td>` : ""}
-        ${IS_PRO ? `<td class="right">$${totalCost.toFixed(2)}</td>` : ""}
-      </tr>
-    `;
-  }
-
-  table += `
-      </tbody>
-    </table>
-  `;
-
-  if (IS_PRO) {
-    table += `
-      <div class="drink-sales-total">
-        <strong>Total Drink Revenue:</strong>
-        $${grandTotal.toFixed(2)}
-      </div>
-    `;
-  } else {
-    table += `
-      <div class="upgrade-hint">
-        🔒 Upgrade to <strong>Pro</strong> to see item-level pricing and revenue.
-      </div>
-    `;
-  }
-
-  container.innerHTML = table;
 }
 
 function renderPostEventReport(report) {

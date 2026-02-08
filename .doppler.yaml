@@ -1,0 +1,3 @@
+setup:
+  project: lemondrip
+  config: dev_personal

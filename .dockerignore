@@ -1,0 +1,79 @@
+# flyctl launch added from backend\.gitignore
+# Environment files
+backend\**\.env
+backend\**\.env.*
+backend\**\*.env
+backend\**\backend\.env
+backend\**\backend\.env*
+backend\**\backend\env
+backend\**\backend\env.*
+backend\**\backend\*.env*
+backend\**\backend\*.db
+# Node
+backend\**\node_modules
+backend\**\backend\node_modules
+backend\**\pwa_frontend\node_modules
+# Logs
+backend\**\*.log
+backend\**\npm-debug.log*
+backend\**\yarn-debug.log*
+backend\**\yarn-error.log*
+backend\**\pnpm-debug.log*
+# OS
+backend\**\.DS_Store
+backend\**\Thumbs.db
+
+# flyctl launch added from frontend\.gitignore
+# =========================================================
+# 🍋 LemonDrip PWA - Git Ignore File
+# Prevents unnecessary or private files from being committed
+# =========================================================
+
+# --- OS and editor junk ---
+frontend\**\.DS_Store
+frontend\**\Thumbs.db
+frontend\**\*.log
+frontend\**\*.tmp
+frontend\**\*.bak
+frontend\**\*.swp
+
+# --- Node & Backend dependencies ---
+frontend\**\node_modules
+frontend\**\npm-debug.log*
+frontend\**\package-lock.json
+frontend\**\.env
+frontend\**\.env.*
+
+# --- Python cache (for backend utilities) ---
+frontend\**\__pycache__
+frontend\**\*.pyc
+frontend\**\*.pyo
+frontend\**\*.pyd
+
+# --- Build & cache directories ---
+frontend\**\dist
+frontend\**\build
+frontend\**\.cache
+frontend\**\coverage
+
+# --- IDE/project settings ---
+frontend\**\.vscode
+frontend\**\.idea
+frontend\**\*.iml
+
+# --- Generated or temporary files ---
+frontend\**\*.zip
+frontend\**\*.tar
+frontend\**\*.gz
+
+# --- Data backups ---
+frontend\**\Master_EventData_Full_backup*.json
+frontend\**\Master_EventData_Temp*.json
+
+# --- OS metadata ---
+frontend\**\desktop.ini
+
+# =========================================================
+# End of file
+# =========================================================
+fly.toml

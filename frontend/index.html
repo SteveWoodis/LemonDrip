@@ -106,7 +106,10 @@
     <select id="templateSelect">
       <option value="">-- Select Template --</option>
     </select>
-    <button type="button" onclick="useSelectedTemplate()">Load Template</button>
+    <button id="loadTemplateBtn" disabled onclick="useSelectedTemplate()">
+  Load Template
+</button>
+
   </div>
 	<label for="permitFiles">Permit Documents:</label>
 	<input type="file" id="permitFiles" multiple>

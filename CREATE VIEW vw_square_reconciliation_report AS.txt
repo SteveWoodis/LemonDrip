@@ -1,0 +1,86 @@
+CREATE VIEW vw_square_reconciliation_report AS
+SELECT
+  -- ─────────────────────────────────────────────
+  -- EVENT IDENTITY
+  -- ─────────────────────────────────────────────
+  e.eventID,
+  e.eventName,
+  e.eventDate,
+  e.squareLocationId,
+  e.isFinalized,
+  e.finalizedAt,
+
+  -- ─────────────────────────────────────────────
+  -- ORDERS (WHAT WAS SOLD)
+  -- ─────────────────────────────────────────────
+  COALESCE(s.grossSales, 0)        AS grossItemSales,
+  COALESCE(s.discounts, 0)         AS discounts,
+  COALESCE(s.netSales, 0)          AS netSales,
+  COALESCE(s.squareReportedTax, 0) AS squareReportedTax,
+
+  -- ─────────────────────────────────────────────
+  -- PAYMENTS (WHAT WAS COLLECTED)
+  -- ─────────────────────────────────────────────
+  COALESCE(s.totalCollected, 0)    AS totalCollected,
+  COALESCE(s.tips, 0)              AS tips,
+
+  -- ─────────────────────────────────────────────
+  -- REFUNDS
+  -- ─────────────────────────────────────────────
+  COALESCE(s.refunds, 0)           AS refunds,
+
+  -- ─────────────────────────────────────────────
+  -- SQUARE FEES
+  -- ─────────────────────────────────────────────
+  COALESCE(s.squareFees, 0)        AS squareFees,
+
+  -- ─────────────────────────────────────────────
+  -- LABOR (FROM EVENT EXPENSES)
+  -- ─────────────────────────────────────────────
+  COALESCE(x.laborFees, 0)         AS laborFees,
+
+  -- ─────────────────────────────────────────────
+  -- RECONCILIATION MATH (BANK DEPOSIT)
+  -- ─────────────────────────────────────────────
+  (
+    COALESCE(s.totalCollected, 0)
+    - COALESCE(s.refunds, 0)
+    - COALESCE(s.squareFees, 0)
+  ) AS expectedNetDeposit,
+
+  -- ─────────────────────────────────────────────
+  -- NET AFTER SQUARE (SALES VIEW)
+  -- ─────────────────────────────────────────────
+  COALESCE(s.netSales, 0)
+    - COALESCE(s.squareFees, 0)    AS netAfterSquareFees,
+
+  -- ─────────────────────────────────────────────
+  -- NET AFTER SQUARE + LABOR (TRUE OPERATOR NET)
+  -- ─────────────────────────────────────────────
+  (
+    COALESCE(s.netSales, 0)
+    - COALESCE(s.squareFees, 0)
+    - COALESCE(x.laborFees, 0)
+  ) AS netAfterSquareAndLabor,
+
+  -- ─────────────────────────────────────────────
+  -- STATUS FLAG
+  -- ─────────────────────────────────────────────
+  CASE
+    WHEN ABS(
+      (
+        COALESCE(s.totalCollected, 0)
+        - COALESCE(s.refunds, 0)
+        - COALESCE(s.squareFees, 0)
+      )
+      - COALESCE(s.netSales, 0)
+    ) < 0.01
+    THEN 'MATCH'
+    ELSE 'MISMATCH'
+  END AS reconciliationStatus
+
+FROM EventInfo e
+LEFT JOIN SalesSummary s
+  ON s.eventID = e.eventID
+LEFT JOIN EventExpenses x
+  ON x.eventID = e.eventID;

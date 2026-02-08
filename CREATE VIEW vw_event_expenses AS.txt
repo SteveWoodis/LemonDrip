@@ -1,0 +1,36 @@
+CREATE VIEW vw_event_expenses AS
+SELECT
+  e.eventID,
+
+  -- ─────────────────────────────────────────────
+  -- SUPPLY COSTS
+  -- ─────────────────────────────────────────────
+  COALESCE(SUM(sc.totalCost), 0) AS supplyCosts,
+
+  -- ─────────────────────────────────────────────
+  -- LABOR COSTS
+  -- ─────────────────────────────────────────────
+  COALESCE(l.totalLaborCost, 0) AS laborCosts,
+
+  -- ─────────────────────────────────────────────
+  -- OTHER / MANUAL EXPENSES (OPTIONAL)
+  -- ─────────────────────────────────────────────
+  COALESCE(o.totalOtherExpenses, 0) AS otherExpenses,
+
+  -- ─────────────────────────────────────────────
+  -- TOTAL EXPENSES
+  -- ─────────────────────────────────────────────
+  (
+    COALESCE(SUM(sc.totalCost), 0)
+    + COALESCE(l.totalLaborCost, 0)
+    + COALESCE(o.totalOtherExpenses, 0)
+  ) AS totalExpenses
+
+FROM EventInfo e
+LEFT JOIN SupplyCosts sc
+  ON sc.eventID = e.eventID
+LEFT JOIN LaborSummary l
+  ON l.eventID = e.eventID
+LEFT JOIN OtherExpenses o
+  ON o.eventID = e.eventID
+GROUP BY e.eventID
