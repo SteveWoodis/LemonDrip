@@ -430,29 +430,33 @@ function getSafeEventID(obj) {
 // 🧭 Clean Universal Navigator
 // ---------------------------
 function navigateTo(sectionId) {
-  document.querySelectorAll("section").forEach((sec) =>
-    sec.classList.add("hidden")
-  );
+  const homeSection = document.getElementById("homeSection");
 
-  const section = document.getElementById(sectionId);
-  if (!section) return console.warn(`⚠️ Section "${sectionId}" not found`);
-
-  section.classList.remove("hidden");
-  section.scrollIntoView({ behavior: "smooth" });
+  document.querySelectorAll(".app-shell > section:not(#homeSection)")
+    .forEach((sec) => sec.classList.add("hidden"));
 
   if (sectionId === "homeSection") {
-  if (typeof loadRecentActivity === "function") {
-    loadRecentActivity();
-  }
-  if (typeof startActivityImageRotation === "function") {
-    startActivityImageRotation();
-  }
-}
+    homeSection.classList.remove("slide-down");
+    window.scrollTo({ top: 0, behavior: "smooth" });
 
+    if (typeof loadRecentActivity === "function") {
+      loadRecentActivity();
+    }
+    if (typeof startActivityImageRotation === "function") {
+      startActivityImageRotation();
+    }
+  } else {
+    homeSection.classList.add("slide-down");
 
-  // ⭐ AUTO-LOAD EVENTS ON MANAGE PAGE
+    const section = document.getElementById(sectionId);
+    if (!section) return console.warn(`⚠️ Section "${sectionId}" not found`);
+
+    section.classList.remove("hidden");
+    section.scrollIntoView({ behavior: "smooth" });
+  }
+
   if (sectionId === "manageSection") {
-    loadAllEvents();     // <-- FIX EVERYTHING
+    loadAllEvents();
   }
 }
 
@@ -3076,7 +3080,7 @@ async function loadEventIntoDashboard(evt) {
     `;
   }
 
-  safeAppend(container, createCollapsibleCard("Itemized Drink Sales", drinkHTML));
+  safeAppend(container, createCollapsibleCard("Itemized Sales", drinkHTML));
 
   // ======================
   // 4) ADDITIONAL FEES CARD

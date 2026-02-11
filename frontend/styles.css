@@ -133,6 +133,80 @@ body {
 /* -----------------------------
    Home – Recent Activity
 ----------------------------- */
+.home-landing {
+  width: 100%;
+  padding: 0;
+  transition: transform 0.5s ease, opacity 0.5s ease;
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.home-landing.slide-down {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  max-height: 0;
+  overflow: hidden;
+}
+
+.hero {
+  padding: 80px 20px;
+  text-align: center;
+  background: linear-gradient(135deg, #f5f9ff, #ffffff);
+}
+
+.problem,
+.how,
+.benefits,
+.features,
+.social-proof,
+.pricing,
+.vision,
+.final-cta {
+  padding: 80px 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+.card,
+.feature,
+.pricing-card {
+  padding: 24px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: #1f6feb;
+  color: white;
+}
+
+.btn-secondary {
+  background: #e6edf3;
+  color: #333;
+}
 
 .home-activity {
   margin-top: 2rem;
