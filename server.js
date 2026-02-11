@@ -1,28 +1,46 @@
 // -------------------------------
 // ✅ SQLite + Express Server for LemonDrip (CommonJS)
 // -------------------------------
+
+// Core deps
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
+require("dotenv").config();
 
-const path = require("path");
+
+// Middleware / utils
 const cors = require("cors");
-
-const square = require("./square_locations.js");
-
 const multer = require("multer");
-const diskStorage = multer.diskStorage;
-const fs = require("fs");
 const axios = require("axios");
 const crypto = require("crypto");
 
+// Local modules
+const square = require("./square_locations.js");
 
-console.log("DEBUG: Loaded APP ID =", process.env.SQUARE_APP_ID);
+// -------------------------------
+// 🔧 Environment + Paths
+// -------------------------------
+const path = require("path");
+const fs = require("fs");
+function resolveDbPath() {
 
-const DB_PATH =
-  process.env.LEMONDRIP_DB_PATH ||
-  (process.env.NODE_ENV === "production"
-    ? "/data/lemondrip.db"
-    : path.join(__dirname, "backend", "lemondrip.db"));const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
+ if (process.env.LEMONDRIP_DB_PATH) return process.env.LEMONDRIP_DB_PATH;
+
+
+  // Ensure Fly volume directory exists
+  if (process.env.NODE_ENV === "production") {
+    const dir = "/data";
+    fs.mkdirSync("/data", { recursive: true });
+    return path.join(dir, "lemondrip.db");
+  }
+return path.join(__dirname, "lemondrip.db");
+
+}
+const dbPath = resolveDbPath();
+console.log("DB PATH", dbPath);
+
+
+const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
 
 const SQUARE_APP_SECRET = process.env.SQUARE_APP_SECRET;
 const SQUARE_OAUTH_REDIRECT =
@@ -33,13 +51,13 @@ let db;
 
 function initDb() {
   return new Promise((resolve, reject) => {
-    db = new sqlite3.Database(DB_PATH, (err) => {
+    db = new sqlite3.Database(dbPath, (err) => {
       if (err) {
         console.error("❌ SQLite connection failed:", err);
         return reject(err);
       }
 
-      console.log(`✅ SQLite connected: ${DB_PATH}`);
+      console.log("✅ SQLite connected at:", dbPath);
 
       // Enforce foreign keys
       db.run("PRAGMA foreign_keys = ON");
@@ -47,8 +65,9 @@ function initDb() {
       // Initialize dependent modules AFTER DB is ready
       square.init(db);
 
-      // Schema creation (same SQL, async-safe)
-      db.exec(`
+      // Schema creation (async-safe)
+      db.exec(
+        `
         CREATE TABLE IF NOT EXISTS FormTemplate (
           TemplateID INTEGER PRIMARY KEY AUTOINCREMENT,
           TemplateName TEXT NOT NULL,
@@ -77,36 +96,51 @@ function initDb() {
           DatePulledAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
         );
-      `, (schemaErr) => {
-        if (schemaErr) return reject(schemaErr);
-        resolve();
-      });
+        `,
+        (schemaErr) => {
+          if (schemaErr) {
+            console.error("❌ SQLite schema init failed:", schemaErr);
+            return reject(schemaErr);
+          }
+
+          console.log("✅ SQLite schema initialized");
+          resolve();
+        }
+      );
     });
   });
 }
 
 
+console.log("DEBUG: Loaded APP ID =", process.env.SQUARE_APP_ID);
 
 const app = express();
+app.use((req, res, next) => {
+  console.log("➡️", req.method, req.url);
+  next();
+});
+
+
+
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 
 // -------------------------------
 // 📂 Multer storage for permits
 // -------------------------------
-const storage = diskStorage({
-  destination(req, file, cb) {
-    const eventID = req.body.eventID;
-    const dir = path.join(__dirname, "uploads", "events", String(eventID));
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
   },
-  filename(req, file, cb) {
-    const safeName = file.originalname.replace(/\s+/g, "_");
-    cb(null, `permit_${Date.now()}_${safeName}`);
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + "-" + file.originalname);
   },
 });
+
 
 const upload = multer({ storage });
 
@@ -115,19 +149,7 @@ const upload = multer({ storage });
 // -------------------------------
 // 🚀 Server Startup + Square Cache Warm
 // -------------------------------
-(async () => {
-  try {
-    await initDb();
 
-    const PORT = process.env.PORT || 8080;
-    app.listen(PORT, () =>
-      console.log(`🚀 SQLite backend running on port ${PORT}`)
-    );
-  } catch (err) {
-    console.error("❌ Failed to start server:", err);
-    process.exit(1);
-  }
-})();
 
 
 
@@ -147,11 +169,12 @@ const activeOAuthStates = new Set();
 //  THE FILE POSTED AND REQUIRES NO CHANGES)
 //
 
+// -------------------------------
+// 🌐 Serve Frontend (Production + Local)
+// -------------------------------
 
-// -------------------------------
-// 🧭 Root Route (health check)
-// -------------------------------
-app.get("/", (req, res) => res.send("✅ LemonDrip SQLite backend running!"));
+
+
 
 // -------------------------------
 // 📎 Upload permit files
@@ -187,34 +210,42 @@ app.get("/api/events", (req, res) => {
   });
 });
 
-// ================================
-// HELPER FUNCTIONS
-//==================================
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
-  });
-}
 
-function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-}
+// -------------------------------
+// 🔍 GET /api/events (list/search)
+// -------------------------------
+app.get("/api/events", async (req, res) => {
+  try {
+    const { name, date, id } = req.query;
+    let sql = `SELECT * FROM EventInfo WHERE 1=1`;
+    const params = [];
 
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
-}
+    if (name) {
+      sql += ` AND eventName LIKE ?`;
+      params.push(`%${name}%`);
+    }
 
+    if (date) {
+      sql += ` AND eventDate = ?`;
+      params.push(date);
+    }
 
+    if (id) {
+      sql += ` AND eventID = ?`;
+      params.push(id);
+    }
+
+    sql += ` ORDER BY eventDate DESC`;
+
+    const rows = await dbAll(sql, params);
+
+    res.json({ Events: rows });
+
+  } catch (err) {
+    console.error("❌ Error reading events:", err);
+    res.status(500).json({ error: "Error reading events." });
+  }
+});
 
 
 // -------------------------------
@@ -315,100 +346,6 @@ app.get("/api/square/oauth/start", (req, res) => {
 });
 
 
-async function fetchSquareEmployees() {
-  const token = await getSquareLaborToken();
-  const baseUrl = "https://connect.squareup.com";
-
-  const res = await doFetch(`${baseUrl}/v2/employees`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Square-Version": "2025-01-15",
-      "Content-Type": "application/json"
-    }
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      err.errors?.map(e => e.detail).join("; ") || `HTTP ${res.status}`
-    );
-  }
-
-  const json = await res.json();
-  return json.employees || [];
-}
-
-
-async function buildEventLabor(eventID) {
-  const [squareEmployees, timecards] = await Promise.all([
-    fetchSquareEmployees(),
-    fetchSquareTimecardsForEvent(eventID)
-  ]);
-
-  const laborResults = [];
-
-  for (const tc of timecards) {
-    const sqEmp = squareEmployees.find(e => e.id === tc.employeeId);
-    if (!sqEmp) continue;
-
-    const employee = findOrCreateEmployee(sqEmp);
-
-    laborResults.push({
-      employeeID: employee.employeeID,
-      employeeName: employee.employeeName,
-      start: tc.start,
-      end: tc.end,
-      hours: tc.hours,
-      wage: employee.hourlyRate || 0,
-      totalPay: tc.hours * (employee.hourlyRate || 0),
-      squareTimecardID: tc.id || null
-    });
-  }
-
-  // BEFORE returning: save to SQLite
-  saveEventLabor(eventID, laborResults);
-
-  return laborResults;
-}
-
-
-
-// -------------------------------
-// 🔍 GET /api/events (list/search)
-// -------------------------------
-app.get("/api/events", async (req, res) => {
-  try {
-    const { name, date, id } = req.query;
-    let sql = `SELECT * FROM EventInfo WHERE 1=1`;
-    const params = [];
-
-    if (name) {
-      sql += ` AND eventName LIKE ?`;
-      params.push(`%${name}%`);
-    }
-
-    if (date) {
-      sql += ` AND eventDate = ?`;
-      params.push(date);
-    }
-
-    if (id) {
-      sql += ` AND eventID = ?`;
-      params.push(id);
-    }
-
-    sql += ` ORDER BY eventDate DESC`;
-
-    const rows = await dbAll(sql, params);
-
-    res.json({ Events: rows });
-
-  } catch (err) {
-    console.error("❌ Error reading events:", err);
-    res.status(500).json({ error: "Error reading events." });
-  }
-});
 
 // 🔍 SEARCH EVENTS by free text (includes customFields)
 app.get("/api/events/search", (req, res) => {
@@ -532,9 +469,6 @@ app.get("/api/employees", (req, res) => {
 
 
 // -------------------------------
-// GET /api/formtemplates
-// -------------------------------
-// -------------------------------
 // GET /api/formTemplates (sqlite3 SAFE)
 // -------------------------------
 app.get("/api/formTemplates", (req, res) => {
@@ -562,8 +496,7 @@ app.get("/api/formTemplates", (req, res) => {
   });
 });
 
-
-// POST /api/formtemplates
+// POST /api/formTemplates
 app.post("/api/formTemplates", (req, res) => {
   const { TemplateName, Fields } = req.body;
 
@@ -842,8 +775,7 @@ app.put("/api/events/:id", (req, res) => {
  *   discounts = grossSales - netSales - refunds
  */
 app.put("/api/square/sales/:eventID", async (req, res) => {
-  let grossSales = 0;
-  let netSales = 0;
+ 
   let refunds = 0;
   let squareReportedTax = 0;
   let totalCollected = 0;
@@ -891,10 +823,14 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
     const paymentEndISO = paymentEnd.toISOString();
 
     console.log("orderStart", orderStartISO);
+    console.log("orderEnd", orderEndISO);
 
     // ─────────────────────────────────────────────
     // 2️⃣ ORDERS (ITEMIZED SALES)
     // ─────────────────────────────────────────────
+
+     let grossSales = 0;
+    let netSales = 0;
     try {
       const orderRes = await fetch(
         "https://connect.squareup.com/v2/orders/search",
@@ -907,7 +843,7 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
           },
           body: JSON.stringify({
             location_ids: [ev.squareLocationId],
-            return_entries: true,
+            return_entries: false,
             query: {
               filter: {
                 state_filter: { states: ["COMPLETED"] },
@@ -922,34 +858,30 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
           })
         }
       );
- //const raw = await orderRes.text();
-     // console.log("orderRes",raw);
-
- 
-
+    //const raw = await orderRes.text();
+    //console.log("orderRes",raw);
     if (!orderRes.ok) {
       const raw = await orderRes.text();
       throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
     }
     const orderJson = await orderRes.json();
 
+//console.log(" Where am i at with orders", orderJson);
 
-   orders = (orderJson.order_entries || []).map(e => e.order ?? e);
+   orders = (orderJson.orders || []);
+   if (orders.length > 0) {
+    const o = orders[0];
 
-    console.log("Orders returned:", orders.length);
+    console.log("🧾 SAMPLE ORDER KEYS:", Object.keys(o));
+    }
 
-    ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
-
-
-    console.log("ordersUsable:", ordersUsable);
-
+   ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
     } catch (err) {
       console.error("❌ Orders fetch failed:", err);
       return res.status(500).json({ error: "Orders fetch failed" });
     }
 
     
-
     // ─────────────────────────────────────────────
     // 🥤 DRINK SALES + GROSS SALES (ORDERS PATH)
     // ─────────────────────────────────────────────
@@ -964,7 +896,16 @@ for (const order of orders) {
     const name = li.name || "Unknown";
     const qty = Number(li.quantity || 0);
 
-    // Starter-safe defaults
+    // ── SALES TOTALS (ACCOUNTING) ──
+    const lineTotal = (li.total_money?.amount ??
+   (li.base_price_money?.amount || 0) * Number(li.quantity || 0)) / 100;
+    grossSales += lineTotal;
+
+    if (li.total_discount_money) {
+      discounts += li.total_discount_money.amount / 100;
+    }
+
+    // ── STARTER / PRO COST LOGIC ──
     let unitPrice = null;
     let rowCost = null;
 
@@ -979,13 +920,14 @@ for (const order of orders) {
       totalDrinkCost += rowCost;
     }
 
+    // ── AGGREGATE DRINKS ──
     if (!drinkMap.has(name)) {
       drinkMap.set(name, {
         drinkName: name,
-        unitPrice,           // null for Starter
+        unitPrice,
         quantitySold: qty,
-        rowCost,             // null for Starter
-        totalCost: rowCost   // will accumulate in Pro
+        rowCost,
+        totalCost: rowCost
       });
     } else {
       const d = drinkMap.get(name);
@@ -999,6 +941,7 @@ for (const order of orders) {
   }
 }
 
+
 drinkRows = Array.from(drinkMap.values());
 
 console.table(
@@ -1010,8 +953,8 @@ console.table(
     totalCost: d.totalCost
   }))
 );
+console.log({ grossSales, discounts, netSales, totalCollected });
 
-console.log("Drink totalCost:", totalDrinkCost);
 
     // ─────────────────────────────────────────────
     // 3️⃣ PAYMENTS (CASH TRUTH)
@@ -1035,8 +978,8 @@ console.log("Drink totalCost:", totalDrinkCost);
         }
       });
 
-     // const rawP = await payRes.text();
-     // console.log("Response",rawP);
+     //const rawP = await payRes.text();
+     //console.log("Response",rawP);
 
 
       const payJson = await payRes.json();
@@ -1045,8 +988,8 @@ console.log("Drink totalCost:", totalDrinkCost);
       const payments = payJson.payments || [];
 
       for (const pay of payments) {
-        const amt = (pay.amount_money?.amount || 0) / 100;
-        totalCollected += amt;
+        totalCollected += (pay.amount_money?.amount || 0) / 100;
+        
 
         if (pay.tip_money) {
           tips += pay.tip_money.amount / 100;
@@ -1067,12 +1010,10 @@ console.log("Drink totalCost:", totalDrinkCost);
     // ─────────────────────────────────────────────
     // 4️⃣ FALLBACK GROSS SALES
     // ─────────────────────────────────────────────
-    grossSales = totalCollected + refunds;
-    netSales = totalCollected - refunds;
-    discounts = grossSales - netSales - refunds;
-    console.log("DISCOUNT: ", discounts);
+   
+    netSales = grossSales - discounts - refunds;
 
-    console.log({
+   console.log({
       ordersLength: orders.length,
       ordersUsable,
       grossSales,
@@ -1148,289 +1089,18 @@ db.run(
 
 
 
-
-async function findOrCreateEmployee(name) {
-  let emp = await dbGet(
-    `SELECT * FROM EmployeeTracker WHERE employeeName = ?`,
-    [name]
-  );
-
-  if (!emp) {
-    const ins = await dbRun(
-      `INSERT INTO EmployeeTracker (employeeName) VALUES (?)`,
-      [name]
-    );
-
-    emp = await dbGet(
-      `SELECT * FROM EmployeeTracker WHERE EmployeeID = ?`,
-      [ins.lastID]
-    );
-  }
-
-  return emp;
-}
-
-
-
-async function saveEventLabor(eventID, laborList) {
-  if (!Array.isArray(laborList)) return;
-
-  await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run("BEGIN");
-
-      // 1️⃣ Delete previous labor
-      db.run(
-        `DELETE FROM EventEmployees WHERE eventID = ?`,
-        [eventID],
-        err => {
-          if (err) {
-            db.run("ROLLBACK");
-            return reject(err);
-          }
-        }
-      );
-
-      // 2️⃣ Insert new labor rows
-      const insertSql = `
-        INSERT INTO EventEmployees (
-          eventID, employeeID, hoursWorked, hourlyRate, totalPay,
-          startTime, endTime, squareTimecardID
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      for (const entry of laborList) {
-        db.run(
-          insertSql,
-          [
-            eventID,
-            entry.employeeID,
-            entry.hours,
-            entry.wage,
-            entry.totalPay,
-            entry.start,
-            entry.end,
-            entry.squareTimecardID || null
-          ],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-          }
-        );
-      }
-
-      // 3️⃣ Commit
-      db.run("COMMIT", err => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  });
-}
-
-//HELPER FUNCTION SECTION
-// Helper: base URL (still here if you need sandbox later)
-
-
-async function refreshSquareLaborToken(row) {
-  if (!row.refreshToken) {
-    throw new Error(
-      "Cannot refresh Square OAuth token: no refreshToken stored."
-    );
-  }
-
-  try {
-    const tokenRes = await axios.post(
-      "https://connect.squareup.com/oauth2/token",
-      {
-        client_id: SQUARE_APP_ID,
-        client_secret: SQUARE_APP_SECRET,
-        grant_type: "refresh_token",
-        refresh_token: row.refreshToken
-      },
-      {
-        headers: { "Content-Type": "application/json" }
-      }
-    );
-
-    const payload = tokenRes.data;
-
-    const newAccessToken = payload.access_token;
-    const newRefreshToken = payload.refresh_token;
-    const newMerchantId = payload.merchant_id;
-    const newExpiresAt = payload.expires_at;
-
-    // Update token row
-    await dbRun(
-      `
-      UPDATE SquareAuth
-      SET accessToken = ?,
-          refreshToken = ?,
-          merchantId = ?,
-          expiresAt = ?,
-          updatedAt = datetime('now')
-      WHERE id = ?
-      `,
-      [
-        newAccessToken,
-        newRefreshToken,
-        newMerchantId,
-        newExpiresAt,
-        row.id
-      ]
-    );
-
-    console.log("✅ Square OAuth token refreshed for merchant:", newMerchantId);
-
-    // Return updated row
-    const updated = await dbGet(
-      `
-      SELECT id, accessToken, refreshToken, merchantId, expiresAt
-      FROM SquareAuth
-      WHERE id = ?
-      `,
-      [row.id]
-    );
-
-    return updated;
-
-  } catch (err) {
-    console.error(
-      "❌ Error refreshing Square OAuth token:",
-      err.response?.data || err.message
-    );
-    throw new Error("Failed to refresh Square OAuth token.");
-  }
-}
-
-
-
-function getSquareBaseUrl() {
-  const env = process.env.SQUARE_ENV || "production";
-  return env === "sandbox"
-    ? "https://connect.squareupsandbox.com"
-    : "https://connect.squareup.com";
-}
-
-// Helper: doFetch (for labor & team APIs)
-const doFetch =
-  typeof globalThis.fetch === "function"
-    ? globalThis.fetch.bind(globalThis)
-    : (...args) =>
-        import("node-fetch").then(({ default: f }) => f(...args));
-
-// OAuth labor token
-async function getSquareLaborToken() {
-  return await dbGet(
-    `SELECT accessToken FROM SquareAuth LIMIT 1`
-  );
-}
-
-
-
-// Fetch shifts and aggregate into employees[]
-async function fetchSquareTimecardsForEvent(eventID) {
-  const event = await dbGet(
-    `
-    SELECT eventDate, squareLocationId
-    FROM EventInfo
-    WHERE eventID = ?
-    `,
-    [eventID]
-  );
-
-  if (!event) {
-    throw new Error(`Event ${eventID} not found.`);
-  }
-
-  if (!event.squareLocationId) {
-    throw new Error("Event has no Square location ID.");
-  }
-
-  const token = await getSquareLaborToken();
-  const baseUrl = "https://connect.squareup.com";
-
-  // Build UTC window (adjust offset if needed)
-  const start = new Date(`${event.eventDate}T00:00:00-06:00`).toISOString();
-  const end   = new Date(`${event.eventDate}T23:59:59-06:00`).toISOString();
-
-  const params = new URLSearchParams({
-    begin_time: start,
-    end_time: end,
-    location_id: event.squareLocationId
-  });
-
-  const res = await doFetch(
-  `${baseUrl}/v2/labor/timecards/search`,
-  {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Square-Version": "2025-01-15",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      query: {
-        filter: {
-          location_ids: [event.squareLocationId],
-          start: {
-            start_at: start,
-            end_at: end
-          }
-        }
-      }
-    })
-  }
-);
-
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(
-      json.errors?.map(e => e.detail).join("; ")
-      || `HTTP ${res.status}`
-    );
-  }
-
-  const timecards = json.timecards || [];
-
-  // Return normalized JS objects (NO DB writes here)
-  return timecards.map(tc => {
-    const startMs = tc.clockin_time
-      ? new Date(tc.clockin_time).getTime()
-      : null;
-    const endMs = tc.clockout_time
-      ? new Date(tc.clockout_time).getTime()
-      : null;
-
-    let hours = 0;
-    if (startMs && endMs && endMs > startMs) {
-      hours = (endMs - startMs) / (1000 * 60 * 60);
-    }
-
-    return {
-      employeeId: tc.employee_id,
-      start: tc.clockin_time,
-      end: tc.clockout_time,
-      hours
-    };
-  });
-}
-
-
-
-
 app.put("/api/events/:eventID/labor", async (req, res) => {
+   const token = process.env.SQUARE_ACCESS_TOKEN;
   try {
     const eventID = Number(req.params.eventID);
     const { laborRows } = req.body;
 
-    console.log("EVENTID", eventID);
-    console.log("laborRows", { laborRows });
+    console.log("🔐 Labor token source:", {
+  exists: !! token,
+  length: token?.length,
+  prefix: token?.slice(0, 8)
+});
+
 
     if (!eventID || !Array.isArray(laborRows)) {
       return res.status(400).json({ error: "Invalid payload" });
@@ -1604,145 +1274,6 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     return res.status(500).json({ error: "Failed to finalize event." });
   }
 });
-
-
-	// ---------------------------------------------------------
-	// Generic helper to save "sub-table" rows for an event
-	// ---------------------------------------------------------
-	async function saveSubTableRows(eventID, rows, config) {
-  const { table, columns } = config;
-  if (!Array.isArray(rows)) return;
-
-  await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run("BEGIN");
-
-      // 1️⃣ Delete existing rows
-      db.run(
-        `DELETE FROM ${table} WHERE eventID = ?`,
-        [eventID],
-        err => {
-          if (err) {
-            db.run("ROLLBACK");
-            return reject(err);
-          }
-        }
-      );
-
-      // If no rows, just commit delete
-      if (!rows.length) {
-        return db.run("COMMIT", err =>
-          err ? reject(err) : resolve()
-        );
-      }
-
-      // 2️⃣ Build INSERT statement
-      const colNames = ["eventID", ...columns.map(c => c.name)];
-      const placeholders = colNames.map(() => "?").join(", ");
-
-      const insertSql = `
-        INSERT INTO ${table} (${colNames.join(", ")})
-        VALUES (${placeholders})
-      `;
-
-      for (const row of rows) {
-        db.run(
-          insertSql,
-          [
-            eventID,
-            ...columns.map(c => row[c.prop] ?? null)
-          ],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-          }
-        );
-      }
-
-      // 3️⃣ Commit
-      db.run("COMMIT", err => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  });
-}
-
-	// ---------------------------------------------------------
-	// Save all "adjustment" sub-tables: Fees, Discounts, Tips
-	// ---------------------------------------------------------
-	function saveEventAdjustments(eventID, payload) {
-	  const {
-		additionalFees = [],
-		discounts = [],
-		tips = []
-	  } = payload || {};
-
-	  // AdditionalFees: { feeName, feeAmount }
-	  saveSubTableRows(eventID, additionalFees, {
-		table: "AdditionalFees",
-		columns: [
-		  { name: "feeName",   prop: "feeName" },
-		  { name: "feeAmount", prop: "feeAmount" }
-		]
-	  });
-
-	  // Discounts: { discountName, discountAmount }
-	  saveSubTableRows(eventID, discounts, {
-		table: "Discounts",
-		columns: [
-		  { name: "discountName",   prop: "discountName" },
-		  { name: "discountAmount", prop: "discountAmount" }
-		]
-	  });
-
-	  // TipTracker: { tipAmount }
-	  saveSubTableRows(eventID, tips, {
-		table: "TipTracker",
-		columns: [
-		  { name: "tipAmount", prop: "tipAmount" }
-		]
-	  });
-	}
-	
-	async function fetchSquareFeesFromBalance({
-  token,
-  locationId,
-  beginISO,
-  endISO
-}) {
-  let fees = 0;
-  let cursor = null;
-
-  do {
-    const url = new URL("https://connect.squareup.com/v2/balance/transactions");
-    url.searchParams.set("types", "FEE");
-    url.searchParams.set("location_id", locationId);
-    url.searchParams.set("begin_time", beginISO);
-    url.searchParams.set("end_time", endISO);
-    if (cursor) url.searchParams.set("cursor", cursor);
-
-    const res = await fetch(url, {
-      headers: {
-        "Square-Version": "2025-01-15",
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    const json = await res.json();
-    const txns = json.balance_transactions || [];
-
-    for (const t of txns) {
-      fees += (t.amount_money?.amount || 0) / 100;
-    }
-
-    cursor = json.cursor || null;
-  } while (cursor);
-
-  return fees;
-}
 
 
 // ---------------------------------------------------------
@@ -1961,129 +1492,6 @@ app.delete("/api/events/:id", (req, res) => {
   );
 });
 
-// -------------------------------
-// Helper: Coerce event values safely
-// -------------------------------
-function coerceEvent(body) {
-  const toInt = (v) =>
-    v === "" || v == null ? null : parseInt(v, 10);
-  const toNum = (v) =>
-    v === "" || v == null ? null : Number(v);
-  const toBoolI = (v) =>
-    v === true || v === "true" || v === 1 || v === "1" ? 1 : 0;
-  const toStr = (v) => (v == null || v === "" ? null : String(v));
-
-    return {
-    eventName: toStr(body.eventName),
-    eventDate: toStr(body.eventDate),
-    applicationDate: toStr(body.applicationDate),
-    finalizedDate: toStr(body.finalizedDate),
-
-    eventFee: toNum(body.eventFee),
-    squareLocationId: toStr(body.squareLocationId),
-    time: toStr(body.time),
-    employees: toStr(body.employees),
-    eventRating: toStr(body.eventRating),
-    eventHost: toStr(body.eventHost),
-    notes: toStr(body.notes),
-    status: toStr(body.status),
-    eventType: toStr(body.eventType),
-    numDays: toInt(body.numDays),
-    coordinator: toStr(body.coordinator),
-
-    grossSales: toNum(body.grossSales),
-    tips: toNum(body.tips),
-    netSales: toNum(body.netSales),
-    totalSales: toNum(body.totalSales),
-    isFinalized: toBoolI(body.isFinalized),
-
-    // 🔹 NEW: Profit-related fields
-    healthDeptFee: toNum(body.healthDeptFee),
-    mileageReimbursement: toNum(body.mileageReimbursement),
-    eventRunnerFees: toNum(body.eventRunnerFees),
-
-    giftCardSales: toNum(body.giftCardSales),
-
-    cash: toNum(body.cash),
-    card: toNum(body.card),
-    wallet: toNum(body.wallet),
-    other: toNum(body.other),
-    cashApp: toNum(body.cashApp),
-
-    taxOverride: toNum(body.taxOverride),
-
-    customFields:
-      body.customFields && Object.keys(body.customFields).length
-        ? JSON.stringify(body.customFields)
-        : null,
-  };
-}
-
-
-
-/**
- * buildPostEventReport
- * READ-ONLY aggregator.
- * ❌ Must NEVER calculate or initialize Square-derived fields.
- * ✅ Square values come ONLY from SalesSummary table.
- */
-
-async function buildPostEventReport(eventID) {
-  try {
-    // 1️⃣ Base EventInfo
-    const event = await dbGet(
-      `SELECT * FROM EventInfo WHERE eventID = ?`,
-      [eventID]
-    );
-
-    if (!event) return null;
-
-    // 2️⃣ Ensure EventExpenses row exists
-    await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO EventExpenses (eventID)
-         VALUES (?)
-         ON CONFLICT(eventID) DO NOTHING`,
-        [eventID],
-        err => (err ? reject(err) : resolve())
-      );
-    });
-
-    // 3️⃣ Load related data
-    const [
-      expenses,
-      laborRows,
-      supplyRows,
-      discountRows,
-      salesSummary,
-      drinkSales
-    ] = await Promise.all([
-      dbGet(`SELECT * FROM EventExpenses WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM EventEmployees WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM SupplyCosts WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM Discounts WHERE eventID = ?`, [eventID]),
-      dbGet(`SELECT * FROM SalesSummary WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM DrinkSales WHERE eventID = ?`, [eventID])
-    ]);
-
-    // 4️⃣ Assemble report (same structure you had)
-    const report = {
-      event,
-      expenses: expenses || {},
-      labor: laborRows || [],
-      supplies: supplyRows || [],
-      discounts: discountRows || [],
-      sales: salesSummary || {},
-      drinkSales: drinkSales || []
-    };
-   
-    
-    return report;
-  } catch (err) {
-    console.error("❌ buildPostEventReport failed:", err);
-    throw err;
-  }
-}
 
 
 // -------------------------------
@@ -2427,61 +1835,6 @@ app.delete("/api/supplies/:id", async (req, res) => {
 });
 
 
-
-
-function saveDrinkSales(eventID, rows, done) {
-  db.serialize(() => {
-    db.run("BEGIN");
-
-    db.run(
-      `DELETE FROM DrinkSales WHERE eventID = ?`,
-      [eventID],
-      err => {
-        if (err) {
-          console.error("❌ Failed to clear DrinkSales:", err);
-          db.run("ROLLBACK");
-          return done?.(err);
-        }
-      }
-    );
-
-    const insertSql = `
-      INSERT INTO DrinkSales
-      (eventID, drinkName, unitPrice, quantitySold, totalCost)
-      VALUES (?, ?, ?, ?, ?)
-    `;
-
-    for (const r of rows) {
-      db.run(
-        insertSql,
-        [
-          eventID,
-          r.drinkName,
-          r.unitPrice,
-          r.quantitySold,
-          r.totalCost
-        ],
-        err => {
-          if (err) {
-            console.error("❌ DrinkSales insert failed:", err);
-            db.run("ROLLBACK");
-            return done?.(err);
-          }
-        }
-      );
-    }
-
-    db.run("COMMIT", err => {
-      if (err) {
-        console.error("❌ Commit failed:", err);
-        return done?.(err);
-      }
-      done?.();
-    });
-  });
-}
-
-
 app.get("/api/events/:eventID/labor", async (req, res) => {
   try {
     const eventID = Number(req.params.eventID);
@@ -2687,3 +2040,726 @@ app.put("/api/square/labor/:eventID", async (req, res) => {
   }
 });
 
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+const frontendPath = path.join(__dirname, "frontend");
+app.use(express.static(frontendPath));
+
+// Catch-all: serve frontend for browser routes
+app.get("*", (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
+
+//=====================================================================================================
+
+// ================================
+// HELPER FUNCTIONS
+//==================================
+function dbGet(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
+  });
+}
+
+function dbAll(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
+
+function dbRun(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve({ changes: this.changes, lastID: this.lastID });
+    });
+  });
+}
+
+
+
+
+async function fetchSquareEmployees() {
+  const token = await getSquareLaborToken();
+  const baseUrl = "https://connect.squareup.com";
+
+  const res = await doFetch(`${baseUrl}/v2/employees`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Square-Version": "2025-01-15",
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      err.errors?.map(e => e.detail).join("; ") || `HTTP ${res.status}`
+    );
+  }
+
+  const json = await res.json();
+  return json.employees || [];
+}
+
+
+async function buildEventLabor(eventID) {
+  const [squareEmployees, timecards] = await Promise.all([
+    fetchSquareEmployees(),
+    fetchSquareTimecardsForEvent(eventID)
+  ]);
+
+  const laborResults = [];
+
+  for (const tc of timecards) {
+    const sqEmp = squareEmployees.find(e => e.id === tc.employeeId);
+    if (!sqEmp) continue;
+
+    const employee = findOrCreateEmployee(sqEmp);
+
+    laborResults.push({
+      employeeID: employee.employeeID,
+      employeeName: employee.employeeName,
+      start: tc.start,
+      end: tc.end,
+      hours: tc.hours,
+      wage: employee.hourlyRate || 0,
+      totalPay: tc.hours * (employee.hourlyRate || 0),
+      squareTimecardID: tc.id || null
+    });
+  }
+
+  // BEFORE returning: save to SQLite
+  saveEventLabor(eventID, laborResults);
+
+  return laborResults;
+}
+
+
+async function findOrCreateEmployee(name) {
+  let emp = await dbGet(
+    `SELECT * FROM EmployeeTracker WHERE employeeName = ?`,
+    [name]
+  );
+
+  if (!emp) {
+    const ins = await dbRun(
+      `INSERT INTO EmployeeTracker (employeeName) VALUES (?)`,
+      [name]
+    );
+
+    emp = await dbGet(
+      `SELECT * FROM EmployeeTracker WHERE EmployeeID = ?`,
+      [ins.lastID]
+    );
+  }
+
+  return emp;
+}
+
+
+
+async function saveEventLabor(eventID, laborList) {
+  if (!Array.isArray(laborList)) return;
+
+  await new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run("BEGIN");
+
+      // 1️⃣ Delete previous labor
+      db.run(
+        `DELETE FROM EventEmployees WHERE eventID = ?`,
+        [eventID],
+        err => {
+          if (err) {
+            db.run("ROLLBACK");
+            return reject(err);
+          }
+        }
+      );
+
+      // 2️⃣ Insert new labor rows
+      const insertSql = `
+        INSERT INTO EventEmployees (
+          eventID, employeeID, hoursWorked, hourlyRate, totalPay,
+          startTime, endTime, squareTimecardID
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      for (const entry of laborList) {
+        db.run(
+          insertSql,
+          [
+            eventID,
+            entry.employeeID,
+            entry.hours,
+            entry.wage,
+            entry.totalPay,
+            entry.start,
+            entry.end,
+            entry.squareTimecardID || null
+          ],
+          err => {
+            if (err) {
+              db.run("ROLLBACK");
+              return reject(err);
+            }
+          }
+        );
+      }
+
+      // 3️⃣ Commit
+      db.run("COMMIT", err => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  });
+}
+
+//HELPER FUNCTION SECTION
+// Helper: base URL (still here if you need sandbox later)
+
+
+async function refreshSquareLaborToken(row) {
+  if (!row.refreshToken) {
+    throw new Error(
+      "Cannot refresh Square OAuth token: no refreshToken stored."
+    );
+  }
+
+  try {
+    const tokenRes = await axios.post(
+      "https://connect.squareup.com/oauth2/token",
+      {
+        client_id: SQUARE_APP_ID,
+        client_secret: SQUARE_APP_SECRET,
+        grant_type: "refresh_token",
+        refresh_token: row.refreshToken
+      },
+      {
+        headers: { "Content-Type": "application/json" }
+      }
+    );
+
+    const payload = tokenRes.data;
+
+    const newAccessToken = payload.access_token;
+    const newRefreshToken = payload.refresh_token;
+    const newMerchantId = payload.merchant_id;
+    const newExpiresAt = payload.expires_at;
+
+    // Update token row
+    await dbRun(
+      `
+      UPDATE SquareAuth
+      SET accessToken = ?,
+          refreshToken = ?,
+          merchantId = ?,
+          expiresAt = ?,
+          updatedAt = datetime('now')
+      WHERE id = ?
+      `,
+      [
+        newAccessToken,
+        newRefreshToken,
+        newMerchantId,
+        newExpiresAt,
+        row.id
+      ]
+    );
+
+    console.log("✅ Square OAuth token refreshed for merchant:", newMerchantId);
+
+    // Return updated row
+    const updated = await dbGet(
+      `
+      SELECT id, accessToken, refreshToken, merchantId, expiresAt
+      FROM SquareAuth
+      WHERE id = ?
+      `,
+      [row.id]
+    );
+
+    return updated;
+
+  } catch (err) {
+    console.error(
+      "❌ Error refreshing Square OAuth token:",
+      err.response?.data || err.message
+    );
+    throw new Error("Failed to refresh Square OAuth token.");
+  }
+}
+
+
+
+function getSquareBaseUrl() {
+  const env = process.env.SQUARE_ENV || "production";
+  return env === "sandbox"
+    ? "https://connect.squareupsandbox.com"
+    : "https://connect.squareup.com";
+}
+
+// Helper: doFetch (for labor & team APIs)
+const doFetch =
+  typeof globalThis.fetch === "function"
+    ? globalThis.fetch.bind(globalThis)
+    : (...args) =>
+        import("node-fetch").then(({ default: f }) => f(...args));
+
+// OAuth labor token
+async function getSquareLaborToken() {
+  const token = process.env.SQUARE_ACCESS_TOKEN;
+
+  console.log("🔐 Labor token source:", {
+    exists: !!token,
+    length: token?.length,
+    prefix: token?.slice(0, 8),
+    env: process.env.NODE_ENV,
+    isSandbox: token?.startsWith("EAAA")
+  });
+  return token;
+
+
+  /*return process.env.SQUARE_ENV === "production"
+    ? process.env.SQUARE_PROD_ACCESS_TOKEN
+    : process.env.SQUARE_SANDBOX_ACCESS_TOKEN;*/
+
+
+}
+
+
+
+// Fetch shifts and aggregate into employees[]
+async function fetchSquareTimecardsForEvent(eventID) {
+  const event = await dbGet(
+    `
+    SELECT eventDate, squareLocationId
+    FROM EventInfo
+    WHERE eventID = ?
+    `,
+    [eventID]
+  );
+
+  if (!event) {
+    throw new Error(`Event ${eventID} not found.`);
+  }
+
+  if (!event.squareLocationId) {
+    throw new Error("Event has no Square location ID.");
+  }
+
+  const token = await getSquareLaborToken();
+  const baseUrl = "https://connect.squareup.com";
+
+  // Build UTC window (adjust offset if needed)
+  const start = new Date(`${event.eventDate}T00:00:00-06:00`).toISOString();
+  const end   = new Date(`${event.eventDate}T23:59:59-06:00`).toISOString();
+
+  const params = new URLSearchParams({
+    begin_time: start,
+    end_time: end,
+    location_id: event.squareLocationId
+  });
+
+  const res = await doFetch(
+  `${baseUrl}/v2/labor/timecards/search`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Square-Version": "2025-01-15",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      query: {
+        filter: {
+          location_ids: [event.squareLocationId],
+          start: {
+            start_at: start,
+            end_at: end
+          }
+        }
+      }
+    })
+  }
+);
+
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(
+      json.errors?.map(e => e.detail).join("; ")
+      || `HTTP ${res.status}`
+    );
+  }
+
+  const timecards = json.timecards || [];
+
+  // Return normalized JS objects (NO DB writes here)
+  return timecards.map(tc => {
+    const startMs = tc.clockin_time
+      ? new Date(tc.clockin_time).getTime()
+      : null;
+    const endMs = tc.clockout_time
+      ? new Date(tc.clockout_time).getTime()
+      : null;
+
+    let hours = 0;
+    if (startMs && endMs && endMs > startMs) {
+      hours = (endMs - startMs) / (1000 * 60 * 60);
+    }
+
+    return {
+      employeeId: tc.employee_id,
+      start: tc.clockin_time,
+      end: tc.clockout_time,
+      hours
+    };
+  });
+}
+
+
+
+
+
+	// ---------------------------------------------------------
+	// Generic helper to save "sub-table" rows for an event
+	// ---------------------------------------------------------
+	async function saveSubTableRows(eventID, rows, config) {
+  const { table, columns } = config;
+  if (!Array.isArray(rows)) return;
+
+  await new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run("BEGIN");
+
+      // 1️⃣ Delete existing rows
+      db.run(
+        `DELETE FROM ${table} WHERE eventID = ?`,
+        [eventID],
+        err => {
+          if (err) {
+            db.run("ROLLBACK");
+            return reject(err);
+          }
+        }
+      );
+
+      // If no rows, just commit delete
+      if (!rows.length) {
+        return db.run("COMMIT", err =>
+          err ? reject(err) : resolve()
+        );
+      }
+
+      // 2️⃣ Build INSERT statement
+      const colNames = ["eventID", ...columns.map(c => c.name)];
+      const placeholders = colNames.map(() => "?").join(", ");
+
+      const insertSql = `
+        INSERT INTO ${table} (${colNames.join(", ")})
+        VALUES (${placeholders})
+      `;
+
+      for (const row of rows) {
+        db.run(
+          insertSql,
+          [
+            eventID,
+            ...columns.map(c => row[c.prop] ?? null)
+          ],
+          err => {
+            if (err) {
+              db.run("ROLLBACK");
+              return reject(err);
+            }
+          }
+        );
+      }
+
+      // 3️⃣ Commit
+      db.run("COMMIT", err => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  });
+}
+
+	// ---------------------------------------------------------
+	// Save all "adjustment" sub-tables: Fees, Discounts, Tips
+	// ---------------------------------------------------------
+	function saveEventAdjustments(eventID, payload) {
+	  const {
+		additionalFees = [],
+		discounts = [],
+		tips = []
+	  } = payload || {};
+
+	  // AdditionalFees: { feeName, feeAmount }
+	  saveSubTableRows(eventID, additionalFees, {
+		table: "AdditionalFees",
+		columns: [
+		  { name: "feeName",   prop: "feeName" },
+		  { name: "feeAmount", prop: "feeAmount" }
+		]
+	  });
+
+	  // Discounts: { discountName, discountAmount }
+	  saveSubTableRows(eventID, discounts, {
+		table: "Discounts",
+		columns: [
+		  { name: "discountName",   prop: "discountName" },
+		  { name: "discountAmount", prop: "discountAmount" }
+		]
+	  });
+
+	  // TipTracker: { tipAmount }
+	  saveSubTableRows(eventID, tips, {
+		table: "TipTracker",
+		columns: [
+		  { name: "tipAmount", prop: "tipAmount" }
+		]
+	  });
+	}
+	
+	async function fetchSquareFeesFromBalance({
+  token,
+  locationId,
+  beginISO,
+  endISO
+}) {
+  let fees = 0;
+  let cursor = null;
+
+  do {
+    const url = new URL("https://.com/v2/balance/transactions");
+    url.searchParams.set("types", "FEE");
+    url.searchParams.set("location_id", locationId);
+    url.searchParams.set("begin_time", beginISO);
+    url.searchParams.set("end_time", endISO);
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const res = await fetch(url, {
+      headers: {
+        "Square-Version": "2025-01-15",
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    const json = await res.json();
+    const txns = json.balance_transactions || [];
+
+    for (const t of txns) {
+      fees += (t.amount_money?.amount || 0) / 100;
+    }
+
+    cursor = json.cursor || null;
+  } while (cursor);
+
+  return fees;
+}
+
+
+// -------------------------------
+// Helper: Coerce event values safely
+// -------------------------------
+function coerceEvent(body) {
+  const toInt = (v) =>
+    v === "" || v == null ? null : parseInt(v, 10);
+  const toNum = (v) =>
+    v === "" || v == null ? null : Number(v);
+  const toBoolI = (v) =>
+    v === true || v === "true" || v === 1 || v === "1" ? 1 : 0;
+  const toStr = (v) => (v == null || v === "" ? null : String(v));
+
+    return {
+    eventName: toStr(body.eventName),
+    eventDate: toStr(body.eventDate),
+    applicationDate: toStr(body.applicationDate),
+    finalizedDate: toStr(body.finalizedDate),
+
+    eventFee: toNum(body.eventFee),
+    squareLocationId: toStr(body.squareLocationId),
+    time: toStr(body.time),
+    employees: toStr(body.employees),
+    eventRating: toStr(body.eventRating),
+    eventHost: toStr(body.eventHost),
+    notes: toStr(body.notes),
+    status: toStr(body.status),
+    eventType: toStr(body.eventType),
+    numDays: toInt(body.numDays),
+    coordinator: toStr(body.coordinator),
+
+    grossSales: toNum(body.grossSales),
+    tips: toNum(body.tips),
+    netSales: toNum(body.netSales),
+    totalSales: toNum(body.totalSales),
+    isFinalized: toBoolI(body.isFinalized),
+
+    // 🔹 NEW: Profit-related fields
+    healthDeptFee: toNum(body.healthDeptFee),
+    mileageReimbursement: toNum(body.mileageReimbursement),
+    eventRunnerFees: toNum(body.eventRunnerFees),
+
+    giftCardSales: toNum(body.giftCardSales),
+
+    cash: toNum(body.cash),
+    card: toNum(body.card),
+    wallet: toNum(body.wallet),
+    other: toNum(body.other),
+    cashApp: toNum(body.cashApp),
+
+    taxOverride: toNum(body.taxOverride),
+
+    customFields:
+      body.customFields && Object.keys(body.customFields).length
+        ? JSON.stringify(body.customFields)
+        : null,
+  };
+}
+
+
+
+/**
+ * buildPostEventReport
+ * READ-ONLY aggregator.
+ * ❌ Must NEVER calculate or initialize Square-derived fields.
+ * ✅ Square values come ONLY from SalesSummary table.
+ */
+
+async function buildPostEventReport(eventID) {
+  try {
+    // 1️⃣ Base EventInfo
+    const event = await dbGet(
+      `SELECT * FROM EventInfo WHERE eventID = ?`,
+      [eventID]
+    );
+
+    if (!event) return null;
+
+    // 2️⃣ Ensure EventExpenses row exists
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO EventExpenses (eventID)
+         VALUES (?)
+         ON CONFLICT(eventID) DO NOTHING`,
+        [eventID],
+        err => (err ? reject(err) : resolve())
+      );
+    });
+
+    // 3️⃣ Load related data
+    const [
+      expenses,
+      laborRows,
+      supplyRows,
+      discountRows,
+      salesSummary,
+      drinkSales
+    ] = await Promise.all([
+      dbGet(`SELECT * FROM EventExpenses WHERE eventID = ?`, [eventID]),
+      dbAll(`SELECT * FROM EventEmployees WHERE eventID = ?`, [eventID]),
+      dbAll(`SELECT * FROM SupplyCosts WHERE eventID = ?`, [eventID]),
+      dbAll(`SELECT * FROM Discounts WHERE eventID = ?`, [eventID]),
+      dbGet(`SELECT * FROM SalesSummary WHERE eventID = ?`, [eventID]),
+      dbAll(`SELECT * FROM DrinkSales WHERE eventID = ?`, [eventID])
+    ]);
+
+    // 4️⃣ Assemble report (same structure you had)
+    const report = {
+      event,
+      expenses: expenses || {},
+      labor: laborRows || [],
+      supplies: supplyRows || [],
+      discounts: discountRows || [],
+      sales: salesSummary || {},
+      drinkSales: drinkSales || []
+    };
+   
+   //console.log("DISCOUNT ROW = Discount ", report);
+    
+    return report;
+  } catch (err) {
+    console.error("❌ buildPostEventReport failed:", err);
+    throw err;
+  }
+}
+
+function saveDrinkSales(eventID, rows, done) {
+  db.serialize(() => {
+    db.run("BEGIN");
+
+    db.run(
+      `DELETE FROM DrinkSales WHERE eventID = ?`,
+      [eventID],
+      err => {
+        if (err) {
+          console.error("❌ Failed to clear DrinkSales:", err);
+          db.run("ROLLBACK");
+          return done?.(err);
+        }
+      }
+    );
+
+    const insertSql = `
+      INSERT INTO DrinkSales
+      (eventID, drinkName, unitPrice, quantitySold, totalCost)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
+    for (const r of rows) {
+      db.run(
+        insertSql,
+        [
+          eventID,
+          r.drinkName,
+          r.unitPrice,
+          r.quantitySold,
+          r.totalCost
+        ],
+        err => {
+          if (err) {
+            console.error("❌ DrinkSales insert failed:", err);
+            db.run("ROLLBACK");
+            return done?.(err);
+          }
+        }
+      );
+    }
+
+    db.run("COMMIT", err => {
+      if (err) {
+        console.error("❌ Commit failed:", err);
+        return done?.(err);
+      }
+      done?.();
+    });
+  });
+}
+
+
+(async () => {
+  try {
+    await initDb();
+
+    const PORT = process.env.PORT || 8080;
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(`🚀 SQLite backend running on port ${PORT}`)
+    );
+  } catch (err) {
+    console.error("❌ Failed to start server:", err);
+    process.exit(1);
+  }
+})();

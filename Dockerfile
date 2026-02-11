@@ -1,24 +1,20 @@
-# Use official Node LTS
 FROM node:20-slim
 
-# Create app directory
 WORKDIR /app
 
-# Copy package files first (better caching)
+# Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --production
+# Install deps INSIDE Linux container
+RUN npm ci --omit=dev
 
-# Copy the rest of the app
+# Copy app source
 COPY . .
 
-# Fly uses PORT env var
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Expose port
 EXPOSE 8080
 
-# Start the app
-CMD ["node", "server.js"]
+# 🚨 Explicit shell exec (important)
+CMD ["sh", "-c", "node server.js"]

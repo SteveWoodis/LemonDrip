@@ -661,7 +661,7 @@ function clearEventForm() {
 // List all
 async function loadAllEvents() {
   try {
-    const res = await fetch("http://localhost:3000/api/events");
+    const res = await fetch(`${API_BASE}/api/events`);
     const data = await res.json();
     const events = data.Events || [];
 
@@ -693,7 +693,7 @@ async function manageSearch() {
     return;
   }
 
-  const res = await fetch(`http://localhost:3000/api/events/search?q=${encodeURIComponent(q)}`);
+  const res = await fetch(`${API_BASE}/api/events/search?q=${encodeURIComponent(q)}`);
   const results = await res.json();
   console.log("What is res? ", res);
   buildTableHTML(results, "manageResults");
@@ -725,7 +725,7 @@ async function addCompany(event) {
   }
 
   try {
-    const res = await fetch("http://localhost:3000/api/company", {
+    const res = await fetch("/api/company", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
@@ -754,7 +754,7 @@ async function buildExpandedDetails(event) {
 async function loadSquareLocationsIntoForm() {
   try {
     const res = await fetch(
-      "http://localhost:3000/api/square/locations"
+      "/api/square/locations"
     );
     const locations = await res.json();
 
@@ -919,7 +919,7 @@ async function searchEvents() {
 
 async function loadEvents() {
   try {
-    const res = await fetch("http://localhost:3000/api/events");
+    const res = await fetch("/api/events");
     const newEvent = await res.json();
     window.events = Array.isArray(newEvent)
       ? newEvent
@@ -1287,7 +1287,7 @@ function clearSearch() {
 
 async function populateEmployeeDropdown(selectEl) {
   try {
-    const res = await fetch("http://localhost:3000/api/employees");
+    const res = await fetch("/api/employees");
     const employees = await res.json();
 
     selectEl.innerHTML =
@@ -1387,7 +1387,7 @@ async function saveTemplate() {
 
   try {
     const response = await fetch(
-      "http://localhost:3000/api/formTemplates",
+      "/api/formTemplates",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1481,7 +1481,7 @@ async function openAddEventForUser() {
 
 async function loadTemplates() {
   try {
-    const res = await fetch("http://localhost:3000/api/formTemplates");
+    const res = await fetch("/api/formTemplates");
     const templates = await res.json();
 
     const selector = document.getElementById("templateSelect");
@@ -1983,8 +1983,13 @@ function buildFeesEditor(event) {
 // --------------------------------------------
 function buildTipsEditor(event) {
   const rows = event.tips || [];
+  const sales = event.sales || {};
+  const fmtMoney = (v) =>
+    v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
 
   let html = `
+    <div><strong>Tips (Square):</strong> ${fmtMoney(sales.tips)}</div>
+    <hr>
     <table class="lemondrip-table" id="tipsEditor">
       <thead>
         <tr>
@@ -2096,8 +2101,13 @@ async function saveTips() {
 // --------------------------------------------
 function buildDiscountsEditor(event) {
   const rows = event.discounts || [];
+  const sales = event.sales || {};
+  const fmtMoney = (v) =>
+    v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
 
   let html = `
+    <div><strong>Discounts (Square):</strong> ${fmtMoney(sales.discounts)}</div>
+    <hr>
     <table class="lemondrip-table" id="discountsEditor">
       <thead>
         <tr>
@@ -2238,11 +2248,18 @@ function addDiscountRow(name = "", amount = "") {
 function renderEventProfitSummary(event) {
   const sales = event.sales || {};
   const totals = event.totals || {};
+  const discounts = event.discounts || [];
+
+const discountTotal = discounts.reduce(
+  (sum, d) => sum + (Number(d.discountAmount) || 0),
+  0
+);
+
   const expenses = event.expenses || {}; // ✅ THIS WAS MISSING
 
   const fmtMoney = (v) =>
     v == null ? "-" : `$${Number(v || 0).toFixed(2)}`;
-    console.log("TOTALS = ", totals);
+    console.log("EVENT = ", event);
 
   return createCollapsibleCard(
     "Event Profit Summary",
@@ -2250,7 +2267,7 @@ function renderEventProfitSummary(event) {
     <div class="profit-summary">
       <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
       <div><strong>Returns:</strong> (${fmtMoney(sales.refunds)})</div>
-      <div><strong>Discounts:</strong> (${fmtMoney(sales.discounts)})</div>
+      <div><strong>Discounts:</strong> (${fmtMoney(discountTotal)})</div>
       <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
       <hr>
       <div><strong>Tips:</strong> ${fmtMoney(sales.tips)}</div>
@@ -2501,6 +2518,7 @@ function renderLaborCard(event) {
 
 
 function wireLaborCard(eventID) {
+
   const body = document.getElementById("laborTableBody");
   const totalEl = document.getElementById("laborTotal");
   const addBtn = document.getElementById("addLaborRow");
@@ -2594,12 +2612,24 @@ function wireLaborCard(eventID) {
 
 function enterExpensesEditMode() {
   expensesEditMode = true;
-  reloadEventDashboard();
+  const card = document.getElementById("expensesCard");
+  if (card) {
+    const contentEl = card.querySelector(".sheet-content");
+    if (contentEl) {
+      contentEl.innerHTML = renderExpensesEditMode(window.activeEvent?.expenses || {});
+    }
+  }
 }
 
 function cancelExpensesEdit() {
   expensesEditMode = false;
-  reloadEventDashboard();
+  const card = document.getElementById("expensesCard");
+  if (card) {
+    const contentEl = card.querySelector(".sheet-content");
+    if (contentEl) {
+      contentEl.innerHTML = renderExpensesViewMode(window.activeEvent?.expenses || {});
+    }
+  }
 }
 
 
@@ -3110,7 +3140,7 @@ wireLaborCard(eventID);
 
 async function pullSquareSales(eventID) {
   try {
-    const res = await fetch(`http://localhost:3000/api/square/sales/${eventID}`, {
+    const res = await fetch(`${API_BASE}/api/square/sales/${eventID}`, {
       method: "PUT"
     });
 
@@ -3238,7 +3268,7 @@ async function openPostEventReport(eventData) {
       return;
     }
 
-    const res = await fetch(`http://localhost:3000/api/events/${eventID}/report`);
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/report`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `Server error ${res.status}`);
@@ -3666,7 +3696,7 @@ async function uploadEventPermits(eventID) {
   [...files].forEach((f) => fd.append("permits", f));
 
   const res = await fetch(
-    "http://localhost:3000/api/events/upload-permits",
+    "/api/events/upload-permits",
     {
       method: "POST",
       body: fd
