@@ -1419,11 +1419,21 @@ function clearManageSearch() {
   console.log("Manage search cleared.");
 }
 function getDefaultStarterTemplate() {
-  return window.availableTemplates.find(t =>
-    t.templateName === "Default Template"
-  ) || window.availableTemplates[0] || null;
-}
+  if (!Array.isArray(window.availableTemplates)) return null;
 
+  return (
+    window.availableTemplates.find(t =>
+      typeof t.templateName === "string" &&
+      t.templateName.toLowerCase() === "default template"
+    ) ||
+    window.availableTemplates.find(t =>
+      typeof t.templateName === "string" &&
+      t.templateName.toLowerCase().includes("default")
+    ) ||
+    window.availableTemplates[0] ||
+    null
+  );
+}
 
 
 async function waitForTemplates(timeout = 3000) {
@@ -1489,7 +1499,7 @@ async function openAddEventForUser() {
   } catch (err) {
     console.error("Error loading templates:", err);
   }
-}*/
+}
 
 // 🧩 Load templates into Add Event dropdown
 async function populateTemplateDropdown() {
@@ -1497,33 +1507,48 @@ async function populateTemplateDropdown() {
     const res = await fetch(`${API_BASE}/api/formTemplates`);
     const templates = await res.json();
 
+    console.log("RAW templates from API:", templates);
+
     if (!Array.isArray(templates)) {
       console.error("❌ Templates failed to load:", templates);
       return;
     }
-
     window.availableTemplates = templates.map(t => ({
       templateID: t.TemplateID,
       templateName: t.TemplateName,
       fields: t.Fields,
       createdAt: t.CreatedAt
     }));
-
     const dropdown = document.getElementById("templateSelect");
-    dropdown.innerHTML = '<option value="">-- Select Template --</option>';
+    const loadBtn = document.getElementById("loadTemplateBtn");
 
-    for (const t of window.availableTemplates) {
-      const opt = document.createElement("option");
-      opt.value = t.templateName;
-      opt.textContent = t.templateName;
-      dropdown.appendChild(opt);
+    if (dropdown && loadBtn) {
+      loadBtn.disabled = true; // start disabled
+
+      dropdown.addEventListener("change", () => {
+        loadBtn.disabled = !dropdown.value;
+      });
     }
 
+
+   dropdown.innerHTML = "";
+console.log("Templates just before dropdown:", templates);
+
+    
+  for (const t of window.availableTemplates) {
+  const opt = document.createElement("option");
+  opt.value = t.templateName;
+  opt.textContent = t.templateName;
+  dropdown.appendChild(opt);
+}
+
+
+    console.log(`✅ ${templates.length} templates loaded`);
   } catch (err) {
     console.error("❌ Error loading templates:", err);
   }
 }
-
+*/
 
 
 // ⚡ When user picks a template
@@ -1546,20 +1571,41 @@ function stripEventColorFromTemplate(tpl) {
 
 
 function useSelectedTemplate() {
-  const dropdown = document.getElementById("templateSelect");
-  if (!dropdown) return;
+  const templates = window.availableTemplates;
 
-  const id = Number(dropdown.value);
-  if (!id) return;
-
-  const tpl = window.availableTemplates.find(t => t.templateID === id);
-
-  if (!tpl) {
-    console.error("Template not found for ID:", id);
+  if (!Array.isArray(templates)) {
+    console.error("❌ Templates not loaded yet");
     return;
   }
 
+  const dropdown = document.getElementById("templateSelect");
+  if (!dropdown) {
+    console.error("❌ Template dropdown not found");
+    return;
+  }
+
+  const selected = dropdown.value;
+  if (!selected) {
+    console.warn("ℹ️ No template selected");
+    alert("Please select a template first.");
+    return;
+  }
+
+  const tpl = templates.find(t => t.templateName === selected);
+
+
+  if (!tpl) {
+    console.warn("❌ Template not found:", selected);
+    alert("Template not found!");
+    return;
+  }
+
+  console.log("📋 Loading template into Add Event form:", tpl);
+
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
+
+ alert(`✅ Loaded template: "${tpl.templateName}"`);
+
 }
 
 
@@ -1605,7 +1651,8 @@ console.log("✅ fields resolved:", fields);
   console.log("WHAT IS TEMPLATE VALUE: ", template);
   console.log(" The Fields of Template:", fields);
 
-  if (!template || !Array.isArray(fields)) {
+  if (
+    !template || !Array.isArray(fields)) {
     console.error("❌ Invalid template structure:", template);
     formContainer.innerHTML = "<p>Template could not be loaded.</p>";
     return;
@@ -1904,21 +1951,6 @@ async function saveFees() {
     alert("Network error saving fees.");
   }
 }
-
-function buildTemplateDropdown() {
-  const dropdown = document.getElementById("templateSelect");
-  if (!dropdown) return;
-
-  dropdown.innerHTML = '<option value="">-- Select Template --</option>';
-
-  for (const t of window.availableTemplates) {
-    const opt = document.createElement("option");
-    opt.value = t.templateID;   // 🔥 use ID, not name
-    opt.textContent = t.templateName;
-    dropdown.appendChild(opt);
-  }
-}
-
 
 
 // --------------------------------------------
@@ -3242,7 +3274,7 @@ if (Object.keys(customFieldsObj).length) {
       (sum, r) => sum + (Number(r.totalCost) || 0),
       0
     );
-    const totalQty = event.drinkSales.reduce(
+    const totalQty = report.drinkSales.reduce(
       (sum, r) => sum + (Number(r.quantitySold) || 0),
       0
     );

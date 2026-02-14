@@ -4,6 +4,7 @@
 
 // Core deps
 const express = require("express");
+const { body, validationResult } = require('express-validator');
 const sqlite3 = require("sqlite3").verbose();
 require("dotenv").config();
 
@@ -113,7 +114,15 @@ function initDb() {
                 () => {
                   db.run(
                     `ALTER TABLE SalesSummary ADD COLUMN squareFees REAL DEFAULT 0`,
-                    () => resolve()
+                    () => {
+                      db.run(
+                        `ALTER TABLE EventInfo ADD COLUMN zipCode TEXT`,
+                        (err) => {
+                          if (err && !err.message.includes('duplicate column')) console.error(err);
+                          resolve();
+                        }
+                      );
+                    }
                   );
                 }
               );
@@ -125,8 +134,6 @@ function initDb() {
   });
 }
 
-
-console.log("DEBUG: Loaded APP ID =", process.env.SQUARE_APP_ID);
 
 const app = express();
 app.use((req, res, next) => {
@@ -191,41 +198,6 @@ const activeOAuthStates = new Set();
 
 
 // -------------------------------
-// 📎 Upload permit files
-// -------------------------------
-app.get("/api/events", (req, res) => {
-  const { name, date, id } = req.query;
-
-  let sql = `SELECT * FROM EventInfo WHERE 1=1`;
-  const params = [];
-
-  if (name) {
-    sql += ` AND eventName LIKE ?`;
-    params.push(`%${name}%`);
-  }
-  if (date) {
-    sql += ` AND eventDate = ?`;
-    params.push(date);
-  }
-  if (id) {
-    sql += ` AND eventID = ?`;
-    params.push(id);
-  }
-
-  sql += ` ORDER BY eventDate DESC`;
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      console.error("❌ Error reading events:", err);
-      return res.status(500).json({ error: "Error reading events." });
-    }
-
-    res.json({ Events: rows });
-  });
-});
-
-
-// -------------------------------
 // 🔍 GET /api/events (list/search)
 // -------------------------------
 app.get("/api/events", async (req, res) => {
@@ -278,10 +250,14 @@ app.get("/api/square/oauth/callback", async (req, res) => {
   }
 
   // ------------------------------------------------------
-  // TEMPORARY: Disable state validation in development ONLY
-  // ------------------------------------------------------
-  activeOAuthStates.delete(state);
-
+// ✅ SECURE: Validate state to prevent CSRF attacks
+// ------------------------------------------------------
+if (process.env.NODE_ENV === 'production') {
+  if (!activeOAuthStates.has(state)) {
+    return res.status(400).send("Invalid state parameter - possible CSRF attack");
+  }
+}
+activeOAuthStates.delete(state);
   try {
     const tokenRes = await axios.post(
       "https://connect.squareup.com/oauth2/token",
@@ -656,10 +632,10 @@ app.post("/api/events", (req, res) => {
       healthDeptFee, mileageReimbursement, eventRunnerFees,
       giftCardSales,
       cash, card, wallet, other, cashApp,
-      taxOverride, state
+      taxOverride, state, zipCode
     )
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,?,?,?,?,?,?,?,?,?)
+            ?,?,?,?,?,?,?,?,?,?,?,?)
   `;
 
   const params = [
@@ -694,7 +670,8 @@ app.post("/api/events", (req, res) => {
     e.other ?? 0,
     e.cashApp ?? 0,
     e.taxOverride ?? null,
-    e.state
+    e.state,
+    e.zipCode ?? null,
   ];
 
   db.run(sql, params, function (err) {
@@ -728,7 +705,7 @@ app.put("/api/events/:id", (req, res) => {
       healthDeptFee=?, mileageReimbursement=?, eventRunnerFees=?,
       giftCardSales=?,
       cash=?, card=?, wallet=?, other=?, cashApp=?,
-      taxOverride=?, state=?
+      taxOverride=?, state=?, zipCode=?
     WHERE eventID=?
   `;
 
@@ -765,6 +742,7 @@ app.put("/api/events/:id", (req, res) => {
     e.cashApp ?? 0,
     e.taxOverride ?? null,
     e.state,
+    e.zipCode ?? null,
     id
   ];
 
@@ -2138,7 +2116,8 @@ async function buildEventLabor(eventID) {
     const sqEmp = squareEmployees.find(e => e.id === tc.employeeId);
     if (!sqEmp) continue;
 
-    const employee = findOrCreateEmployee(sqEmp);
+    const empName = [sqEmp.first_name, sqEmp.last_name].filter(Boolean).join(" ") || "Unknown";
+    const employee = await findOrCreateEmployee(empName);
 
     laborResults.push({
       employeeID: employee.employeeID,
@@ -2425,6 +2404,29 @@ async function fetchSquareTimecardsForEvent(eventID) {
     cursor = json.cursor || null;
   } while (cursor);
 
+  // Resolve team member names from Square
+  const uniqueMemberIds = [...new Set(allTimecards.map(tc => tc.team_member_id).filter(Boolean))];
+  const nameMap = {};
+  for (const memberId of uniqueMemberIds) {
+    try {
+      const memberRes = await doFetch(`${baseUrl}/v2/team-members/${memberId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Square-Version": "2025-05-21",
+          "Content-Type": "application/json"
+        }
+      });
+      const memberJson = await memberRes.json().catch(() => ({}));
+      const tm = memberJson.team_member;
+      if (tm) {
+        nameMap[memberId] = [tm.given_name, tm.family_name].filter(Boolean).join(" ");
+      }
+    } catch (e) {
+      console.warn(`⚠️ Could not resolve team member ${memberId}:`, e.message);
+    }
+  }
+
   return allTimecards.map(tc => {
     const startMs = tc.start_at ? new Date(tc.start_at).getTime() : null;
     const endMs = tc.end_at ? new Date(tc.end_at).getTime() : null;
@@ -2439,7 +2441,7 @@ async function fetchSquareTimecardsForEvent(eventID) {
     return {
       id: tc.id,
       teamMemberId: tc.team_member_id,
-      employeeName: tc.wage?.title || tc.team_member_id,
+      employeeName: nameMap[tc.team_member_id] || tc.team_member_id,
       start: tc.start_at,
       end: tc.end_at,
       hours,
@@ -2567,7 +2569,7 @@ async function fetchSquareTimecardsForEvent(eventID) {
   let cursor = null;
 
   do {
-    const url = new URL("https://.com/v2/balance/transactions");
+    const url = new URL("https://connect.squareup.com/v2/balance/transactions");
     url.searchParams.set("types", "FEE");
     url.searchParams.set("location_id", locationId);
     url.searchParams.set("begin_time", beginISO);
@@ -2646,6 +2648,7 @@ function coerceEvent(body) {
 
     taxOverride: toNum(body.taxOverride),
     state: toStr(body.state),
+    zipCode: toStr(body.zipCode),
     customFields:
       body.customFields && Object.keys(body.customFields).length
         ? JSON.stringify(body.customFields)
@@ -2654,19 +2657,43 @@ function coerceEvent(body) {
 }
 
 // -------------------------------------------
-// 🏛️ State Revenue Tax Map
-// Only include states that charge income tax
+// 🏛️ Zip-Tax.com Sales Tax API
+// Returns combined sales tax rate for a given zip code
 // -------------------------------------------
-const STATE_REVENUE_TAX = {
-  UT: 0.03,     // Utah example per your rule
-  CA: 0.084,    // Example (adjust as needed)
-  NY: 0.065,
-  CO: 0.044,
-  // Add others here as needed
-};
+const ZIP_TAX_API_KEY = process.env.ZIP_TAX_API_KEY || "";
 
-// States with NO income tax:
-// AK, FL, NV, SD, TN, TX, WA, WY
+async function fetchSalesTaxRate(zipCode) {
+  if (!zipCode || !ZIP_TAX_API_KEY) return { rate: 0, detail: null };
+
+  try {
+    const url = `https://api.zip-tax.com/request/v40?key=${ZIP_TAX_API_KEY}&postalcode=${zipCode}`;
+    const res = await fetch(url);
+    const json = await res.json();
+
+    if (json.rCode !== 100 || !json.results?.length) {
+      console.warn(`⚠️ zip-tax.com lookup failed for ${zipCode}: rCode=${json.rCode}`);
+      return { rate: 0, detail: null };
+    }
+
+    const result = json.results[0];
+    return {
+      rate: result.taxSales || 0,
+      detail: {
+        state: result.geoState,
+        city: result.geoCity,
+        county: result.geoCounty,
+        stateSalesTax: result.stateSalesTax || 0,
+        citySalesTax: result.citySalesTax || 0,
+        countySalesTax: result.countySalesTax || 0,
+        districtSalesTax: result.districtSalesTax || 0,
+        combinedRate: result.taxSales || 0,
+      }
+    };
+  } catch (err) {
+    console.error("❌ zip-tax.com API error:", err.message);
+    return { rate: 0, detail: null };
+  }
+}
 
 
 
@@ -2734,51 +2761,34 @@ async function buildPostEventReport(eventID) {
     };
    
    // -------------------------------------------
-  // 🏛️ STATE REVENUE TAX CALCULATION
-  // -------------------------------------------
+   // 🏛️ SALES TAX CALCULATION (via zip-tax.com)
+   // -------------------------------------------
+   const zipCode = event.zipCode || null;
+   const taxData = await fetchSalesTaxRate(zipCode);
+   const stateRate = taxData.rate;
 
-  // Determine state from event (assumes you store event.state or customFields.state)
-  let stateCode = null;
-
-  // Option A: If you store state directly on EventInfo
-  if (event.state) {
-    stateCode = event.state;
-  }
-
-  // Option B: If stored in customFields JSON
-  if (!stateCode && event.customFields) {
-    try {
-      const cf = JSON.parse(event.customFields);
-      stateCode = cf.state || null;
-    } catch {}
-  }
-
-  const stateRate = STATE_REVENUE_TAX[stateCode] || 0;
-
-  // Calculate Net Profit first
-  const netProfit =
+   // Calculate Net Profit first
+   const netProfit =
     (report.sales?.netSales || 0)
     - (report.expenses?.totalExpenses || 0)
     - (report.expenses?.laborFees || 0)
     - (report.supplies?.reduce((sum, s) => sum + (s.totalCost || 0), 0) || 0);
-    console.log("What is my netProfit ", netProfit);
 
-  // Only tax positive profit
-    const federalTaxRate = .2;
-  const stateRevenueTax = netProfit > 0 ? netProfit * stateRate : 0;
-  console.log("What is my state Revenue Tax: ", stateRevenueTax);
-  const federalTaxes = (netProfit - stateRevenueTax) * federalTaxRate;
-  console.log("What is my Federal Taxes: ", federalTaxes);
-  const finalProfit = netProfit - stateRevenueTax - federalTaxes;
+   // Only tax positive profit
+   const federalTaxRate = 0.153;
+   const stateRevenueTax = netProfit > 0 ? netProfit * stateRate : 0;
+   const federalTaxes = (netProfit - stateRevenueTax) * federalTaxRate;
+   const finalProfit = netProfit - stateRevenueTax - federalTaxes;
 
-  // Attach to report
-  report.taxes = {
-    stateCode,
+   // Attach to report
+   report.taxes = {
+    zipCode,
     stateRate,
     stateRevenueTax,
     federalTaxes,
-    finalProfit
-  };
+    finalProfit,
+    taxDetail: taxData.detail,
+   };
 
    //console.log("DISCOUNT ROW = Discount ", report);
     
