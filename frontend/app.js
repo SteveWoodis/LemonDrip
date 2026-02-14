@@ -162,7 +162,9 @@ function buildEventPayloadFromTemplate({ raw, template }) {
 
 // ---------------------------
 // 💾 Persistent State (localStorage)// 🔗 Backend base URL
-const API_BASE = "http://localhost:3000";
+const API_BASE = window.location.hostname === "localhost"
+  ? "http://localhost:3000"
+  : window.location.origin;
 
 // ---------------------------
 // 🔄 Event Normalization Helpers
@@ -287,10 +289,13 @@ function normalizeEvent(e) {
 	  totalCollected: e.sales?.totalCollected ?? 0
 	},
 
-    customFields:
-      typeof e.customFields === "string"
-        ? (JSON.parse(e.customFields || "{}") || {})
-        : e.customFields || {},
+    customFields: (() => {
+      if (typeof e.customFields === "string") {
+        try { return JSON.parse(e.customFields) || {}; }
+        catch { return {}; }
+      }
+      return e.customFields || {};
+    })(),
   };
 
   // 🔹 Profit-related event-level fields
@@ -510,17 +515,19 @@ function createStarRating(name, currentValue = 0, editable = true) {
 // ---------------------------
 function buildTableHTML(results, containerId = "searchResults") {
   results = results.map(ev => {
-    if (ev.customFields && typeof ev.customFields === "string") {
+    const copy = { ...ev };
+    if (copy.customFields && typeof copy.customFields === "string") {
       try {
-        const parsed = JSON.parse(ev.customFields);
-        ev.customFields = Object.entries(parsed)
+        const parsed = JSON.parse(copy.customFields);
+        copy._rawCustomFields = copy.customFields;
+        copy.customFields = Object.entries(parsed)
           .map(([k, v]) => `${k}: ${v}`)
           .join("; ");
       } catch {
-        // leave as-is
+        // already a display string, leave as-is
       }
     }
-    return ev;
+    return copy;
   });
 
   const container = document.getElementById(containerId) || document.body;
@@ -603,7 +610,7 @@ function buildTableHTML(results, containerId = "searchResults") {
         });
 
         console.log("⭐ FULL REPORT EVENT LOADED right before loadEventIntoDashboard:", report);
-        loadEventIntoDashboard(event);
+        loadEventIntoDashboard(report.event);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
         alert("Could not load event details.");
@@ -1499,15 +1506,13 @@ async function openAddEventForUser() {
   } catch (err) {
     console.error("Error loading templates:", err);
   }
-}
+}*/
 
 // 🧩 Load templates into Add Event dropdown
 async function populateTemplateDropdown() {
   try {
     const res = await fetch(`${API_BASE}/api/formTemplates`);
     const templates = await res.json();
-
-    console.log("RAW templates from API:", templates);
 
     if (!Array.isArray(templates)) {
       console.error("❌ Templates failed to load:", templates);
@@ -1523,32 +1528,28 @@ async function populateTemplateDropdown() {
     const loadBtn = document.getElementById("loadTemplateBtn");
 
     if (dropdown && loadBtn) {
-      loadBtn.disabled = true; // start disabled
+      loadBtn.disabled = true;
 
       dropdown.addEventListener("change", () => {
         loadBtn.disabled = !dropdown.value;
       });
     }
 
-
-   dropdown.innerHTML = "";
-console.log("Templates just before dropdown:", templates);
-
-    
-  for (const t of window.availableTemplates) {
-  const opt = document.createElement("option");
-  opt.value = t.templateName;
-  opt.textContent = t.templateName;
-  dropdown.appendChild(opt);
-}
-
+    if (dropdown) {
+      dropdown.innerHTML = "";
+      for (const t of window.availableTemplates) {
+        const opt = document.createElement("option");
+        opt.value = t.templateName;
+        opt.textContent = t.templateName;
+        dropdown.appendChild(opt);
+      }
+    }
 
     console.log(`✅ ${templates.length} templates loaded`);
   } catch (err) {
     console.error("❌ Error loading templates:", err);
   }
 }
-*/
 
 
 // ⚡ When user picks a template

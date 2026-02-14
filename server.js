@@ -4,7 +4,15 @@
 
 // Core deps
 const express = require("express");
-const { body, validationResult } = require('express-validator');
+const { body, param, validationResult } = require('express-validator');
+
+function handleValidationErrors(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+  next();
+}
 const sqlite3 = require("sqlite3").verbose();
 require("dotenv").config();
 
@@ -541,7 +549,27 @@ app.get("/api/square/locations", async (req, res) => {
 // -------------------------------
 // POST /api/company
 // -------------------------------
-app.post("/api/company", (req, res) => {
+app.post("/api/company",
+  [
+    body('companyName')
+      .trim().notEmpty().withMessage('Company name is required')
+      .isLength({ min: 2, max: 100 }).withMessage('Company name must be 2-100 characters')
+      .matches(/^[a-zA-Z0-9\s\-',.&()]+$/).withMessage('Company name contains invalid characters'),
+    body('contactName').optional({ nullable: true }).trim()
+      .isLength({ min: 2, max: 100 }).withMessage('Contact name must be 2-100 characters')
+      .matches(/^[a-zA-Z\s\-'.]+$/).withMessage('Contact name contains invalid characters'),
+    body('phone').optional({ nullable: true }).trim()
+      .matches(/^[\d\s\-\(\)]+$/).withMessage('Invalid phone number format')
+      .isLength({ min: 10, max: 20 }).withMessage('Phone number must be 10-20 characters'),
+    body('email').optional({ nullable: true }).trim()
+      .isEmail().withMessage('Must be a valid email address')
+      .normalizeEmail().isLength({ max: 100 }).withMessage('Email too long'),
+    body('vendorCategory').optional({ nullable: true }).trim()
+      .isLength({ min: 2, max: 50 }).withMessage('Vendor category must be 2-50 characters')
+      .matches(/^[a-zA-Z\s\-&,]+$/).withMessage('Vendor category contains invalid characters'),
+  ],
+  handleValidationErrors,
+  (req, res) => {
   const c = req.body;
 
   const sql = `
@@ -615,12 +643,42 @@ app.post("/api/employees", (req, res) => {
 // -------------------------------
 // POST /api/events  (CREATE NEW EVENT)
 // -------------------------------
-app.post("/api/events", (req, res) => {
+app.post("/api/events",
+  [
+    body('eventName')
+      .trim().notEmpty().withMessage('Event name is required')
+      .isLength({ min: 3, max: 100 }).withMessage('Event name must be between 3 and 100 characters')
+      .matches(/^[a-zA-Z0-9\s\-',.&()]+$/).withMessage('Event name contains invalid characters'),
+    body('eventDate')
+      .notEmpty().withMessage('Event date is required')
+      .isISO8601().withMessage('Invalid date format (use YYYY-MM-DD)')
+      .custom((value) => {
+        const d = new Date(value);
+        const limit = new Date();
+        limit.setFullYear(limit.getFullYear() + 2);
+        if (d > limit) throw new Error('Event date cannot be more than 2 years in the future');
+        return true;
+      }),
+    body('applicationDate').optional({ nullable: true }).isISO8601().withMessage('Invalid application date format'),
+    body('eventFee').optional({ nullable: true }).isFloat({ min: 0, max: 100000 }).withMessage('Event fee must be between $0 and $100,000'),
+    body('eventHost').optional({ nullable: true }).trim().isLength({ max: 100 }).withMessage('Event host name too long (max 100 characters)'),
+    body('eventType').optional({ nullable: true }).trim().isLength({ max: 50 }).withMessage('Event type too long (max 50 characters)'),
+    body('status').optional({ nullable: true }).trim().isIn(['Planned', 'Active', 'Completed', 'Cancelled']).withMessage('Status must be: Planned, Active, Completed, or Cancelled'),
+    body('coordinator').optional({ nullable: true }).trim().isLength({ max: 100 }).withMessage('Coordinator name too long'),
+    body('numDays').optional({ nullable: true }).isInt({ min: 1, max: 30 }).withMessage('Number of days must be between 1 and 30'),
+    body('squareLocationId').optional({ nullable: true }).trim().isLength({ max: 100 }).withMessage('Square location ID invalid'),
+    body('notes').optional({ nullable: true }).trim().isLength({ max: 2000 }).withMessage('Notes too long (max 2000 characters)'),
+    body('grossSales').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Gross sales must be a positive number'),
+    body('netSales').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Net sales must be a positive number'),
+    body('tips').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Tips must be a positive number'),
+    body('healthDeptFee').optional({ nullable: true }).isFloat({ min: 0, max: 10000 }).withMessage('Health dept fee must be between $0 and $10,000'),
+    body('mileageReimbursement').optional({ nullable: true }).isFloat({ min: 0, max: 10000 }).withMessage('Mileage reimbursement must be between $0 and $10,000'),
+    body('eventRunnerFees').optional({ nullable: true }).isFloat({ min: 0, max: 50000 }).withMessage('Event runner fees must be between $0 and $50,000'),
+    body('giftCardSales').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Gift card sales must be a positive number'),
+  ],
+  handleValidationErrors,
+  (req, res) => {
   const e = coerceEvent(req.body);
-
-  if (!e.eventName) {
-    return res.status(400).json({ error: "Missing eventName." });
-  }
 
   const sql = `
     INSERT INTO EventInfo (
@@ -691,7 +749,32 @@ app.post("/api/events", (req, res) => {
 // -------------------------------
 // PUT /api/events/:id  (UPDATE EVENT)
 // -------------------------------
-app.put("/api/events/:id", (req, res) => {
+app.put("/api/events/:id",
+  [
+    param('id').isInt({ min: 1 }).withMessage('Event ID must be a positive number'),
+    body('eventName').optional().trim().notEmpty().withMessage('Event name cannot be empty')
+      .isLength({ min: 3, max: 100 }).withMessage('Event name must be between 3 and 100 characters')
+      .matches(/^[a-zA-Z0-9\s\-',.&()]+$/).withMessage('Event name contains invalid characters'),
+    body('eventDate').optional().isISO8601().withMessage('Invalid date format (use YYYY-MM-DD)'),
+    body('applicationDate').optional({ nullable: true }).isISO8601().withMessage('Invalid application date format'),
+    body('eventFee').optional({ nullable: true }).isFloat({ min: 0, max: 100000 }).withMessage('Event fee must be between $0 and $100,000'),
+    body('eventHost').optional({ nullable: true }).trim().isLength({ max: 100 }).withMessage('Event host name too long'),
+    body('eventType').optional({ nullable: true }).trim().isLength({ max: 50 }).withMessage('Event type too long'),
+    body('status').optional({ nullable: true }).trim().isIn(['Planned', 'Active', 'Completed', 'Cancelled']).withMessage('Invalid status'),
+    body('coordinator').optional({ nullable: true }).trim().isLength({ max: 100 }).withMessage('Coordinator name too long'),
+    body('numDays').optional({ nullable: true }).isInt({ min: 1, max: 30 }).withMessage('Number of days must be between 1 and 30'),
+    body('notes').optional({ nullable: true }).trim().isLength({ max: 2000 }).withMessage('Notes too long'),
+    body('isFinalized').optional().isIn([0, 1, '0', '1', true, false]).withMessage('isFinalized must be 0 or 1'),
+    body('grossSales').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Gross sales must be positive'),
+    body('netSales').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Net sales must be positive'),
+    body('tips').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Tips must be positive'),
+    body('healthDeptFee').optional({ nullable: true }).isFloat({ min: 0, max: 10000 }).withMessage('Health dept fee must be between $0 and $10,000'),
+    body('mileageReimbursement').optional({ nullable: true }).isFloat({ min: 0, max: 10000 }).withMessage('Mileage reimbursement must be between $0 and $10,000'),
+    body('eventRunnerFees').optional({ nullable: true }).isFloat({ min: 0, max: 50000 }).withMessage('Event runner fees must be between $0 and $50,000'),
+    body('giftCardSales').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Gift card sales must be positive'),
+  ],
+  handleValidationErrors,
+  (req, res) => {
   const id = req.params.id;
   const e = coerceEvent(req.body);
 
@@ -2040,7 +2123,13 @@ app.get("/api/health", (req, res) => {
 });
 
 const frontendPath = path.join(__dirname, "frontend");
-app.use(express.static(frontendPath));
+app.use(express.static(frontendPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    }
+  }
+}));
 
 // Catch-all: serve frontend for browser routes
 app.get("*", (req, res) => {
