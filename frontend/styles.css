@@ -253,6 +253,71 @@ body {
 .activity-footer {
   margin-top: 0.75rem;
 }
+
+.tax-row {
+  color: #b45309;
+}
+
+.profit-summary {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.95rem;
+  max-width: 460px;
+}
+
+.psr {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  line-height: 1.6;
+}
+
+.psr .psr-label {
+  flex: 1;
+}
+
+.psr .psr-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 100px;
+}
+
+.psr.psr-indent {
+  padding-left: 20px;
+}
+
+.psr.psr-section {
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #374151;
+  margin-top: 12px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 4px;
+}
+
+.psr.psr-subtotal {
+  font-weight: 700;
+  border-top: 1px solid #aaa;
+  margin-top: 4px;
+  padding-top: 6px;
+}
+
+.psr.psr-final {
+  font-weight: 700;
+  font-size: 1.15rem;
+  border-top: 3px double #333;
+  margin-top: 8px;
+  padding-top: 10px;
+}
+
+.margin-row {
+  font-weight: 600;
+  color: #0f766e;
+}
+
 /* -----------------------------
    Home – Activity Image Rotator
 ----------------------------- */
@@ -1263,4 +1328,48 @@ select:focus {
 
 .sheet-content.collapsed {
   padding: 0 20px;
+}
+
+/* Event Profit Summary Ledger Styles */
+.profit-summary {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.95rem;
+}
+
+.ledger-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.ledger-label {
+  color: #444;
+}
+
+.ledger-amount {
+  min-width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-divider {
+  border-top: 1px solid #ddd;
+  margin: 12px 0;
+}
+
+.section-title {
+  font-weight: 600;
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+
+.total-row {
+  font-weight: 600;
+}
+
+.final-row {
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-top: 2px solid #000;
+  padding-top: 8px;
 }

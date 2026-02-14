@@ -369,8 +369,7 @@ async function loadAppState() {
   const saved = localStorage.getItem("lemon_app_state");
 
   if (!saved) {
-    // default: show Manage Events
-    navigateTo("homeSection");
+    navigateTo("manageSection");
     return;
   }
   try {
@@ -380,12 +379,11 @@ async function loadAppState() {
     if (document.getElementById(sectionId)) {
       navigateTo(sectionId);
     } else {
-      navigateTo("homeSection");
+      navigateTo("manageSection");
     }
-    // ...rest unchanged
   } catch (err) {
     console.warn("⚠️ Failed to restore app state:", err);
-    navigateTo("homeSection");
+    navigateTo("manageSection");
   }
 }
 
@@ -430,30 +428,19 @@ function getSafeEventID(obj) {
 // 🧭 Clean Universal Navigator
 // ---------------------------
 function navigateTo(sectionId) {
-  const homeSection = document.getElementById("homeSection");
+  if (sectionId === "homeSection") {
+    window.location.href = "/";
+    return;
+  }
 
-  document.querySelectorAll(".app-shell > section:not(#homeSection)")
+  document.querySelectorAll(".app-shell > section")
     .forEach((sec) => sec.classList.add("hidden"));
 
-  if (sectionId === "homeSection") {
-    homeSection.classList.remove("slide-down");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const section = document.getElementById(sectionId);
+  if (!section) return console.warn(`⚠️ Section "${sectionId}" not found`);
 
-    if (typeof loadRecentActivity === "function") {
-      loadRecentActivity();
-    }
-    if (typeof startActivityImageRotation === "function") {
-      startActivityImageRotation();
-    }
-  } else {
-    homeSection.classList.add("slide-down");
-
-    const section = document.getElementById(sectionId);
-    if (!section) return console.warn(`⚠️ Section "${sectionId}" not found`);
-
-    section.classList.remove("hidden");
-    section.scrollIntoView({ behavior: "smooth" });
-  }
+  section.classList.remove("hidden");
+  section.scrollIntoView({ behavior: "smooth" });
 
   if (sectionId === "manageSection") {
     loadAllEvents();
@@ -612,10 +599,11 @@ function buildTableHTML(results, containerId = "searchResults") {
           labor: report.labor,
           totals: report.totals,
           sales: report.sales,
+          taxes: report.taxes
         });
 
-        console.log("⭐ FULL REPORT EVENT LOADED:", fullEvent);
-        loadEventIntoDashboard(fullEvent);
+        console.log("⭐ FULL REPORT EVENT LOADED right before loadEventIntoDashboard:", report);
+        loadEventIntoDashboard(event);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
         alert("Could not load event details.");
@@ -758,7 +746,7 @@ async function buildExpandedDetails(event) {
 async function loadSquareLocationsIntoForm() {
   try {
     const res = await fetch(
-      "/api/square/locations"
+      `${API_BASE}/api/square/locations`
     );
     const locations = await res.json();
 
@@ -1431,19 +1419,13 @@ function clearManageSearch() {
   console.log("Manage search cleared.");
 }
 function getDefaultStarterTemplate() {
-  if (!Array.isArray(window.availableTemplates)) return null;
-
-  return (
-    window.availableTemplates.find(t =>
-      t.templateName.toLowerCase() === "default starter"
-    ) ||
-    window.availableTemplates.find(t =>
-      t.templateName.toLowerCase().includes("default")
-    ) ||
-    window.availableTemplates[0] ||
-    null
-  );
+  return window.availableTemplates.find(t =>
+    t.templateName === "Default Template"
+  ) || window.availableTemplates[0] || null;
 }
+
+
+
 async function waitForTemplates(timeout = 3000) {
   const start = Date.now();
   while (!window.availableTemplates?.length) {
@@ -1455,11 +1437,11 @@ async function waitForTemplates(timeout = 3000) {
 
 
 async function openAddEventForUser() {
-  window.addEventListener("DOMContentLoaded", async () => {
-  await populateTemplateDropdown(); // ✅ REQUIRED
-});
+  if (!window.availableTemplates) {
+  await populateTemplateDropdown();
+}
 
-  navigateTo("addSection");
+   navigateTo("addSection");
 
    if (!window.availableTemplates) {
     console.error("Templates not loaded");
@@ -1483,7 +1465,7 @@ async function openAddEventForUser() {
   loadSquareLocationsIntoForm();
 }
 
-async function loadTemplates() {
+/*async function loadTemplates() {
   try {
     const res = await fetch("/api/formTemplates");
     const templates = await res.json();
@@ -1502,12 +1484,12 @@ async function loadTemplates() {
     console.log("Loaded templates:", templates);
     // Keep templates in memory
 
-
+    
     window.availableTemplates = templates;
   } catch (err) {
     console.error("Error loading templates:", err);
   }
-}
+}*/
 
 // 🧩 Load templates into Add Event dropdown
 async function populateTemplateDropdown() {
@@ -1519,31 +1501,24 @@ async function populateTemplateDropdown() {
       console.error("❌ Templates failed to load:", templates);
       return;
     }
-    window.availableTemplates = templates;
-    console.log(`$(templates.length) templates loaded`);
+
+    window.availableTemplates = templates.map(t => ({
+      templateID: t.TemplateID,
+      templateName: t.TemplateName,
+      fields: t.Fields,
+      createdAt: t.CreatedAt
+    }));
+
     const dropdown = document.getElementById("templateSelect");
-    const loadBtn = document.getElementById("loadTemplateBtn");
+    dropdown.innerHTML = '<option value="">-- Select Template --</option>';
 
-    if (dropdown && loadBtn) {
-      loadBtn.disabled = true; // start disabled
-
-      dropdown.addEventListener("change", () => {
-        loadBtn.disabled = !dropdown.value;
-      });
+    for (const t of window.availableTemplates) {
+      const opt = document.createElement("option");
+      opt.value = t.templateName;
+      opt.textContent = t.templateName;
+      dropdown.appendChild(opt);
     }
 
-
-   dropdown.innerHTML = "";
-
-    
-  for (const t of templates) {
-    const opt = document.createElement("option");
-    opt.value = t.TemplateName;
-    opt.textContent = t.TemplateName;
-    dropdown.appendChild(opt);
-  }
-
-    console.log(`✅ ${templates.length} templates loaded`);
   } catch (err) {
     console.error("❌ Error loading templates:", err);
   }
@@ -1555,51 +1530,36 @@ async function populateTemplateDropdown() {
 // Helper to strip 'Event Color' field from templates defensively
 function stripEventColorFromTemplate(tpl) {
   if (!tpl || !Array.isArray(tpl.fields)) return tpl;
-  tpl.fields = tpl.fields.filter(
-    (f) =>
-      !(
-        f &&
-        typeof f.label === "string" &&
-        /^event\s*color$/i.test(f.label)
-      )
-  );
-  return tpl;
+
+  return {
+    ...tpl,
+    fields: tpl.fields.filter(
+      f =>
+        !(
+          f &&
+          typeof f.label === "string" &&
+          /^event\s*color$/i.test(f.label)
+        )
+    )
+  };
 }
 
+
 function useSelectedTemplate() {
-  const templates = window.availableTemplates;
-
-  if (!Array.isArray(templates)) {
-    console.error("❌ Templates not loaded yet");
-    return;
-  }
-
   const dropdown = document.getElementById("templateSelect");
-  if (!dropdown) {
-    console.error("❌ Template dropdown not found");
-    return;
-  }
+  if (!dropdown) return;
 
-  const selected = dropdown.value;
-  if (!selected) {
-    console.warn("ℹ️ No template selected");
-    alert("Please select a template first.");
-    return;
-  }
+  const id = Number(dropdown.value);
+  if (!id) return;
 
-  const tpl = templates.find(t => t.TemplateName === selected);
+  const tpl = window.availableTemplates.find(t => t.templateID === id);
 
   if (!tpl) {
-    console.warn("❌ Template not found:", selected);
-    alert("Template not found!");
+    console.error("Template not found for ID:", id);
     return;
   }
 
-  console.log("📋 Loading template into Add Event form:", tpl);
-
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
-
-  alert(`✅ Loaded template: "${tpl.TemplateName}"`);
 }
 
 
@@ -1645,8 +1605,7 @@ console.log("✅ fields resolved:", fields);
   console.log("WHAT IS TEMPLATE VALUE: ", template);
   console.log(" The Fields of Template:", fields);
 
-  if (
-    !template || !Array.isArray(fields)) {
+  if (!template || !Array.isArray(fields)) {
     console.error("❌ Invalid template structure:", template);
     formContainer.innerHTML = "<p>Template could not be loaded.</p>";
     return;
@@ -1945,6 +1904,21 @@ async function saveFees() {
     alert("Network error saving fees.");
   }
 }
+
+function buildTemplateDropdown() {
+  const dropdown = document.getElementById("templateSelect");
+  if (!dropdown) return;
+
+  dropdown.innerHTML = '<option value="">-- Select Template --</option>';
+
+  for (const t of window.availableTemplates) {
+    const opt = document.createElement("option");
+    opt.value = t.templateID;   // 🔥 use ID, not name
+    opt.textContent = t.templateName;
+    dropdown.appendChild(opt);
+  }
+}
+
 
 
 // --------------------------------------------
@@ -2249,50 +2223,134 @@ function addDiscountRow(name = "", amount = "") {
 }
 
 
-function renderEventProfitSummary(event) {
-  const sales = event.sales || {};
-  const totals = event.totals || {};
-  const discounts = event.discounts || [];
+function renderEventProfitSummary(report) {
+  const event = report.event || {};
+const sales = report.sales || {};
+const expenses = report.expenses || {};
+const discounts = report.discounts || [];
+const taxes = report.taxes || {};
+
+console.log("PRINT OUT for taxes: ",taxes);
 
 const discountTotal = discounts.reduce(
   (sum, d) => sum + (Number(d.discountAmount) || 0),
   0
 );
 
-  const expenses = event.expenses || {}; // ✅ THIS WAS MISSING
+  const isSquare = !!event.squareLocationId;
 
-  const fmtMoney = (v) =>
-    v == null ? "-" : `$${Number(v || 0).toFixed(2)}`;
-    console.log("EVENT = ", event);
+  const posFees = isSquare
+    ? Number(sales.squareFees || 0)
+    : Number(expenses.posFee || 0);
+
+  const stateFoodTax = Number(sales.totalCollected || 0) * 0.0804;
+
+  // Total Net Revenue = Total Collected - Food Tax - POS/Square Fees
+  const totalNetRevenue = Number(sales.totalCollected || 0) - stateFoodTax - posFees;
+
+  // Operating Expenses (excludes coordinator fee)
+  const totalExpenses =
+    Number(expenses.healthDeptFee || 0) +
+    Number(expenses.eventFee || 0) +
+    Number(expenses.additionalFees || 0) +
+    Number(expenses.mileageReimbursement || 0) +
+    Number(expenses.employeeBonus || 0) +
+    Number(expenses.eventRunnerFees || 0) +
+    Number(expenses.supplyFees || 0) +
+    Number(expenses.laborFees || 0);
+
+  // Gross Profit = Total Net Revenue - Operating Expenses
+  const grossProfit = totalNetRevenue - totalExpenses;
+
+  // Net Profit = Gross Profit - Coordinator Fee
+  const coordinatorFee = Number(expenses.coordinatorFee || 0);
+  const netProfit = grossProfit - coordinatorFee;
+
+  // Taxes on Net Profit
+  const stateTax = netProfit * 0.03;
+  const federalTax = netProfit * 0.20;
+  const finalProfit = netProfit - stateTax - federalTax;
+
+  const fmt = (v) => `$${Number(v || 0).toFixed(2)}`;
 
   return createCollapsibleCard(
     "Event Profit Summary",
     `
     <div class="profit-summary">
-      <div><strong>Gross Sales:</strong> ${fmtMoney(sales.grossSales)}</div>
-      <div><strong>Returns:</strong> (${fmtMoney(sales.refunds)})</div>
-      <div><strong>Discounts:</strong> (${fmtMoney(discountTotal)})</div>
-      <div><strong>Net Sales:</strong> ${fmtMoney(sales.netSales)}</div>
-      <hr>
-      <div><strong>Tips:</strong> ${fmtMoney(sales.tips)}</div>
-      <div><strong>Cash:</strong> ${fmtMoney(sales.cash)}</div>
-      <div><strong>Card:</strong> ${fmtMoney(sales.card)}</div>
-      <div><strong>wallet / Wallet:</strong> ${fmtMoney(sales.wallet)}</div>
-      <div><strong>CashApp:</strong> ${fmtMoney(sales.cashApp)}</div>
-      <div><strong>Other:</strong> ${fmtMoney(sales.other)}</div>
-      <div><strong>Total Collected:</strong> ${fmtMoney(sales.totalCollected)}</div>
-      <hr>
-      <div><strong>-State Food Tax:</strong> (${fmtMoney(sales.squareReportedTax)})</div>
-      <div><strong>-Square / Vendor Fees:</strong> (${fmtMoney(sales.squareFees)})</div>
-      <div><strong>-Total Expenses:</strong> (${fmtMoney(event.expenses.totalExpenses)})</div>
-      <hr>
-      <div class="profit-final">
-        <strong>Gross Profit:</strong>
-        <strong>${fmtMoney(totals.grossProfit)}</strong>
-      </div>
+
+      <div class="section-title">Revenue</div>
+      <div class="ledger-row"><span class="ledger-label">Gross Sales</span><span class="ledger-amount">${fmt(sales.grossSales)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Returns</span><span class="ledger-amount">-${fmt(sales.refunds)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Discounts</span><span class="ledger-amount">-${fmt(sales.discounts)}</span></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Net Sales</span><span class="ledger-amount">${fmt(sales.netSales)}</span></div>
+      <div class="section-divider"></div>
+      <div class="section-title">Collections</div>
+      <div class="ledger-row"><span class="ledger-label">Tips</span><span class="ledger-amount">${fmt(sales.tips)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Cash</span><span class="ledger-amount">${fmt(sales.cash)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Card</span><span class="ledger-amount">${fmt(sales.card)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Venmo / Wallet</span><span class="ledger-amount">${fmt(sales.wallet)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">CashApp</span><span class="ledger-amount">${fmt(sales.cashApp)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Gift Card</span><span class="ledger-amount">${fmt(sales.giftCardSales)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Other</span><span class="ledger-amount">${fmt(sales.other)}</span></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Total Collected</span><span class="ledger-amount">${fmt(sales.totalCollected)}</span></div>
+      <div class="section-divider"></div>
+      <div class="ledger-row"><span class="ledger-label">Food Tax (8.04%)</span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
+      ${isSquare
+        ? `<div class="ledger-row"><span class="ledger-label">Square Fees</span><span class="ledger-amount">-${fmt(sales.squareFees)}</span></div>`
+        : `<div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">
+             <input type="number" step="0.01" id="manualPosFee"
+               style="width:90px;text-align:right"
+               value="${Number(expenses.posFee || 0).toFixed(2)}"
+               onchange="updateManualPosFee(this.value)">
+           </span></div>`
+      }
+      <div class="section-divider"></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Total Net Revenue</span><span class="ledger-amount">${fmt(totalNetRevenue)}</span></div>
+
+      <div class="section-title">Expenses</div>
+      <div class="ledger-row"><span class="ledger-label">Health Dept Fee</span><span class="ledger-amount">-${fmt(expenses.healthDeptFee)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Event Fee</span><span class="ledger-amount">-${fmt(expenses.eventFee)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Additional Fees</span><span class="ledger-amount">-${fmt(expenses.additionalFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Mileage Reimbursement</span><span class="ledger-amount">-${fmt(expenses.mileageReimbursement)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Employee Bonus</span><span class="ledger-amount">-${fmt(expenses.employeeBonus)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Event Runner Fees</span><span class="ledger-amount">-${fmt(expenses.eventRunnerFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Supply Costs</span><span class="ledger-amount">-${fmt(expenses.supplyFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Labor Fees</span><span class="ledger-amount">-${fmt(expenses.laborFees)}</span></div>
+      <div class="section-divider"></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Total Expenses</span><span class="ledger-amount">-${fmt(totalExpenses)}</span></div>
+
+      <div class="ledger-row total-row"><span class="ledger-label">Gross Profit</span><span class="ledger-amount">${fmt(grossProfit)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">- Coordinator Fee (10%)</span><span class="ledger-amount">-${fmt(coordinatorFee)}</span></div>
+      <div class="section-divider"></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Net Profit</span><span class="ledger-amount">${fmt(netProfit)}</span></div>
+
+      <div class="ledger-row"><span class="ledger-label">Utah State Tax (3%)</span><span class="ledger-amount">-${fmt(stateTax)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Federal Tax (20%)</span><span class="ledger-amount">-${fmt(federalTax)}</span></div>
+      <div class="ledger-row final-row"><span class="ledger-label">Final Profit</span><span class="ledger-amount">${fmt(finalProfit)}</span></div>
+
     </div>
     `
   );
+}
+
+async function updateManualPosFee(value) {
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+
+  const posFee = Number(value) || 0;
+  try {
+    await fetch(`${API_BASE}/api/events/${eventID}/expenses`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ posFee })
+    });
+    if (window.activeEvent) {
+      window.activeEvent.expenses = window.activeEvent.expenses || {};
+      window.activeEvent.expenses.posFee = posFee;
+    }
+  } catch (err) {
+    console.error("Failed to save POS fee", err);
+  }
 }
 
 function updateExpensesDOM(expenses) {
@@ -2357,10 +2415,10 @@ function updateProfitSummary() {
 
 
 
-  function renderExpensesCard(expenses = {}) {
-  const content = expensesEditMode
-    ? renderExpensesEditMode(expenses)
-    : renderExpensesViewMode(expenses);
+  function renderExpensesCard(expenses = {}, sales = {}) {
+    const content = expensesEditMode
+  ? renderExpensesEditMode(expenses)
+  : renderExpensesViewMode(expenses, sales);
 
   const card = createCollapsibleCard("Expenses", content);
 
@@ -2372,9 +2430,23 @@ function updateProfitSummary() {
 
 
 
-function renderExpensesViewMode(expenses) {
+function renderExpensesViewMode(expenses, sales = {}) {
   const fmtMoney = (v) =>
     v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
+
+  const stateFoodTax = Number(sales.totalCollected || 0) * 0.0804;
+
+  const totalExpenses =
+    Number(expenses.healthDeptFee || 0) +
+    Number(expenses.eventFee || 0) +
+    Number(expenses.mileageReimbursement || 0) +
+    Number(expenses.employeeBonus || 0) +
+    Number(expenses.eventRunnerFees || 0) +
+    Number(expenses.coordinatorFee || 0) +
+    Number(expenses.additionalFees || 0) +
+    Number(expenses.laborFees || 0) +
+    Number(expenses.supplyFees || 0) +
+    stateFoodTax;
 
   return `
   <div class="expenses-card">
@@ -2383,18 +2455,19 @@ function renderExpensesViewMode(expenses) {
     <div>Mileage: ${fmtMoney(expenses.mileageReimbursement)}</div>
     <div>Employee Bonus: ${fmtMoney(expenses.employeeBonus)}</div>
     <div>Event Runner Fees: ${fmtMoney(expenses.eventRunnerFees)}</div>
-    <div>coordinatorFee: ${fmtMoney(expenses.coordinatorFee)}</div>
+    <div>Coordinator Fee: ${fmtMoney(expenses.coordinatorFee)}</div>
     <hr>
     <div>Additional Fees (auto): ${fmtMoney(expenses.additionalFees)}</div>
     <div>
       Labor Fees (auto):
       <span class="auto-labor-fees">${fmtMoney(expenses.laborFees)}</span>
     </div>
-    <div>Supply Fees: (auto): ${fmtMoney(expenses.supplyFees)}</div>
+    <div>Supply Fees (auto): ${fmtMoney(expenses.supplyFees)}</div>
+    <div>State Food Tax (8.04%) (auto): ${fmtMoney(stateFoodTax)}</div>
     <hr>
     <strong>
       Total Expenses:
-      <span class="total-expenses">${fmtMoney(expenses.totalExpenses)}</span>
+      <span class="total-expenses">${fmtMoney(totalExpenses)}</span>
     </strong>
 
     <button class="btn-secondary" onclick="enterExpensesEditMode()">
@@ -2631,7 +2704,7 @@ function cancelExpensesEdit() {
   if (card) {
     const contentEl = card.querySelector(".sheet-content");
     if (contentEl) {
-      contentEl.innerHTML = renderExpensesViewMode(window.activeEvent?.expenses || {});
+      contentEl.innerHTML = renderExpensesViewMode(window.activeEvent?.expenses || {}, window.activeEvent?.sales || {});
     }
   }
 }
@@ -2767,21 +2840,11 @@ function renderSupplyCostsCard(items = []) {
   );
 
   const rows = items.map(r => `
-    <div class="row">
-      <input type="text"
-             value="${r.itemName}"
-             onchange="updateSupply(${r.id}, { itemName: this.value })">
-
-      <input type="number"
-             value="${r.unitCost}"
-             onchange="updateSupply(${r.id}, { unitCost: this.value })">
-
-      <input type="number"
-             value="${r.quantityUsed}"
-             onchange="updateSupply(${r.id}, { quantityUsed: this.value })">
-
-      <span>${fmt(r.totalCost)}</span>
-
+    <div class="row supply-row" data-supply-id="${r.id}">
+      <input type="text" class="supply-name" value="${r.itemName}">
+      <input type="number" class="supply-unit-cost" step="0.01" value="${r.unitCost}">
+      <input type="number" class="supply-qty" step="1" value="${r.quantityUsed}">
+      <span class="supply-line-total">${fmt(r.totalCost)}</span>
       <button onclick="deleteSupply(${r.id})">🗑</button>
     </div>
   `).join("");
@@ -2791,14 +2854,17 @@ function renderSupplyCostsCard(items = []) {
 
     <div class="row">
       <input id="newSupplyName" placeholder="Item">
-      <input id="newSupplyUnitCost" type="number" placeholder="Unit Cost">
-      <input id="newSupplyQty" type="number" placeholder="Qty Used">
+      <input id="newSupplyUnitCost" type="number" step="0.01" placeholder="Unit Cost">
+      <input id="newSupplyQty" type="number" step="1" placeholder="Qty Used">
       <button onclick="addSupply()">➕ Add</button>
-      <button onclick="deleteSupply()"  Delete</button>
     </div>
 
     <hr>
-    <div><strong>Total Supply Cost:</strong> ${fmt(total)}</div>
+    <div><strong>Total Supply Cost:</strong> <span id="supplyTotal">${fmt(total)}</span></div>
+
+    <div class="supply-actions">
+      <button class="btn-primary" onclick="calculateSupplyCosts()">🧮 Calculate Supply Costs</button>
+    </div>
   `;
 
   return createCollapsibleCard("Supply Costs", html);
@@ -2816,7 +2882,7 @@ async function addSupply() {
     quantityUsed: Number(document.getElementById("newSupplyQty").value) || 0
   };
 
-  await fetch(
+  const res = await fetch(
     `${API_BASE}/api/events/${window.currentEventId}/supplies`,
     {
       method: "POST",
@@ -2825,22 +2891,89 @@ async function addSupply() {
     }
   );
 
-  await reloadEventDashboard();
+  const newRow = await res.json();
+  if (!res.ok) {
+    console.error("❌ Failed to add supply:", newRow);
+    return;
+  }
+
+  // Append new row into the card without reloading
+  const card = document.getElementById("supplycostsCard");
+  const firstRow = card?.querySelector(".row");
+  const noItems = card?.querySelector("p");
+  if (noItems) noItems.remove();
+
+  const rowHTML = `
+    <div class="row supply-row" data-supply-id="${newRow.id}">
+      <input type="text" class="supply-name" value="${newRow.itemName}">
+      <input type="number" class="supply-unit-cost" step="0.01" value="${newRow.unitCost}">
+      <input type="number" class="supply-qty" step="1" value="${newRow.quantityUsed}">
+      <span class="supply-line-total">${fmt(newRow.totalCost || 0)}</span>
+      <button onclick="deleteSupply(${newRow.id})">🗑</button>
+    </div>
+  `;
+
+  if (firstRow) {
+    firstRow.insertAdjacentHTML("beforebegin", rowHTML);
+  }
+
+  // Clear inputs
+  document.getElementById("newSupplyName").value = "";
+  document.getElementById("newSupplyUnitCost").value = "";
+  document.getElementById("newSupplyQty").value = "";
 }
 
 
-async function updateSupply(id, changes) {
+async function calculateSupplyCosts() {
   if (window.activeEvent?.isFinalized === 1) {
-  alert("This event has been finalized and can no longer be edited.");
-  return;
+    alert("This event has been finalized and can no longer be edited.");
+    return;
   }
-  await fetch(`${API_BASE}/api/supplies/${id}`, {
+
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+
+  // 1️⃣ Collect all supply rows from the DOM
+  const supplyRows = document.querySelectorAll(".supply-row");
+  const updates = [];
+
+  for (const row of supplyRows) {
+    const id = Number(row.dataset.supplyId);
+    const itemName = row.querySelector(".supply-name")?.value?.trim() || "";
+    const unitCost = Number(row.querySelector(".supply-unit-cost")?.value) || 0;
+    const quantityUsed = Number(row.querySelector(".supply-qty")?.value) || 0;
+
+    if (id && itemName) {
+      updates.push({ id, itemName, unitCost, quantityUsed });
+    }
+  }
+
+  // 2️⃣ Save each row to the server
+  for (const u of updates) {
+    await fetch(`${API_BASE}/api/supplies/${u.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itemName: u.itemName,
+        unitCost: u.unitCost,
+        quantityUsed: u.quantityUsed
+      })
+    });
+  }
+
+  // 3️⃣ Calculate total and save supplyFees to EventExpenses
+  const supplyFees = updates.reduce(
+    (sum, u) => sum + u.unitCost * u.quantityUsed, 0
+  );
+
+  await fetch(`${API_BASE}/api/events/${eventID}/expenses`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(changes)
+    body: JSON.stringify({ supplyFees })
   });
 
-  reloadEventDashboard();
+  // 4️⃣ Reload dashboard to reflect updated totals everywhere
+  await reloadEventDashboard();
 }
 
 async function deleteSupply(id) {
@@ -2897,6 +3030,31 @@ async function loadEventIntoDashboard(evt) {
     return;
   }
   container.innerHTML = "";
+
+   // ======================
+// 🔥 FETCH FULL REPORT
+// ======================
+let report;
+
+try {
+  const reportRes = await fetch(
+    `${API_BASE}/api/events/${event.eventID}/report`
+  );
+
+  if (!reportRes.ok) {
+    throw new Error("Failed to load report");
+  }
+
+  report = await reportRes.json();
+
+  console.log("Loaded Report:", report);
+
+} catch (err) {
+  console.error("Report load failed:", err);
+  alert("Could not load financial report.");
+  return;
+}
+
 
   // ======================
   // HEADER (top of dashboard)
@@ -2988,11 +3146,7 @@ async function loadEventIntoDashboard(evt) {
         );
         return;
       }
-
-      if (!res.ok) {
-        alert(out.error || "Could not finalize event.");
-        return;
-      }
+    
 
       alert("Event finalized!");
       await reloadEventDashboard();
@@ -3039,6 +3193,7 @@ async function loadEventIntoDashboard(evt) {
     Status: status,
     EventType: event.eventType || "",
     NumDays: event.numDays ?? "",
+    State: event.state ?? "",
   };
 
   const summaryHTML = Object.entries(summaryData)
@@ -3050,20 +3205,40 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   // 2) CUSTOM FIELDS CARD
   // ======================
-  if (event.customFields && Object.keys(event.customFields).length) {
-    const customHTML = Object.entries(event.customFields)
-      .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
-      .join("");
+  // ======================
+// 2) CUSTOM FIELDS CARD
+// ======================
+let customFieldsObj = {};
 
-    safeAppend(container, createCollapsibleCard("Custom Fields", customHTML));
+if (report.event?.customFields) {
+  try {
+    customFieldsObj =
+      typeof report.event.customFields === "string"
+        ? JSON.parse(report.event.customFields)
+        : report.event.customFields;
+  } catch (err) {
+    console.warn("Custom fields JSON parse failed:", err);
   }
+}
+
+if (Object.keys(customFieldsObj).length) {
+  const customHTML = Object.entries(customFieldsObj)
+    .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
+    .join("");
+
+  safeAppend(
+    container,
+    createCollapsibleCard("Custom Fields", customHTML)
+  );
+}
+
 
   // ======================
   // 3) DRINK SALES CARD
   // ======================
    let drinkHTML = "<p>No drink sales recorded.</p>";
-    if (event.drinkSales && event.drinkSales.length) {
-    const totalRevenue = event.drinkSales.reduce(
+    if (report.drinkSales && report.drinkSales.length) {
+    const totalRevenue = report.drinkSales.reduce(
       (sum, r) => sum + (Number(r.totalCost) || 0),
       0
     );
@@ -3076,7 +3251,7 @@ async function loadEventIntoDashboard(evt) {
       <div><strong>Total Drinks Sold:</strong> ${totalQty}</div>
       <div><strong>Total Drink Revenue:</strong> ${fmt(totalRevenue)}</div>
       <hr>
-      ${buildTableHTMLString(event.drinkSales)}
+      ${buildTableHTMLString(report.drinkSales)}
     `;
   }
 
@@ -3087,7 +3262,7 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   safeAppend(
     container,
-    createCollapsibleCard("Additional Fees", buildFeesEditor(event))
+    createCollapsibleCard("Additional Fees", buildFeesEditor(report))
   );
 
   // ======================
@@ -3095,7 +3270,7 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   safeAppend(
     container,
-    createCollapsibleCard("Discounts", buildDiscountsEditor(event))
+    createCollapsibleCard("Discounts", buildDiscountsEditor(report))
   );
 
   // ======================
@@ -3103,7 +3278,7 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   safeAppend(
     container,
-    createCollapsibleCard("Tips", buildTipsEditor(event))
+    createCollapsibleCard("Tips", buildTipsEditor(report))
   );
 
   // ======================
@@ -3111,7 +3286,7 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   safeAppend(
     container,
-    renderSupplyCostsCard(event.supplies || [])
+    renderSupplyCostsCard(report.supplies || [])
   );
 
   // ======================
@@ -3119,7 +3294,7 @@ async function loadEventIntoDashboard(evt) {
   // ======================
   // ✅ Labor Card (editable)
 // 8) EMPLOYEES / LABOR CARD
-const laborCard = renderLaborCard(event);
+const laborCard = renderLaborCard(report);
 safeAppend(container, laborCard);
 
 // ⭐ WIRE ONLY AFTER IT EXISTS
@@ -3129,17 +3304,20 @@ wireLaborCard(eventID);
   // ======================
   // 9) EXPENSES CARD
   // ======================
-  if (event.expenses && Object.keys(event.expenses).length) {
-    safeAppend(container, renderExpensesCard(event.expenses));
+  if (report.expenses && Object.keys(report.expenses).length) {
+    safeAppend(container, renderExpensesCard(report.expenses, report.sales));
   }
 
   // ======================
   // 10) PROFIT SUMMARY CARD
   // ======================
-  if (event.sales && event.expenses) {
-    safeAppend(container, renderEventProfitSummary(event));
-  }
+ if (report && report.sales && report.expenses) {
+  safeAppend(container, renderEventProfitSummary(report));
 }
+
+  }
+
+
 
 
 async function pullSquareSales(eventID) {
@@ -3176,10 +3354,9 @@ async function loadEventLabor(eventID) {
   if (!eventID) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/events/${eventID}/labor`, {
+    const res = await fetch(`${API_BASE}/api/square/labor/${eventID}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json" }
     });
 
     const json = await res.json();
@@ -3189,15 +3366,8 @@ async function loadEventLabor(eventID) {
       return;
     }
 
-    // 1️⃣ Render labor rows
-    renderLaborTable(json.rows);
-
-    // 2️⃣ Update totals
-    updateLaborTotals(json.totalLaborCost);
-
-    // 3️⃣ Cascade updates
-    updateExpensesFromLabor(json.totalLaborCost);
-    updateProfitSummary();
+    console.log("✅ Square labor pulled:", json);
+    await reloadEventDashboard();
 
   } catch (err) {
     console.error("❌ Labor reload failed:", err);

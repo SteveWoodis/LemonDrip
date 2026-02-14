@@ -1,0 +1,49 @@
+
+Please examine the Event Profit Summary card in app.js. The purpose of the card is to give the user a running total of Revenue and Expenses from an accounting perspective. All of the other Cards have been created to either display MANUAL expense entries or display what has been automatically entered in the Event Template.
+
+Here is an outline of my plan:
+____________________________________________________________________________
+
+Sales
+
+Gross Sales  (comes from Square Sales)
+
+Returns (comes from Square Sales)
+
+Discounts (comes from Square Sales)
+
+Net Sales = grossSales - refunds - discounts (calculated in /square/sales route in server.js)
+____________________________________________________________________________________
+
+Total $ Collected
+I would like the Event Profit Summary Card to delineate the Total Collected Amount
+TotalCollected = tips +Cash +Card + Venmo + Other + CashApp + GiftCard (comes from /square/sales route)
+
+Then I would like to have a section below Total Collected showing all of the Expenses
+____________________________________________________________________________________
+
+Expenses Section
+
+Implement a condition statement determining if Square is the POS system or not.
+
+If condition is true, follow the route for /sales/square and obtain the value of  SquareFees, else if false, provide manual input for POS Fee.
+
+laborFees- use existing Labor Fees code and button to pull Labor Fees for an employee for an event.If unable to complete this task draft an email to Square technical support to determine what needs to be done to return valid Labor data.
+
+Expenses comes from the following areas + the POS System Expenses entry if NOT Square.
+
+ healthDeptFee(Manual) + eventFee(Manual) + additionalFees(Manual) + mileageReimbursement(Manual) + employeeBonus(Manual) + posSytemFees(Manual if Square Fees = False) + supplyFees + laborFees + evenRunnerFees (all of these Expenses comes from renderExpensesCard)  
+
+____________________________________________________________________________________
+State Revenue Tax = Utah(netProfit * .03) Please implement a solution that will pull State Tax for states that charge state tax. Ignore states that don't charge State Tax)
+
+State Food Tax - provide a value for stateFoodTax for the state of Utah, which is (totalCollected * .08). 
+
+Implement a solution for states that require a state food tax and implement it based on the equation (totalCollected * stateFoodTax(.08)).
+
+Federal Tax = 20% of netProfit
+______________________________________________________________________________________
+Total Net Revenue - Total Expenses = profitSubTotal
+
+ profitSubTotal- coordinatorFee(Manual) = totalEventProfit
+

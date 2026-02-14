@@ -104,7 +104,21 @@ function initDb() {
           }
 
           console.log("✅ SQLite schema initialized");
-          resolve();
+
+          db.run(
+            `ALTER TABLE EventExpenses ADD COLUMN posFee REAL DEFAULT 0`,
+            () => {
+              db.run(
+                `ALTER TABLE EventExpenses ADD COLUMN supplyFees REAL DEFAULT 0`,
+                () => {
+                  db.run(
+                    `ALTER TABLE SalesSummary ADD COLUMN squareFees REAL DEFAULT 0`,
+                    () => resolve()
+                  );
+                }
+              );
+            }
+          );
         }
       );
     });
@@ -642,10 +656,10 @@ app.post("/api/events", (req, res) => {
       healthDeptFee, mileageReimbursement, eventRunnerFees,
       giftCardSales,
       cash, card, wallet, other, cashApp,
-      taxOverride
+      taxOverride, state
     )
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,?,?,?,?,?,?,?,?)
+            ?,?,?,?,?,?,?,?,?,?,?)
   `;
 
   const params = [
@@ -679,7 +693,8 @@ app.post("/api/events", (req, res) => {
     e.wallet ?? 0,
     e.other ?? 0,
     e.cashApp ?? 0,
-    e.taxOverride ?? null
+    e.taxOverride ?? null,
+    e.state
   ];
 
   db.run(sql, params, function (err) {
@@ -713,7 +728,7 @@ app.put("/api/events/:id", (req, res) => {
       healthDeptFee=?, mileageReimbursement=?, eventRunnerFees=?,
       giftCardSales=?,
       cash=?, card=?, wallet=?, other=?, cashApp=?,
-      taxOverride=?
+      taxOverride=?, state=?
     WHERE eventID=?
   `;
 
@@ -749,6 +764,7 @@ app.put("/api/events/:id", (req, res) => {
     e.other ?? 0,
     e.cashApp ?? 0,
     e.taxOverride ?? null,
+    e.state,
     id
   ];
 
@@ -1034,9 +1050,10 @@ console.log({ grossSales, discounts, netSales, totalCollected });
     refunds,
     tips,
     totalCollected,
+    squareFees,
     DatePulledAt
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   ON CONFLICT(eventID) DO UPDATE SET
     grossSales = excluded.grossSales,
     netSales = excluded.netSales,
@@ -1044,6 +1061,7 @@ console.log({ grossSales, discounts, netSales, totalCollected });
     refunds = excluded.refunds,
     tips = excluded.tips,
     totalCollected = excluded.totalCollected,
+    squareFees = excluded.squareFees,
     DatePulledAt = CURRENT_TIMESTAMP
 `;
 
@@ -1056,7 +1074,8 @@ db.run(
     discounts,
     refunds,
     tips,
-    totalCollected
+    totalCollected,
+    squareFees
   ],
   err => {
     if (err) {
@@ -1073,7 +1092,8 @@ db.run(
           discounts,
           refunds,
           tips,
-          totalCollected
+          totalCollected,
+          squareFees
         }
       });
     });
@@ -1516,44 +1536,38 @@ app.get("/api/events/:id/report", async (req, res) => {
 app.put("/api/events/:eventID/expenses", async (req, res) => {
   try {
     const eventID = Number(req.params.eventID);
-    const {
-      healthDeptFee,
-      eventFee,
-      mileageReimbursement,
-      eventRunnerFees,
-      coordinatorFee,
-      employeeBonus
-    } = req.body;
-
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
     }
 
+    const allowedFields = [
+      "healthDeptFee", "eventFee", "mileageReimbursement",
+      "eventRunnerFees", "coordinatorFee", "employeeBonus",
+      "posFee", "supplyFees"
+    ];
+
+    const sets = [];
+    const values = [];
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        sets.push(`${field} = ?`);
+        values.push(Number(req.body[field]));
+      }
+    }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    sets.push("updatedAt = CURRENT_TIMESTAMP");
+    values.push(eventID);
+
     const result = await dbRun(
-      `
-      UPDATE EventExpenses
-      SET
-        healthDeptFee = ?,
-        eventFee = ?,
-        mileageReimbursement = ?,
-        eventRunnerFees = ?,
-        employeeBonus = ?,
-        coordinatorFee = ?,
-        updatedAt = CURRENT_TIMESTAMP
-      WHERE eventID = ?
-      `,
-      [
-        healthDeptFee ?? null,
-        eventFee ?? null,
-        mileageReimbursement ?? null,
-        eventRunnerFees ?? null,
-        employeeBonus ?? null,
-        coordinatorFee ?? null,
-        eventID
-      ]
+      `UPDATE EventExpenses SET ${sets.join(", ")} WHERE eventID = ?`,
+      values
     );
 
-    // Defensive: if no row exists, nothing was updated
     if (result.changes === 0) {
       return res.status(404).json({ error: "Event expenses not found" });
     }
@@ -1701,7 +1715,7 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
     const newSupply = await dbGet(
       `
       SELECT *
-      FROM v_event_supplies
+      FROM vw_event_supplies
       WHERE id = ?
       `,
       [insertResult.lastID]
@@ -1770,7 +1784,7 @@ app.put("/api/supplies/:id", async (req, res) => {
     const updatedSupply = await dbGet(
       `
       SELECT *
-      FROM v_event_supplies
+      FROM vw_event_supplies
       WHERE id = ?
       `,
       [supplyID]
@@ -1883,11 +1897,13 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
 
     // 2️⃣ Normalize → labor rows
     const laborList = timecards.map(tc => ({
-      employeeID: tc.employeeId,
+      employeeID: tc.teamMemberId,
+      employeeName: tc.employeeName,
       hours: tc.hours,
+      hourlyRate: tc.hourlyRate,
       start: tc.start,
       end: tc.end,
-      totalPay: null // resolved later if needed
+      totalPay: tc.totalPay
     }));
 
     // 3️⃣ Save labor (idempotent)
@@ -1933,9 +1949,9 @@ app.put("/api/square/labor/:eventID", async (req, res) => {
 
     // 3️⃣ Build laborRows from Square data
     const laborRows = timecards.map(tc => ({
-      employeeName: tc.employeeName || tc.employeeId || "Unknown",
+      employeeName: tc.employeeName || tc.teamMemberId || "Unknown",
       hoursWorked: Number(tc.hours || 0),
-      hourlyRate: Number(tc.hourlyRate || 0)   // may be 0 if not available
+      hourlyRate: Number(tc.hourlyRate || 0)
     }));
 
     const laborFees = laborRows.reduce(
@@ -2324,8 +2340,7 @@ async function getSquareLaborToken() {
     exists: !!token,
     length: token?.length,
     prefix: token?.slice(0, 8),
-    env: process.env.NODE_ENV,
-    isSandbox: token?.startsWith("EAAA")
+    env: process.env.NODE_ENV
   });
   return token;
 
@@ -2361,70 +2376,78 @@ async function fetchSquareTimecardsForEvent(eventID) {
   const token = await getSquareLaborToken();
   const baseUrl = "https://connect.squareup.com";
 
-  // Build UTC window (adjust offset if needed)
-  const start = new Date(`${event.eventDate}T00:00:00-06:00`).toISOString();
-  const end   = new Date(`${event.eventDate}T23:59:59-06:00`).toISOString();
+  let allTimecards = [];
+  let cursor = null;
 
-  const params = new URLSearchParams({
-    begin_time: start,
-    end_time: end,
-    location_id: event.squareLocationId
-  });
-
-  const res = await doFetch(
-  `${baseUrl}/v2/labor/timecards/search`,
-  {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Square-Version": "2025-01-15",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
+  do {
+    const body = {
       query: {
         filter: {
           location_ids: [event.squareLocationId],
-          start: {
-            start_at: start,
-            end_at: end
-          }
+          workday: {
+            date_range: {
+              start_date: event.eventDate,
+              end_date: event.eventDate
+            },
+            match_timecards_by: "START_AT",
+            default_timezone: "America/Chicago"
+          },
+          status: "CLOSED"
         }
+      },
+      limit: 200
+    };
+    if (cursor) body.cursor = cursor;
+
+    const res = await doFetch(
+      `${baseUrl}/v2/labor/timecards/search`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Square-Version": "2025-05-21",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
       }
-    })
-  }
-);
-
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(
-      json.errors?.map(e => e.detail).join("; ")
-      || `HTTP ${res.status}`
     );
-  }
 
-  const timecards = json.timecards || [];
+    const json = await res.json().catch(() => ({}));
 
-  // Return normalized JS objects (NO DB writes here)
-  return timecards.map(tc => {
-    const startMs = tc.clockin_time
-      ? new Date(tc.clockin_time).getTime()
-      : null;
-    const endMs = tc.clockout_time
-      ? new Date(tc.clockout_time).getTime()
-      : null;
+    if (!res.ok) {
+      throw new Error(
+        json.errors?.map(e => e.detail).join("; ")
+        || `HTTP ${res.status}`
+      );
+    }
+
+    allTimecards = allTimecards.concat(json.timecards || []);
+    cursor = json.cursor || null;
+  } while (cursor);
+
+  return allTimecards.map(tc => {
+    const startMs = tc.start_at ? new Date(tc.start_at).getTime() : null;
+    const endMs = tc.end_at ? new Date(tc.end_at).getTime() : null;
 
     let hours = 0;
     if (startMs && endMs && endMs > startMs) {
       hours = (endMs - startMs) / (1000 * 60 * 60);
     }
 
+    const hourlyRate = (tc.wage?.hourly_rate?.amount || 0) / 100;
+
     return {
-      employeeId: tc.employee_id,
-      start: tc.clockin_time,
-      end: tc.clockout_time,
-      hours
+      id: tc.id,
+      teamMemberId: tc.team_member_id,
+      employeeName: tc.wage?.title || tc.team_member_id,
+      start: tc.start_at,
+      end: tc.end_at,
+      hours,
+      hourlyRate,
+      totalPay: hours * hourlyRate,
+      jobTitle: tc.wage?.title || null,
+      tipEligible: tc.wage?.tip_eligible || false,
+      declaredCashTips: (tc.declared_cash_tip_money?.amount || 0) / 100
     };
   });
 }
@@ -2622,13 +2645,28 @@ function coerceEvent(body) {
     cashApp: toNum(body.cashApp),
 
     taxOverride: toNum(body.taxOverride),
-
+    state: toStr(body.state),
     customFields:
       body.customFields && Object.keys(body.customFields).length
         ? JSON.stringify(body.customFields)
         : null,
   };
 }
+
+// -------------------------------------------
+// 🏛️ State Revenue Tax Map
+// Only include states that charge income tax
+// -------------------------------------------
+const STATE_REVENUE_TAX = {
+  UT: 0.03,     // Utah example per your rule
+  CA: 0.084,    // Example (adjust as needed)
+  NY: 0.065,
+  CO: 0.044,
+  // Add others here as needed
+};
+
+// States with NO income tax:
+// AK, FL, NV, SD, TN, TX, WA, WY
 
 
 
@@ -2663,7 +2701,8 @@ async function buildPostEventReport(eventID) {
     // 3️⃣ Load related data
     const [
       expenses,
-      laborRows,
+      manualLaborRows,
+      squareLaborRows,
       supplyRows,
       discountRows,
       salesSummary,
@@ -2671,23 +2710,76 @@ async function buildPostEventReport(eventID) {
     ] = await Promise.all([
       dbGet(`SELECT * FROM EventExpenses WHERE eventID = ?`, [eventID]),
       dbAll(`SELECT * FROM EventEmployees WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM SupplyCosts WHERE eventID = ?`, [eventID]),
+      dbAll(`SELECT * FROM EventLabor WHERE eventID = ?`, [eventID]),
+      dbAll(`SELECT *, (unitCost * quantityUsed) AS totalCost FROM EventSupplies WHERE eventID = ?`, [eventID]),
       dbAll(`SELECT * FROM Discounts WHERE eventID = ?`, [eventID]),
       dbGet(`SELECT * FROM SalesSummary WHERE eventID = ?`, [eventID]),
       dbAll(`SELECT * FROM DrinkSales WHERE eventID = ?`, [eventID])
     ]);
 
+    const laborRows = [
+      ...(manualLaborRows || []),
+      ...(squareLaborRows || [])
+    ];
+
     // 4️⃣ Assemble report (same structure you had)
     const report = {
       event,
       expenses: expenses || {},
-      labor: laborRows || [],
+      labor: laborRows,
       supplies: supplyRows || [],
       discounts: discountRows || [],
       sales: salesSummary || {},
       drinkSales: drinkSales || []
     };
    
+   // -------------------------------------------
+  // 🏛️ STATE REVENUE TAX CALCULATION
+  // -------------------------------------------
+
+  // Determine state from event (assumes you store event.state or customFields.state)
+  let stateCode = null;
+
+  // Option A: If you store state directly on EventInfo
+  if (event.state) {
+    stateCode = event.state;
+  }
+
+  // Option B: If stored in customFields JSON
+  if (!stateCode && event.customFields) {
+    try {
+      const cf = JSON.parse(event.customFields);
+      stateCode = cf.state || null;
+    } catch {}
+  }
+
+  const stateRate = STATE_REVENUE_TAX[stateCode] || 0;
+
+  // Calculate Net Profit first
+  const netProfit =
+    (report.sales?.netSales || 0)
+    - (report.expenses?.totalExpenses || 0)
+    - (report.expenses?.laborFees || 0)
+    - (report.supplies?.reduce((sum, s) => sum + (s.totalCost || 0), 0) || 0);
+    console.log("What is my netProfit ", netProfit);
+
+  // Only tax positive profit
+    const federalTaxRate = .2;
+  const stateRevenueTax = netProfit > 0 ? netProfit * stateRate : 0;
+  console.log("What is my state Revenue Tax: ", stateRevenueTax);
+  const federalTaxes = (netProfit - stateRevenueTax) * federalTaxRate;
+  console.log("What is my Federal Taxes: ", federalTaxes);
+  const finalProfit = netProfit - stateRevenueTax - federalTaxes;
+
+  // Attach to report
+  report.taxes = {
+    stateCode,
+    stateRate,
+    stateRevenueTax,
+    federalTaxes,
+    finalProfit
+  };
+
    //console.log("DISCOUNT ROW = Discount ", report);
     
     return report;
