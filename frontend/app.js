@@ -538,15 +538,25 @@ function buildTableHTML(results, containerId = "searchResults") {
     return;
   }
 
+  const displayColumns = [
+    { key: "eventID", label: "Event ID" },
+    { key: "companyID", label: "Company ID" },
+    { key: "eventName", label: "Event Name" },
+    { key: "eventDate", label: "Event Date" },
+    { key: "numDays", label: "Num Days" },
+    { key: "grossSales", label: "Gross Sales" },
+    { key: "netProfit", label: "Net Profit" },
+  ];
+
   const table = document.createElement("table");
   table.classList.add("results-table", "lemondrip-table");
 
   const header = table.createTHead();
   const headerRow = header.insertRow();
 
-  Object.keys(results[0]).forEach((key) => {
+  displayColumns.forEach((col) => {
     const th = document.createElement("th");
-    th.textContent = key;
+    th.textContent = col.label;
     headerRow.appendChild(th);
   });
 
@@ -555,11 +565,11 @@ function buildTableHTML(results, containerId = "searchResults") {
   results.forEach((event) => {
     const tr = body.insertRow();
 
-    Object.keys(results[0]).forEach((key, colIndex) => {
+    displayColumns.forEach((col, colIndex) => {
       const td = tr.insertCell();
-      let val = event[key] ?? "";
+      let val = event[col.key] ?? "";
 
-      if (colIndex === 0 && event.isFinalized) {
+      if (col.key === "eventName" && event.isFinalized) {
         const spanName = document.createElement("span");
         spanName.textContent = val;
 
@@ -1050,7 +1060,7 @@ async function submitEvent(e) {
   const templateName = document.getElementById("templateSelect")?.value;
   
   const template = window.availableTemplates?.find(
-    (t) => t.TemplateName === templateName
+    (t) => (t.templateName || t.TemplateName) === templateName
   );
  
 const fields = template?.fields ?? template?.Fields;
@@ -1109,7 +1119,8 @@ const CANONICAL_KEYS = new Set([
   "permits",
   "finalizedDate",
   "time",
-  "squareLocationId"
+  "squareLocationId",
+  "zipCode"
 ]);
 
 Object.entries(raw).forEach(([key, value]) => {
@@ -1141,11 +1152,11 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
   // --------------------------------------------------
   // 5️⃣ REQUIRED FIELD VALIDATION (single source)
   // --------------------------------------------------
-  const REQUIRED = ["eventName", "eventDate"];
+  const REQUIRED = ["eventName", "eventDate", "zipCode"];
 
   for (const key of REQUIRED) {
     if (!canonical[key]) {
-      alert("Event Name and Event Date are required.");
+      alert("Event Name, Event Date, and Zip Code are required.");
       return;
     }
   }
@@ -1243,6 +1254,9 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
   window.isEditing = false;
   window.activeeventID = null;
   window.activeEvent = null;
+
+  const eventFormEl = document.getElementById("eventForm");
+  if (eventFormEl) eventFormEl.innerHTML = "";
 
   navigateTo("manageSection");
   await loadAllEvents();
@@ -2299,10 +2313,14 @@ const discountTotal = discounts.reduce(
   const coordinatorFee = Number(expenses.coordinatorFee || 0);
   const netProfit = grossProfit - coordinatorFee;
 
-  // Taxes on Net Profit
-  const stateTax = netProfit * 0.03;
-  const federalTax = netProfit * 0.20;
-  const finalProfit = netProfit - stateTax - federalTax;
+  // Taxes from server (zip-tax.com API)
+  const stateTax = Number(taxes.stateRevenueTax || 0);
+  const federalTax = Number(taxes.federalTaxes || 0);
+  const finalProfit = Number(taxes.finalProfit || (netProfit - stateTax - federalTax));
+  const stateRatePct = ((Number(taxes.stateRate || 0)) * 100).toFixed(2);
+  const stateTaxLabel = taxes.taxDetail?.state
+    ? `${taxes.taxDetail.state} State Tax (${stateRatePct}%)`
+    : `State Tax (${stateRatePct}%)`;
 
   const fmt = (v) => `$${Number(v || 0).toFixed(2)}`;
 
@@ -2357,8 +2375,8 @@ const discountTotal = discounts.reduce(
       <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Net Profit</span><span class="ledger-amount">${fmt(netProfit)}</span></div>
 
-      <div class="ledger-row"><span class="ledger-label">Utah State Tax (3%)</span><span class="ledger-amount">-${fmt(stateTax)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Federal Tax (20%)</span><span class="ledger-amount">-${fmt(federalTax)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">${stateTaxLabel}</span><span class="ledger-amount">-${fmt(stateTax)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Federal Tax (15.3%)</span><span class="ledger-amount">-${fmt(federalTax)}</span></div>
       <div class="ledger-row final-row"><span class="ledger-label">Final Profit</span><span class="ledger-amount">${fmt(finalProfit)}</span></div>
 
     </div>
@@ -3218,19 +3236,30 @@ try {
   // ======================
   // 1) EVENT SUMMARY CARD
   // ======================
+  const ev = report.event || event;
   const summaryData = {
-    EventID: eventID,
-    Date: eventDate,
-    Location: eventLocation,
-    Coordinator: coordinator,
-    Status: status,
-    EventType: event.eventType || "",
-    NumDays: event.numDays ?? "",
-    State: event.state ?? "",
+    EventID: ev.eventID ?? eventID,
+    "Event Name": ev.eventName || "",
+    Date: ev.eventDate || eventDate,
+    "Event Type": ev.eventType || "",
+    Location: ev.eventLocation || eventLocation,
+    "Event Host": ev.eventHost || "",
+    Coordinator: ev.coordinator || coordinator,
+    Status: ev.status || status,
+    "Num Days": ev.numDays ?? "",
+    State: ev.state ?? "",
+    "Zip Code": ev.zipCode ?? "",
+    Time: ev.time || "",
+    "Event Fee": ev.eventFee ? `$${Number(ev.eventFee).toFixed(2)}` : "",
+    "Event Rating": ev.eventRating || "",
+    "Application Date": ev.applicationDate || "",
+    "Square Location": ev.squareLocationId || "",
+    Notes: ev.notes || "",
   };
 
   const summaryHTML = Object.entries(summaryData)
-    .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
+    .filter(([k, v]) => v !== "" && v != null)
+    .map(([k, v]) => `<div><strong>${k}:</strong> ${v}</div>`)
     .join("");
 
   safeAppend(container, createCollapsibleCard("Event Summary", summaryHTML));
