@@ -3298,24 +3298,44 @@ if (Object.keys(customFieldsObj).length) {
   // ======================
   // 3) DRINK SALES CARD
   // ======================
-   let drinkHTML = "<p>No drink sales recorded.</p>";
-    if (report.drinkSales && report.drinkSales.length) {
-    const totalRevenue = report.drinkSales.reduce(
-      (sum, r) => sum + (Number(r.totalCost) || 0),
-      0
-    );
-    const totalQty = report.drinkSales.reduce(
-      (sum, r) => sum + (Number(r.quantitySold) || 0),
-      0
-    );
+  let drinkHTML = "<p>No drink sales recorded.</p>";
 
-    drinkHTML = `
-      <div><strong>Total Drinks Sold:</strong> ${totalQty}</div>
-      <div><strong>Total Drink Revenue:</strong> ${fmt(totalRevenue)}</div>
-      <hr>
-      ${buildTableHTMLString(report.drinkSales)}
-    `;
-  }
+if (report.drinkSales && report.drinkSales.length) {
+
+  const totalRevenue = report.drinkSales.reduce(
+    (sum, r) => sum + (Number(r.totalCost) || 0),
+    0
+  );
+
+  const totalQty = report.drinkSales.reduce(
+    (sum, r) => sum + (Number(r.quantitySold) || 0),
+    0
+  );
+
+  // 🚫 Columns we do NOT want displayed
+  const hiddenColumns = ["eventID", "category", "metadata", "rowCost", "source"];
+
+  // ✅ Create filtered copy for display only
+  const displayDrinkSales = report.drinkSales.map(row => {
+    const filtered = {};
+    Object.keys(row).forEach(key => {
+      if (!hiddenColumns.includes(key)) {
+        filtered[key] = row[key];
+      }
+    });
+    return filtered;
+  });
+
+  drinkHTML = `
+    <div><strong>Total Drinks Sold:</strong> ${totalQty}</div>
+    <div><strong>Total Drink Revenue:</strong> ${fmt(totalRevenue)}</div>
+    <hr>
+    <div class="card-table-wrapper">
+      ${buildTableHTMLString(displayDrinkSales)}
+    </div>
+  `;
+}
+
 
   safeAppend(container, createCollapsibleCard("Itemized Sales", drinkHTML));
 
