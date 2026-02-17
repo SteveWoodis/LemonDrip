@@ -45,8 +45,11 @@ function resolveDbPath() {
 return path.join(__dirname, "lemondrip.db");
 
 }
-const dbPath = resolveDbPath();
-console.log("DB PATH", dbPath);
+const dbPath =
+  process.env.NODE_ENV === "production"
+    ? "/data/lemondrip.db"
+    : path.join(__dirname, "backend", "lemonDrip.db");
+
 
 
 const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
@@ -105,6 +108,53 @@ function initDb() {
           DatePulledAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
         );
+        CREATE TABLE IF NOT EXISTS EventInfo (
+        eventID INTEGER PRIMARY KEY AUTOINCREMENT,
+        companyID INTEGER,
+        eventName TEXT,
+        eventType TEXT,
+        eventDate TEXT,
+        numDays INTEGER,
+        coordinator TEXT,
+        eventHost TEXT,   
+        eventLocation TEXT,
+        status TEXT,
+        isFinalized INTEGER DEFAULT 0,
+        finalizedDate TEXT,
+        squareLocationId TEXT,
+        time TEXT,
+        notes TEXT,
+        customFields TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS EventExpenses (
+        eventID INTEGER PRIMARY KEY,
+        healthDeptFee REAL DEFAULT 0,
+        eventFee REAL DEFAULT 0,
+        mileageReimbursement REAL DEFAULT 0,
+        eventRunnerFees REAL DEFAULT 0,
+        employeeBonus REAL DEFAULT 0,
+        coordinatorFee REAL DEFAULT 0,
+        posFee REAL DEFAULT 0,
+        supplyFees REAL DEFAULT 0,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
+      );
+
+      CREATE TABLE IF NOT EXISTS DrinkSales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eventID INTEGER,
+        name TEXT,
+        quantitySold INTEGER,
+        totalCost REAL,
+        unitPrice REAL,
+        category TEXT,
+        metadata TEXT,
+        rowCost REAL,
+        source TEXT,
+        FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
+      );
         `,
         (schemaErr) => {
           if (schemaErr) {
@@ -114,28 +164,59 @@ function initDb() {
 
           console.log("✅ SQLite schema initialized");
 
-          db.run(
+          // Add missing columns (safe — silently skips if already exist)
+          const migrations = [
+            `ALTER TABLE EventInfo ADD COLUMN eventHost TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN eventLocation TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN notes TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN customFields TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN status TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN eventType TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN coordinator TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN numDays INTEGER`,
+            `ALTER TABLE EventInfo ADD COLUMN isFinalized INTEGER DEFAULT 0`,
+            `ALTER TABLE EventInfo ADD COLUMN finalizedDate TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN squareLocationId TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN time TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN grossSales REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN returns REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN discounts REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN netSales REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN tips REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN giftCardSales REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN totalSales REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN cash REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN card REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN wallet REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN cashApp REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN Other REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN applicationDate TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN eventFee REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN permits TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN employees TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN eventRating TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN healthDeptFee REAL DEFAULT 0`,
+            `ALTER TABLE EventInfo ADD COLUMN mileageReimbursement REAL DEFAULT 0`,
+            `ALTER TABLE EventInfo ADD COLUMN eventRunnerFees REAL DEFAULT 0`,
+            `ALTER TABLE EventInfo ADD COLUMN taxOverride REAL`,
+            `ALTER TABLE EventInfo ADD COLUMN state TEXT`,
+            `ALTER TABLE EventInfo ADD COLUMN zipCode TEXT`,
             `ALTER TABLE EventExpenses ADD COLUMN posFee REAL DEFAULT 0`,
-            () => {
-              db.run(
-                `ALTER TABLE EventExpenses ADD COLUMN supplyFees REAL DEFAULT 0`,
-                () => {
-                  db.run(
-                    `ALTER TABLE SalesSummary ADD COLUMN squareFees REAL DEFAULT 0`,
-                    () => {
-                      db.run(
-                        `ALTER TABLE EventInfo ADD COLUMN zipCode TEXT`,
-                        (err) => {
-                          if (err && !err.message.includes('duplicate column')) console.error(err);
-                          resolve();
-                        }
-                      );
-                    }
-                  );
-                }
-              );
-            }
-          );
+            `ALTER TABLE EventExpenses ADD COLUMN supplyFees REAL DEFAULT 0`,
+            `ALTER TABLE SalesSummary ADD COLUMN squareFees REAL DEFAULT 0`,
+          ];
+
+          let i = 0;
+          function runNext() {
+            if (i >= migrations.length) return resolve();
+            db.run(migrations[i], (err) => {
+              if (err && !err.message.includes('duplicate column')) {
+                console.warn(`⚠️ Migration skipped: ${migrations[i]} — ${err.message}`);
+              }
+              i++; runNext();
+            });
+          }
+          runNext();
         }
       );
     });
@@ -239,6 +320,8 @@ app.get("/api/events", async (req, res) => {
     console.error("❌ Error reading events:", err);
     res.status(500).json({ error: "Error reading events." });
   }
+  console.log("DB PATH:", dbPath);
+
 });
 
 
@@ -350,31 +433,40 @@ app.get("/api/events/search", (req, res) => {
   const q = req.query.q?.trim();
   if (!q) return res.json([]);
 
-  const sql = `
-    SELECT *
-    FROM EventInfo
-    WHERE
-      eventName     LIKE ?
-      OR eventDate  LIKE ?
-      OR eventHost  LIKE ?
-      OR status     LIKE ?
-      OR eventType  LIKE ?
-      OR notes      LIKE ?
-      OR customFields LIKE ?
-      OR CAST(eventID AS TEXT) LIKE ?
-    ORDER BY eventDate DESC
-    LIMIT 50
-  `;
-
   const like = `%${q}%`;
-  const params = [like, like, like, like, like, like, like, like];
 
-  db.all(sql, params, (err, rows) => {
+  db.all("PRAGMA table_info(EventInfo)", (err, cols) => {
     if (err) {
-      console.error("❌ Search error:", err);
+      console.error("❌ Search PRAGMA error:", err);
       return res.status(500).json({ error: String(err) });
     }
-    res.json(rows);
+
+    const colNames = cols.map(c => c.name);
+    const searchCols = [
+      'eventName', 'eventDate', 'eventHost', 'status',
+      'eventType', 'notes', 'customFields'
+    ].filter(c => colNames.includes(c));
+
+    const conditions = searchCols.map(c => `${c} LIKE ?`);
+    if (colNames.includes('eventID')) {
+      conditions.push('CAST(eventID AS TEXT) LIKE ?');
+    }
+
+    const sql = `
+      SELECT * FROM EventInfo
+      WHERE ${conditions.join(' OR ')}
+      ORDER BY eventDate DESC
+      LIMIT 50
+    `;
+    const params = conditions.map(() => like);
+
+    db.all(sql, params, (err2, rows) => {
+      if (err2) {
+        console.error("❌ Search error:", err2);
+        return res.status(500).json({ error: String(err2) });
+      }
+      res.json(rows);
+    });
   });
 });
 
@@ -2121,6 +2213,7 @@ app.put("/api/square/labor/:eventID", async (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
 
 const frontendPath = path.join(__dirname, "frontend");
 app.use(express.static(frontendPath, {

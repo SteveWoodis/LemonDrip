@@ -703,8 +703,13 @@ async function manageSearch() {
   }
 
   const res = await fetch(`${API_BASE}/api/events/search?q=${encodeURIComponent(q)}`);
-  const results = await res.json();
-  console.log("What is res? ", res);
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("Search error:", data);
+    alert("Search failed: " + (data.error || res.statusText));
+    return;
+  }
+  const results = Array.isArray(data) ? data : [];
   buildTableHTML(results, "manageResults");
 }
 
