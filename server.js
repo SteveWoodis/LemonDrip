@@ -203,6 +203,7 @@ function initDb() {
             `ALTER TABLE EventInfo ADD COLUMN zipCode TEXT`,
             `ALTER TABLE EventExpenses ADD COLUMN posFee REAL DEFAULT 0`,
             `ALTER TABLE EventExpenses ADD COLUMN supplyFees REAL DEFAULT 0`,
+            `ALTER TABLE EventLabor ADD COLUMN flatRate REAL DEFAULT 0`,
             `ALTER TABLE SalesSummary ADD COLUMN squareFees REAL DEFAULT 0`,
           ];
 
@@ -468,6 +469,42 @@ app.get("/api/events/search", (req, res) => {
       res.json(rows);
     });
   });
+});
+
+
+// Save manual sales data
+app.put("/api/events/:eventID/manual-sales", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) {
+      return res.status(400).json({ error: "Invalid eventID" });
+    }
+
+    const grossSales = Number(req.body.grossSales) || 0;
+    const refunds = Number(req.body.refunds) || 0;
+    const discounts = Number(req.body.discounts) || 0;
+    const totalCollected = Number(req.body.totalCollected) || 0;
+    const netSales = grossSales - refunds - discounts;
+
+    await dbRun(
+      `INSERT INTO SalesSummary (eventID, grossSales, netSales, discounts, refunds, totalCollected, DatePulledAt)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(eventID) DO UPDATE SET
+         grossSales = excluded.grossSales,
+         netSales = excluded.netSales,
+         discounts = excluded.discounts,
+         refunds = excluded.refunds,
+         totalCollected = excluded.totalCollected,
+         DatePulledAt = CURRENT_TIMESTAMP`,
+      [eventID, grossSales, netSales, discounts, refunds, totalCollected]
+    );
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("❌ Manual sales save error:", err);
+    res.status(500).json({ error: "Failed to save manual sales" });
+  }
 });
 
 
@@ -1299,8 +1336,8 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
         // 2️⃣ Insert new labor rows
         const insertSql = `
           INSERT INTO EventLabor
-          (eventID, employeeName, hoursWorked, hourlyRate)
-          VALUES (?, ?, ?, ?)
+          (eventID, employeeName, hoursWorked, hourlyRate, flatRate)
+          VALUES (?, ?, ?, ?, ?)
         `;
 
         for (const row of laborRows) {
@@ -1309,8 +1346,9 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
             [
               eventID,
               row.employeeName,
-              row.hoursWorked,
-              row.hourlyRate
+              Number(row.hoursWorked) || 0,
+              Number(row.hourlyRate) || 0,
+              Number(row.flatRate) || 0
             ],
             err => {
               if (err) {
@@ -1321,11 +1359,39 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
           );
         }
 
-        // 3️⃣ Commit
-        db.run("COMMIT", err => {
-          if (err) return reject(err);
-          resolve();
-        });
+        // 3️⃣ Ensure EventExpenses row exists, then update laborFees
+        const laborFees = laborRows.reduce((sum, r) => {
+          const flat = Number(r.flatRate) || 0;
+          return sum + (flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0));
+        }, 0);
+
+        db.run(
+          `INSERT INTO EventExpenses (eventID) VALUES (?) ON CONFLICT(eventID) DO NOTHING`,
+          [eventID],
+          err => {
+            if (err) {
+              db.run("ROLLBACK");
+              return reject(err);
+            }
+
+            db.run(
+              `UPDATE EventExpenses SET laborFees = ? WHERE eventID = ?`,
+              [laborFees, eventID],
+              err => {
+                if (err) {
+                  db.run("ROLLBACK");
+                  return reject(err);
+                }
+
+                // 4️⃣ Commit
+                db.run("COMMIT", err => {
+                  if (err) return reject(err);
+                  resolve();
+                });
+              }
+            );
+          }
+        );
       });
     });
 
@@ -1644,25 +1710,50 @@ app.delete("/api/events/:eventID/employees/:shiftID", async (req, res) => {
 // -------------------------------
 // DELETE /api/events/:id
 // -------------------------------
-app.delete("/api/events/:id", (req, res) => {
-  const id = req.params.id;
+app.delete("/api/events/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid eventID" });
+  }
 
-  db.run(
-    "DELETE FROM EventInfo WHERE eventID = ?",
-    [id],
-    function (err) {
-      if (err) {
-        console.error("❌ Error deleting event:", err);
-        return res.status(500).json({ error: "Error deleting event." });
-      }
+  try {
+    const event = await dbGet(`SELECT eventID FROM EventInfo WHERE eventID = ?`, [id]);
+    if (!event) return res.status(404).json({ error: "Event not found." });
 
-      if (this.changes === 0) {
-        return res.status(404).json({ error: "Event not found." });
-      }
+    await new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
 
-      res.json({ success: true });
-    }
-  );
+        const tables = [
+          "EventExpenses", "EventLabor", "EventEmployees",
+          "SalesSummary", "DrinkSales", "EventSupplies",
+          "Discounts", "AdditionalFees", "EventPermits"
+        ];
+
+        for (const table of tables) {
+          db.run(`DELETE FROM ${table} WHERE eventID = ?`, [id], err => {
+            if (err && !err.message.includes("no such table")) {
+              db.run("ROLLBACK");
+              return reject(err);
+            }
+          });
+        }
+
+        db.run("DELETE FROM EventInfo WHERE eventID = ?", [id], function (err) {
+          if (err) {
+            db.run("ROLLBACK");
+            return reject(err);
+          }
+          db.run("COMMIT", err => (err ? reject(err) : resolve()));
+        });
+      });
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Error deleting event:", err);
+    res.status(500).json({ error: "Error deleting event." });
+  }
 });
 
 
@@ -2948,18 +3039,20 @@ async function buildPostEventReport(eventID) {
    const zipCode = event.zipCode || null;
    const taxData = await fetchSalesTaxRate(zipCode);
    const stateRate = taxData.rate;
-
+   const federalTaxRate = 0.153;
+   
    // Calculate Net Profit first
    const netProfit =
     (report.sales?.netSales || 0)
     - (report.expenses?.totalExpenses || 0)
     - (report.expenses?.laborFees || 0)
+    - (report.expenses?.coordinatorFee || 0)
     - (report.supplies?.reduce((sum, s) => sum + (s.totalCost || 0), 0) || 0);
 
    // Only tax positive profit
-   const federalTaxRate = 0.153;
+   
    const stateRevenueTax = netProfit > 0 ? netProfit * stateRate : 0;
-   const federalTaxes = (netProfit - stateRevenueTax) * federalTaxRate;
+   const federalTaxes = netProfit  * federalTaxRate;
    const finalProfit = netProfit - stateRevenueTax - federalTaxes;
 
    // Attach to report

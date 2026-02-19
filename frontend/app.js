@@ -2275,6 +2275,69 @@ function addDiscountRow(name = "", amount = "") {
 }
 
 
+function renderManualSalesEntryCard(report) {
+  const sales = report.sales || {};
+  const eventID = report.event?.eventID || window.currentEventId;
+
+  const fields = [
+    { label: "Gross Sales", key: "grossSales" },
+    { label: "Refunds", key: "refunds" },
+    { label: "Discounts", key: "discounts" },
+    { label: "Total Collected", key: "totalCollected" },
+  ];
+
+  const inputsHTML = fields.map(f => `
+    <div class="ledger-row" style="margin-bottom:8px;">
+      <label class="ledger-label" for="manual_${f.key}">${f.label}</label>
+      <input type="number" step="0.01" id="manual_${f.key}"
+        style="width:120px;text-align:right"
+        value="${Number(sales[f.key] || 0).toFixed(2)}">
+    </div>
+  `).join("");
+
+  const html = `
+    <div class="profit-summary">
+      ${inputsHTML}
+      <div style="margin-top:12px;">
+        <button class="btn-primary" onclick="saveManualSales()">💾 Save Sales Data</button>
+      </div>
+    </div>
+  `;
+
+  return createCollapsibleCard("Manual Sales Entry", html);
+}
+
+async function saveManualSales() {
+  const eventID = window.currentEventId;
+  if (!eventID) return alert("No event selected.");
+
+  const body = {
+    grossSales: Number(document.getElementById("manual_grossSales")?.value) || 0,
+    refunds: Number(document.getElementById("manual_refunds")?.value) || 0,
+    discounts: Number(document.getElementById("manual_discounts")?.value) || 0,
+    totalCollected: Number(document.getElementById("manual_totalCollected")?.value) || 0,
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/manual-sales`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Save failed");
+    }
+
+    alert("Sales data saved!");
+    await reloadEventDashboard();
+  } catch (err) {
+    console.error("Manual sales save error:", err);
+    alert("Failed to save sales data: " + err.message);
+  }
+}
+
 function renderEventProfitSummary(report) {
   const event = report.event || {};
 const sales = report.sales || {};
@@ -2340,26 +2403,10 @@ const discountTotal = discounts.reduce(
       <div class="ledger-row"><span class="ledger-label">Discounts</span><span class="ledger-amount">-${fmt(sales.discounts)}</span></div>
       <div class="ledger-row total-row"><span class="ledger-label">Net Sales</span><span class="ledger-amount">${fmt(sales.netSales)}</span></div>
       <div class="section-divider"></div>
-      <div class="section-title">Collections</div>
-      <div class="ledger-row"><span class="ledger-label">Tips</span><span class="ledger-amount">${fmt(sales.tips)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Cash</span><span class="ledger-amount">${fmt(sales.cash)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Card</span><span class="ledger-amount">${fmt(sales.card)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Venmo / Wallet</span><span class="ledger-amount">${fmt(sales.wallet)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">CashApp</span><span class="ledger-amount">${fmt(sales.cashApp)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Gift Card</span><span class="ledger-amount">${fmt(sales.giftCardSales)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Other</span><span class="ledger-amount">${fmt(sales.other)}</span></div>
       <div class="ledger-row total-row"><span class="ledger-label">Total Collected</span><span class="ledger-amount">${fmt(sales.totalCollected)}</span></div>
       <div class="section-divider"></div>
       <div class="ledger-row"><span class="ledger-label">Food Tax (8.04%)</span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
-      ${isSquare
-        ? `<div class="ledger-row"><span class="ledger-label">Square Fees</span><span class="ledger-amount">-${fmt(sales.squareFees)}</span></div>`
-        : `<div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">
-             <input type="number" step="0.01" id="manualPosFee"
-               style="width:90px;text-align:right"
-               value="${Number(expenses.posFee || 0).toFixed(2)}"
-               onchange="updateManualPosFee(this.value)">
-           </span></div>`
-      }
+      <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
       <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Total Net Revenue</span><span class="ledger-amount">${fmt(totalNetRevenue)}</span></div>
 
@@ -2512,6 +2559,7 @@ function renderExpensesViewMode(expenses, sales = {}) {
     <div>Employee Bonus: ${fmtMoney(expenses.employeeBonus)}</div>
     <div>Event Runner Fees: ${fmtMoney(expenses.eventRunnerFees)}</div>
     <div>Coordinator Fee: ${fmtMoney(expenses.coordinatorFee)}</div>
+    <div>POS Fees: ${fmtMoney(expenses.posFee)}</div>
     <hr>
     <div>Additional Fees (auto): ${fmtMoney(expenses.additionalFees)}</div>
     <div>
@@ -2562,6 +2610,10 @@ function renderExpensesEditMode(expenses) {
       <label>Coordinator Fee</label>
       <input type="number" data-field="coordinatorFee"
         value="${expenses.coordinatorFee ?? 0}">
+
+      <label>POS Fees</label>
+      <input type="number" step="0.01" data-field="posFee"
+        value="${expenses.posFee ?? 0}">
       <hr>
 
       <button class="btn-primary" onclick="saveExpenses()">💾 Save</button>
@@ -2594,6 +2646,7 @@ function renderLaborCard(event) {
           <th>Employee</th>
           <th>Hours</th>
           <th>Rate</th>
+          <th>Flat Rate</th>
           <th>Subtotal</th>
           <th></th>
         </tr>
@@ -2605,7 +2658,7 @@ function renderLaborCard(event) {
   if (!rows.length) {
     html += `
       <tr>
-        <td colspan="5" class="muted">
+        <td colspan="6" class="muted">
           No labor entries yet.
         </td>
       </tr>
@@ -2614,15 +2667,16 @@ function renderLaborCard(event) {
 
   // render rows
   for (const row of rows) {
-    const subtotal =
-      (Number(row.hoursWorked) || 0) *
-      (Number(row.hourlyRate) || 0);
+    const flat = Number(row.flatRate) || 0;
+    const subtotal = flat > 0 ? flat :
+      (Number(row.hoursWorked) || 0) * (Number(row.hourlyRate) || 0);
 
     html += `
       <tr>
         <td><input data-field="employeeName" value="${row.employeeName || ""}"></td>
-        <td><input type="number" data-field="hoursWorked" value="${row.hoursWorked ?? ""}"></td>
-        <td><input type="number" data-field="hourlyRate" value="${row.hourlyRate ?? ""}"></td>
+        <td><input type="number" step="0.25" data-field="hoursWorked" value="${row.hoursWorked ?? ""}"></td>
+        <td><input type="number" step="0.01" data-field="hourlyRate" value="${row.hourlyRate ?? ""}"></td>
+        <td><input type="number" step="0.01" data-field="flatRate" value="${row.flatRate ?? ""}"></td>
         <td class="labor-subtotal">${fmt(subtotal)}</td>
         <td><button class="remove-labor-row">✖</button></td>
       </tr>
@@ -2668,8 +2722,9 @@ function wireLaborCard(eventID) {
     body.querySelectorAll("tr").forEach(row => {
       const hours = Number(row.querySelector('[data-field="hoursWorked"]')?.value || 0);
       const rate  = Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
+      const flat  = Number(row.querySelector('[data-field="flatRate"]')?.value || 0);
 
-      const sub = Number((hours * rate).toFixed(2));
+      const sub = Number((flat > 0 ? flat : hours * rate).toFixed(2));
       const subEl = row.querySelector(".labor-subtotal");
       if (subEl) subEl.textContent = fmt(sub);
 
@@ -2699,6 +2754,7 @@ function wireLaborCard(eventID) {
         <td><input data-field="employeeName"></td>
         <td><input type="number" step="0.25" min="0" data-field="hoursWorked"></td>
         <td><input type="number" step="0.01" min="0" data-field="hourlyRate"></td>
+        <td><input type="number" step="0.01" min="0" data-field="flatRate"></td>
         <td class="labor-subtotal">$0.00</td>
         <td><button class="btn-danger remove-labor-row">✖</button></td>
       </tr>
@@ -2717,9 +2773,10 @@ function wireLaborCard(eventID) {
       const employeeName = row.querySelector('[data-field="employeeName"]')?.value || "";
       const hoursWorked  = Number(row.querySelector('[data-field="hoursWorked"]')?.value || 0);
       const hourlyRate   = Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
+      const flatRate     = Number(row.querySelector('[data-field="flatRate"]')?.value || 0);
 
-      if (!employeeName && hoursWorked === 0 && hourlyRate === 0) return;
-      laborRows.push({ employeeName, hoursWorked, hourlyRate });
+      if (!employeeName && hoursWorked === 0 && hourlyRate === 0 && flatRate === 0) return;
+      laborRows.push({ employeeName, hoursWorked, hourlyRate, flatRate });
     });
 
     const res = await fetch(`${API_BASE}/api/events/${eventID}/labor`, {
@@ -2779,6 +2836,7 @@ async function saveExpenses() {
   const runnerFees = getInputNumber("eventRunnerFees");
   const employeeBonus = getInputNumber("employeeBonus");
   const coordinatorFee = getInputNumber("coordinatorFee");
+  const posFee = getInputNumber("posFee");
 
   if (healthDeptFee !== undefined) payload.healthDeptFee = healthDeptFee;
   if (eventFee !== undefined) payload.eventFee = eventFee;
@@ -2786,6 +2844,7 @@ async function saveExpenses() {
   if (runnerFees !== undefined) payload.eventRunnerFees = runnerFees;
   if (employeeBonus !== undefined) payload.employeeBonus = employeeBonus;
   if (coordinatorFee !== undefined) payload.coordinatorFee = coordinatorFee;
+  if (posFee !== undefined) payload.posFee = posFee;
 
   console.log("Payload length", payload);
 
@@ -3231,11 +3290,19 @@ try {
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
-    safeAppend(buttonContainer, squareSalesBtn);
-    safeAppend(buttonContainer,squareLaborBtn);
+    // Delete
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "🗑️ Delete Event";
+    deleteBtn.classList.add("btn-danger");
+    deleteBtn.addEventListener("click", () => deleteEvent(eventID, eventName));
+
+    // Hidden for beta — Square integration not available to testers
+    // safeAppend(buttonContainer, squareSalesBtn);
+    // safeAppend(buttonContainer, squareLaborBtn);
     safeAppend(buttonContainer, finalizeBtn);
     safeAppend(buttonContainer, reportBtn);
     safeAppend(buttonContainer, editBtn);
+    safeAppend(buttonContainer, deleteBtn);
   }
 
   // ======================
@@ -3268,6 +3335,8 @@ try {
     .join("");
 
   safeAppend(container, createCollapsibleCard("Event Summary", summaryHTML));
+
+  safeAppend(container, renderManualSalesEntryCard(report));
 
   // ======================
   // 2) CUSTOM FIELDS CARD
@@ -3303,7 +3372,7 @@ if (Object.keys(customFieldsObj).length) {
   // ======================
   // 3) DRINK SALES CARD
   // ======================
-  let drinkHTML = "<p>No drink sales recorded.</p>";
+  let drinkHTML = "<p>No Itemized sales recorded.</p>";
 
 if (report.drinkSales && report.drinkSales.length) {
 
@@ -3406,6 +3475,30 @@ wireLaborCard(eventID);
 
 
 
+
+async function deleteEvent(eventID, eventName) {
+  if (!confirm(`Are you sure you want to delete "${eventName}"?\n\nThis will permanently remove the event and all associated data (sales, labor, expenses, etc.).`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}`, {
+      method: "DELETE"
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Delete failed");
+    }
+
+    alert("Event deleted.");
+    navigateTo("manageEventsSection");
+    loadAllEvents();
+  } catch (err) {
+    console.error("Delete event error:", err);
+    alert("Failed to delete event: " + err.message);
+  }
+}
 
 async function pullSquareSales(eventID) {
   try {
