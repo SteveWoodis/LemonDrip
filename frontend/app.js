@@ -2358,12 +2358,12 @@ const discountTotal = discounts.reduce(
     ? Number(sales.squareFees || 0)
     : Number(expenses.posFee || 0);
 
-  const stateFoodTax = Number(sales.totalCollected || 0) * 0.0804;
+  const stateFoodTax = Number(taxes.stateFoodTax || 0);
 
-  // Total Net Revenue = Total Collected - Food Tax - POS/Square Fees
-  const totalNetRevenue = Number(sales.totalCollected || 0) - stateFoodTax - posFees;
+  
 
-  // Operating Expenses (excludes coordinator fee)
+  const coordinatorFee = Number(expenses.coordinatorFee || 0);
+
   const totalExpenses =
     Number(expenses.healthDeptFee || 0) +
     Number(expenses.eventFee || 0) +
@@ -2372,20 +2372,21 @@ const discountTotal = discounts.reduce(
     Number(expenses.employeeBonus || 0) +
     Number(expenses.eventRunnerFees || 0) +
     Number(expenses.supplyFees || 0) +
-    Number(expenses.laborFees || 0);
+    Number(expenses.laborFees || 0) +
+    coordinatorFee +
+    posFees +
+    stateFoodTax;
 
-  // Gross Profit = Total Net Revenue - Operating Expenses
-  const grossProfit = totalNetRevenue - totalExpenses;
+  const netProfit = Number(sales.totalCollected || 0) - totalExpenses;
 
-  // Net Profit = Gross Profit - Coordinator Fee
-  const coordinatorFee = Number(expenses.coordinatorFee || 0);
-  const netProfit = grossProfit - coordinatorFee;
 
-  // Taxes from server (zip-tax.com API)
-  const stateTax = Number(taxes.stateRevenueTax || 0);
-  const federalTax = Number(taxes.federalTaxes || 0);
-  const finalProfit = Number(taxes.finalProfit || (netProfit - stateTax - federalTax));
-  const stateRatePct = ((Number(taxes.stateRate || 0)) * 100).toFixed(2);
+  // Taxes — rates from server, applied to frontend's netProfit
+  const stateRate = Number(taxes.stateRate || 0);
+  const federalTaxRate = Number(taxes.federalTaxRate || 0.153);
+  const stateTax = netProfit > 0 ? netProfit * stateRate : 0;
+  const federalTax = netProfit * federalTaxRate;
+  const finalProfit = netProfit - stateTax - federalTax;
+  const stateRatePct = (stateRate * 100).toFixed(2);
   const stateTaxLabel = taxes.taxDetail?.state
     ? `${taxes.taxDetail.state} State Tax (${stateRatePct}%)`
     : `State Tax (${stateRatePct}%)`;
@@ -2405,11 +2406,7 @@ const discountTotal = discounts.reduce(
       <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Total Collected</span><span class="ledger-amount">${fmt(sales.totalCollected)}</span></div>
       <div class="section-divider"></div>
-      <div class="ledger-row"><span class="ledger-label">Food Tax (8.04%)</span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
-      <div class="section-divider"></div>
-      <div class="ledger-row total-row"><span class="ledger-label">Total Net Revenue</span><span class="ledger-amount">${fmt(totalNetRevenue)}</span></div>
-
+      
       <div class="section-title">Expenses</div>
       <div class="ledger-row"><span class="ledger-label">Health Dept Fee</span><span class="ledger-amount">-${fmt(expenses.healthDeptFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Event Fee</span><span class="ledger-amount">-${fmt(expenses.eventFee)}</span></div>
@@ -2419,12 +2416,13 @@ const discountTotal = discounts.reduce(
       <div class="ledger-row"><span class="ledger-label">Event Runner Fees</span><span class="ledger-amount">-${fmt(expenses.eventRunnerFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Supply Costs</span><span class="ledger-amount">-${fmt(expenses.supplyFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Labor Fees</span><span class="ledger-amount">-${fmt(expenses.laborFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Coordinator Fee</span><span class="ledger-amount">-${fmt(coordinatorFee)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Food Tax (8.04%)</span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
       <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Total Expenses</span><span class="ledger-amount">-${fmt(totalExpenses)}</span></div>
 
-      <div class="ledger-row total-row"><span class="ledger-label">Gross Profit</span><span class="ledger-amount">${fmt(grossProfit)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">- Coordinator Fee (10%)</span><span class="ledger-amount">-${fmt(coordinatorFee)}</span></div>
-      <div class="section-divider"></div>
+        <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Net Profit</span><span class="ledger-amount">${fmt(netProfit)}</span></div>
 
       <div class="ledger-row"><span class="ledger-label">${stateTaxLabel}</span><span class="ledger-amount">-${fmt(stateTax)}</span></div>
@@ -2518,10 +2516,10 @@ function updateProfitSummary() {
 
 
 
-  function renderExpensesCard(expenses = {}, sales = {}) {
+  function renderExpensesCard(expenses = {}, sales = {}, taxes = {}) {
     const content = expensesEditMode
   ? renderExpensesEditMode(expenses)
-  : renderExpensesViewMode(expenses, sales);
+  : renderExpensesViewMode(expenses, sales, taxes);
 
   const card = createCollapsibleCard("Expenses", content);
 
@@ -2533,11 +2531,11 @@ function updateProfitSummary() {
 
 
 
-function renderExpensesViewMode(expenses, sales = {}) {
+function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
   const fmtMoney = (v) =>
     v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
 
-  const stateFoodTax = Number(sales.totalCollected || 0) * 0.0804;
+  const stateFoodTax = Number(taxes.stateFoodTax || 0);
 
   const totalExpenses =
     Number(expenses.healthDeptFee || 0) +
@@ -2549,6 +2547,7 @@ function renderExpensesViewMode(expenses, sales = {}) {
     Number(expenses.additionalFees || 0) +
     Number(expenses.laborFees || 0) +
     Number(expenses.supplyFees || 0) +
+    Number(expenses.posFee || 0) +
     stateFoodTax;
 
   return `
@@ -2817,7 +2816,7 @@ function cancelExpensesEdit() {
   if (card) {
     const contentEl = card.querySelector(".sheet-content");
     if (contentEl) {
-      contentEl.innerHTML = renderExpensesViewMode(window.activeEvent?.expenses || {}, window.activeEvent?.sales || {});
+      contentEl.innerHTML = renderExpensesViewMode(window.activeEvent?.expenses || {}, window.activeEvent?.sales || {}, window.activeEvent?.taxes || {});
     }
   }
 }
@@ -3430,12 +3429,14 @@ if (report.drinkSales && report.drinkSales.length) {
   );
 
   // ======================
-  // 6) TIPS CARD
+  // 6) TIPS CARD (Pro only — Square-driven)
   // ======================
-  safeAppend(
-    container,
-    createCollapsibleCard("Tips", buildTipsEditor(report))
-  );
+  if (window.USER_PLAN === "pro") {
+    safeAppend(
+      container,
+      createCollapsibleCard("Tips", buildTipsEditor(report))
+    );
+  }
 
   // ======================
   // 7) SUPPLIES CARD
@@ -3461,7 +3462,7 @@ wireLaborCard(eventID);
   // 9) EXPENSES CARD
   // ======================
   if (report.expenses && Object.keys(report.expenses).length) {
-    safeAppend(container, renderExpensesCard(report.expenses, report.sales));
+    safeAppend(container, renderExpensesCard(report.expenses, report.sales, report.taxes));
   }
 
   // ======================

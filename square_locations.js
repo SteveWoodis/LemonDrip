@@ -12,9 +12,9 @@ const SQUARE_API_BASE = "https://connect.squareup.com/v2";
 let locationCache = {};
 let lastFetchedAt = null;
 
-let db = null;
-function init(dbInstance) {
-  db = dbInstance;
+let pool = null;
+function init(poolInstance) {
+  pool = poolInstance;
 }
 
 
@@ -49,15 +49,7 @@ async function fetchSquareLocations(force = false) {
 
     console.log(`✅ Loaded ${locations.length} Square location(s):`);
     locationCache = {};
-	if (!db) throw new Error("square_locations.js: DB not initialized.");
-    const upsert = db.prepare(`
-      INSERT INTO SquareLocations (LocationID, Name, Status, Address)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(LocationID) DO UPDATE SET
-        Name = excluded.Name,
-        Status = excluded.Status,
-        Address = excluded.Address
-    `);
+	if (!pool) throw new Error("square_locations.js: DB not initialized.");
 
     for (const loc of locations) {
       const id = loc.id;
@@ -71,14 +63,22 @@ async function fetchSquareLocations(force = false) {
       locationCache[name.toLowerCase()] = id;
 
       try {
-        upsert.run(id, name, status, address);
+        await pool.query(
+          `INSERT INTO "SquareLocations" ("LocationID", "Name", "Status", "Address")
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT("LocationID") DO UPDATE SET
+             "Name" = EXCLUDED."Name",
+             "Status" = EXCLUDED."Status",
+             "Address" = EXCLUDED."Address"`,
+          [id, name, status, address]
+        );
       } catch (dbErr) {
         console.error("DB write failed for location:", name, dbErr);
       }
     }
 
     lastFetchedAt = now;
-    console.log("💾 Square locations synced to SQLite.");
+    console.log("💾 Square locations synced to PostgreSQL.");
     return locationCache;
 
   } catch (err) {

@@ -1,5 +1,5 @@
 // -------------------------------
-// ✅ SQLite + Express Server for LemonDrip (CommonJS)
+// ✅ PostgreSQL + Express Server for LemonDrip (CommonJS)
 // -------------------------------
 
 // Core deps
@@ -13,7 +13,14 @@ function handleValidationErrors(req, res, next) {
   }
   next();
 }
-const sqlite3 = require("sqlite3").verbose();
+const { Pool } = require("pg");
+const pool = new Pool({
+  host: "localhost",
+  user: "postgres",
+  password: "",
+  database: "venview",
+  port: 5432
+});
 require("dotenv").config();
 
 
@@ -31,26 +38,6 @@ const square = require("./square_locations.js");
 // -------------------------------
 const path = require("path");
 const fs = require("fs");
-function resolveDbPath() {
-
- if (process.env.LEMONDRIP_DB_PATH) return process.env.LEMONDRIP_DB_PATH;
-
-
-  // Ensure Fly volume directory exists
-  if (process.env.NODE_ENV === "production") {
-    const dir = "/data";
-    fs.mkdirSync("/data", { recursive: true });
-    return path.join(dir, "lemondrip.db");
-  }
-return path.join(__dirname, "lemondrip.db");
-
-}
-const dbPath =
-  process.env.NODE_ENV === "production"
-    ? "/data/lemondrip.db"
-    : path.join(__dirname, "backend", "lemonDrip.db");
-
-
 
 const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
 
@@ -59,169 +46,277 @@ const SQUARE_OAUTH_REDIRECT =
   process.env.SQUARE_OAUTH_REDIRECT ||
   "http://localhost:3000/api/square/oauth/callback";
 
-let db;
+async function initDb() {
+  try {
+    const client = await pool.connect();
+    console.log("✅ PostgreSQL connected");
+    client.release();
 
-function initDb() {
-  return new Promise((resolve, reject) => {
-    db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error("❌ SQLite connection failed:", err);
-        return reject(err);
-      }
+    // Initialize dependent modules with pool
+    square.init(pool);
 
-      console.log("✅ SQLite connected at:", dbPath);
-
-      // Enforce foreign keys
-      db.run("PRAGMA foreign_keys = ON");
-
-      // Initialize dependent modules AFTER DB is ready
-      square.init(db);
-
-      // Schema creation (async-safe)
-      db.exec(
-        `
-        CREATE TABLE IF NOT EXISTS FormTemplate (
-          TemplateID INTEGER PRIMARY KEY AUTOINCREMENT,
-          TemplateName TEXT NOT NULL,
-          Fields TEXT,
-          CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS SquareLocations (
-          LocationID TEXT PRIMARY KEY,
-          Name TEXT NOT NULL,
-          Status TEXT,
-          Address TEXT,
-          CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS SalesSummary (
-          SalesID INTEGER PRIMARY KEY AUTOINCREMENT,
-          eventID INTEGER NOT NULL UNIQUE,
-          SquareTxnID TEXT,
-          grossSales REAL,
-          netSales REAL,
-          discounts REAL,
-          refunds REAL,
-          tips REAL,
-          totalCollected REAL,
-          DatePulledAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
-        );
-        CREATE TABLE IF NOT EXISTS EventInfo (
-        eventID INTEGER PRIMARY KEY AUTOINCREMENT,
-        companyID INTEGER,
-        eventName TEXT,
-        eventType TEXT,
-        eventDate TEXT,
-        numDays INTEGER,
-        coordinator TEXT,
-        eventHost TEXT,   
-        eventLocation TEXT,
-        status TEXT,
-        isFinalized INTEGER DEFAULT 0,
-        finalizedDate TEXT,
-        squareLocationId TEXT,
-        time TEXT,
-        notes TEXT,
-        customFields TEXT,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    // Schema creation
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "FormTemplate" (
+        "TemplateID" SERIAL PRIMARY KEY,
+        "TemplateName" TEXT NOT NULL,
+        "Fields" TEXT,
+        "CreatedAt" TIMESTAMP DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS EventExpenses (
-        eventID INTEGER PRIMARY KEY,
-        healthDeptFee REAL DEFAULT 0,
-        eventFee REAL DEFAULT 0,
-        mileageReimbursement REAL DEFAULT 0,
-        eventRunnerFees REAL DEFAULT 0,
-        employeeBonus REAL DEFAULT 0,
-        coordinatorFee REAL DEFAULT 0,
-        posFee REAL DEFAULT 0,
-        supplyFees REAL DEFAULT 0,
-        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
+      CREATE TABLE IF NOT EXISTS "SquareLocations" (
+        "LocationID" TEXT PRIMARY KEY,
+        "Name" TEXT NOT NULL,
+        "Status" TEXT,
+        "Address" TEXT,
+        "CreatedAt" TIMESTAMP DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS DrinkSales (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        eventID INTEGER,
-        name TEXT,
-        quantitySold INTEGER,
-        totalCost REAL,
-        unitPrice REAL,
-        category TEXT,
-        metadata TEXT,
-        rowCost REAL,
-        source TEXT,
-        FOREIGN KEY(eventID) REFERENCES EventInfo(eventID)
+      CREATE TABLE IF NOT EXISTS "EventInfo" (
+        "eventID" SERIAL PRIMARY KEY,
+        "companyID" INTEGER,
+        "eventName" TEXT,
+        "eventType" TEXT,
+        "eventDate" TEXT,
+        "numDays" INTEGER,
+        "coordinator" TEXT,
+        "eventHost" TEXT,
+        "eventLocation" TEXT,
+        "status" TEXT,
+        "isFinalized" INTEGER DEFAULT 0,
+        "finalizedDate" TEXT,
+        "squareLocationId" TEXT,
+        "time" TEXT,
+        "notes" TEXT,
+        "customFields" TEXT,
+        "createdAt" TIMESTAMP DEFAULT NOW(),
+        "grossSales" REAL,
+        "returns" REAL,
+        "discounts" REAL,
+        "netSales" REAL,
+        "tips" REAL,
+        "giftCardSales" REAL,
+        "totalSales" REAL,
+        "cash" REAL,
+        "card" REAL,
+        "wallet" REAL,
+        "cashApp" REAL,
+        "Other" REAL,
+        "applicationDate" TEXT,
+        "eventFee" REAL,
+        "permits" TEXT,
+        "employees" TEXT,
+        "eventRating" TEXT,
+        "healthDeptFee" REAL DEFAULT 0,
+        "mileageReimbursement" REAL DEFAULT 0,
+        "eventRunnerFees" REAL DEFAULT 0,
+        "taxOverride" REAL,
+        "state" TEXT,
+        "zipCode" TEXT
       );
-        `,
-        (schemaErr) => {
-          if (schemaErr) {
-            console.error("❌ SQLite schema init failed:", schemaErr);
-            return reject(schemaErr);
-          }
 
-          console.log("✅ SQLite schema initialized");
+      CREATE TABLE IF NOT EXISTS "SalesSummary" (
+        "SalesID" SERIAL PRIMARY KEY,
+        "eventID" INTEGER NOT NULL UNIQUE REFERENCES "EventInfo"("eventID"),
+        "SquareTxnID" TEXT,
+        "grossSales" REAL,
+        "netSales" REAL,
+        "discounts" REAL,
+        "refunds" REAL,
+        "tips" REAL,
+        "totalCollected" REAL,
+        "squareFees" REAL DEFAULT 0,
+        "DatePulledAt" TIMESTAMP DEFAULT NOW()
+      );
 
-          // Add missing columns (safe — silently skips if already exist)
-          const migrations = [
-            `ALTER TABLE EventInfo ADD COLUMN eventHost TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN eventLocation TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN notes TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN customFields TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN status TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN eventType TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN coordinator TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN numDays INTEGER`,
-            `ALTER TABLE EventInfo ADD COLUMN isFinalized INTEGER DEFAULT 0`,
-            `ALTER TABLE EventInfo ADD COLUMN finalizedDate TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN squareLocationId TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN time TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN grossSales REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN returns REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN discounts REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN netSales REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN tips REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN giftCardSales REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN totalSales REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN cash REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN card REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN wallet REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN cashApp REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN Other REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN applicationDate TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN eventFee REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN permits TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN employees TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN eventRating TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN healthDeptFee REAL DEFAULT 0`,
-            `ALTER TABLE EventInfo ADD COLUMN mileageReimbursement REAL DEFAULT 0`,
-            `ALTER TABLE EventInfo ADD COLUMN eventRunnerFees REAL DEFAULT 0`,
-            `ALTER TABLE EventInfo ADD COLUMN taxOverride REAL`,
-            `ALTER TABLE EventInfo ADD COLUMN state TEXT`,
-            `ALTER TABLE EventInfo ADD COLUMN zipCode TEXT`,
-            `ALTER TABLE EventExpenses ADD COLUMN posFee REAL DEFAULT 0`,
-            `ALTER TABLE EventExpenses ADD COLUMN supplyFees REAL DEFAULT 0`,
-            `ALTER TABLE EventLabor ADD COLUMN flatRate REAL DEFAULT 0`,
-            `ALTER TABLE SalesSummary ADD COLUMN squareFees REAL DEFAULT 0`,
-          ];
+      CREATE TABLE IF NOT EXISTS "EventExpenses" (
+        "eventID" INTEGER PRIMARY KEY REFERENCES "EventInfo"("eventID"),
+        "healthDeptFee" REAL DEFAULT 0,
+        "eventFee" REAL DEFAULT 0,
+        "mileageReimbursement" REAL DEFAULT 0,
+        "eventRunnerFees" REAL DEFAULT 0,
+        "employeeBonus" REAL DEFAULT 0,
+        "coordinatorFee" REAL DEFAULT 0,
+        "posFee" REAL DEFAULT 0,
+        "supplyFees" REAL DEFAULT 0,
+        "laborFees" REAL DEFAULT 0,
+        "updatedAt" TIMESTAMP DEFAULT NOW()
+      );
 
-          let i = 0;
-          function runNext() {
-            if (i >= migrations.length) return resolve();
-            db.run(migrations[i], (err) => {
-              if (err && !err.message.includes('duplicate column')) {
-                console.warn(`⚠️ Migration skipped: ${migrations[i]} — ${err.message}`);
-              }
-              i++; runNext();
-            });
-          }
-          runNext();
+      CREATE TABLE IF NOT EXISTS "DrinkSales" (
+        "id" SERIAL PRIMARY KEY,
+        "eventID" INTEGER REFERENCES "EventInfo"("eventID"),
+        "name" TEXT,
+        "quantitySold" INTEGER,
+        "totalCost" REAL,
+        "unitPrice" REAL,
+        "category" TEXT,
+        "metadata" TEXT,
+        "rowCost" REAL,
+        "source" TEXT
+      );
+    `);
+
+    console.log("✅ PostgreSQL schema initialized");
+
+    // Run migrations (safe — skips if column already exists)
+    const migrations = [
+      `ALTER TABLE "EventLabor" ADD COLUMN IF NOT EXISTS "flatRate" REAL DEFAULT 0`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"EventLabor"'::regclass AND a.attname = 'laborID'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "EventLabor_laborID_seq";
+           PERFORM setval('"EventLabor_laborID_seq"', COALESCE((SELECT MAX("laborID") FROM "EventLabor"), 0) + 1, false);
+           ALTER TABLE "EventLabor" ALTER COLUMN "laborID" SET DEFAULT nextval('"EventLabor_laborID_seq"');
+           ALTER SEQUENCE "EventLabor_laborID_seq" OWNED BY "EventLabor"."laborID";
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"EventEmployees"'::regclass AND a.attname = 'eventEmployeeID'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "EventEmployees_eventEmployeeID_seq";
+           PERFORM setval('"EventEmployees_eventEmployeeID_seq"', COALESCE((SELECT MAX("eventEmployeeID") FROM "EventEmployees"), 0) + 1, false);
+           ALTER TABLE "EventEmployees" ALTER COLUMN "eventEmployeeID" SET DEFAULT nextval('"EventEmployees_eventEmployeeID_seq"');
+           ALTER SEQUENCE "EventEmployees_eventEmployeeID_seq" OWNED BY "EventEmployees"."eventEmployeeID";
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"EventSupplies"'::regclass AND a.attname = 'id'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "EventSupplies_id_seq";
+           PERFORM setval('"EventSupplies_id_seq"', COALESCE((SELECT MAX("id") FROM "EventSupplies"), 0) + 1, false);
+           ALTER TABLE "EventSupplies" ALTER COLUMN "id" SET DEFAULT nextval('"EventSupplies_id_seq"');
+           ALTER SEQUENCE "EventSupplies_id_seq" OWNED BY "EventSupplies"."id";
+         END IF;
+       END $$`,
+      `ALTER TABLE "SalesSummary" ADD COLUMN IF NOT EXISTS "DatePulledAt" TIMESTAMP DEFAULT NOW()`,
+      `DO $$
+       DECLARE t TEXT; c TEXT; seq_name TEXT;
+       BEGIN
+         FOR t, c IN VALUES
+           ('TipTracker','tipID'),
+           ('Discounts','discountID'),
+           ('AdditionalFees','id'),
+           ('Companies','companyID'),
+           ('EmployeeTracker','EmployeeID'),
+           ('SquareAuth','id')
+         LOOP
+           IF EXISTS (
+             SELECT 1 FROM pg_attribute
+             WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = t LIMIT 1)
+               AND attname = c AND attnum > 0
+           ) THEN
+             seq_name := lower(t || '_' || c || '_seq');
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_attrdef ad
+               JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+               WHERE a.attrelid = (quote_ident(t))::regclass AND a.attname = c
+                 AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+             ) THEN
+               EXECUTE format('CREATE SEQUENCE IF NOT EXISTS %I', seq_name);
+               EXECUTE format('SELECT setval(%L, COALESCE((SELECT MAX(%I) FROM %I), 0) + 1, false)', seq_name, c, t);
+               EXECUTE format('ALTER TABLE %I ALTER COLUMN %I SET DEFAULT nextval(%L)', t, c, seq_name);
+             END IF;
+           END IF;
+         END LOOP;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"FormTemplate"'::regclass AND a.attname = 'TemplateID'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "FormTemplate_TemplateID_seq";
+           PERFORM setval('"FormTemplate_TemplateID_seq"', COALESCE((SELECT MAX("TemplateID") FROM "FormTemplate"), 0) + 1, false);
+           ALTER TABLE "FormTemplate" ALTER COLUMN "TemplateID" SET DEFAULT nextval('"FormTemplate_TemplateID_seq"');
+           ALTER SEQUENCE "FormTemplate_TemplateID_seq" OWNED BY "FormTemplate"."TemplateID";
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"DrinkSales"'::regclass AND a.attname = 'id'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "DrinkSales_id_seq";
+           PERFORM setval('"DrinkSales_id_seq"', COALESCE((SELECT MAX("id") FROM "DrinkSales"), 0) + 1, false);
+           ALTER TABLE "DrinkSales" ALTER COLUMN "id" SET DEFAULT nextval('"DrinkSales_id_seq"');
+           ALTER SEQUENCE "DrinkSales_id_seq" OWNED BY "DrinkSales"."id";
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"SalesSummary"'::regclass AND a.attname = 'salesID'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "SalesSummary_salesID_seq";
+           PERFORM setval('"SalesSummary_salesID_seq"', COALESCE((SELECT MAX("salesID") FROM "SalesSummary"), 0) + 1, false);
+           ALTER TABLE "SalesSummary" ALTER COLUMN "salesID" SET DEFAULT nextval('"SalesSummary_salesID_seq"');
+           ALTER SEQUENCE "SalesSummary_salesID_seq" OWNED BY "SalesSummary"."salesID";
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_constraint
+           WHERE conrelid = '"SalesSummary"'::regclass AND contype = 'u'
+             AND conkey @> ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = '"SalesSummary"'::regclass AND attname = 'eventID')]::smallint[]
+         ) THEN
+           ALTER TABLE "SalesSummary" ADD CONSTRAINT "SalesSummary_eventID_unique" UNIQUE ("eventID");
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_attrdef ad
+           JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+           WHERE a.attrelid = '"EventInfo"'::regclass AND a.attname = 'eventID'
+             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
+         ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "EventInfo_eventID_seq";
+           PERFORM setval('"EventInfo_eventID_seq"', COALESCE((SELECT MAX("eventID") FROM "EventInfo"), 0) + 1, false);
+           ALTER TABLE "EventInfo" ALTER COLUMN "eventID" SET DEFAULT nextval('"EventInfo_eventID_seq"');
+           ALTER SEQUENCE "EventInfo_eventID_seq" OWNED BY "EventInfo"."eventID";
+         END IF;
+       END $$`,
+    ];
+
+    for (const sql of migrations) {
+      try {
+        await pool.query(sql);
+      } catch (err) {
+        if (err.code !== '42701') { // 42701 = duplicate_column
+          console.warn(`⚠️ Migration skipped: ${sql} — ${err.message}`);
         }
-      );
-    });
-  });
+      }
+    }
+
+  } catch (err) {
+    console.error("❌ PostgreSQL init failed:", err);
+    throw err;
+  }
 }
 
 
@@ -264,7 +359,7 @@ const upload = multer({ storage });
 
 
 
-module.exports = { db };
+module.exports = { pool };
 
 // ============================================================================
 // EVERYTHING BELOW THIS LINE REMAINS EXACTLY AS YOUR ORIGINAL FILE
@@ -293,25 +388,26 @@ const activeOAuthStates = new Set();
 app.get("/api/events", async (req, res) => {
   try {
     const { name, date, id } = req.query;
-    let sql = `SELECT * FROM EventInfo WHERE 1=1`;
+    let sql = `SELECT * FROM "EventInfo" WHERE 1=1`;
     const params = [];
+    let paramIndex = 1;
 
     if (name) {
-      sql += ` AND eventName LIKE ?`;
+      sql += ` AND "eventName" LIKE $${paramIndex++}`;
       params.push(`%${name}%`);
     }
 
     if (date) {
-      sql += ` AND eventDate = ?`;
+      sql += ` AND "eventDate" = $${paramIndex++}`;
       params.push(date);
     }
 
     if (id) {
-      sql += ` AND eventID = ?`;
+      sql += ` AND "eventID" = $${paramIndex++}`;
       params.push(id);
     }
 
-    sql += ` ORDER BY eventDate DESC`;
+    sql += ` ORDER BY "eventDate" DESC`;
 
     const rows = await dbAll(sql, params);
 
@@ -321,8 +417,6 @@ app.get("/api/events", async (req, res) => {
     console.error("❌ Error reading events:", err);
     res.status(500).json({ error: "Error reading events." });
   }
-  console.log("DB PATH:", dbPath);
-
 });
 
 
@@ -430,45 +524,45 @@ app.get("/api/square/oauth/start", (req, res) => {
 
 
 // 🔍 SEARCH EVENTS by free text (includes customFields)
-app.get("/api/events/search", (req, res) => {
+app.get("/api/events/search", async (req, res) => {
   const q = req.query.q?.trim();
   if (!q) return res.json([]);
 
-  const like = `%${q}%`;
+  try {
+    const like = `%${q}%`;
 
-  db.all("PRAGMA table_info(EventInfo)", (err, cols) => {
-    if (err) {
-      console.error("❌ Search PRAGMA error:", err);
-      return res.status(500).json({ error: String(err) });
-    }
+    // Query information_schema for column names (replaces PRAGMA table_info)
+    const colResult = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'EventInfo'`
+    );
+    const colNames = colResult.rows.map(c => c.column_name);
 
-    const colNames = cols.map(c => c.name);
     const searchCols = [
       'eventName', 'eventDate', 'eventHost', 'status',
       'eventType', 'notes', 'customFields'
     ].filter(c => colNames.includes(c));
 
-    const conditions = searchCols.map(c => `${c} LIKE ?`);
+    let paramIndex = 1;
+    const conditions = searchCols.map(c => `"${c}" LIKE $${paramIndex++}`);
     if (colNames.includes('eventID')) {
-      conditions.push('CAST(eventID AS TEXT) LIKE ?');
+      conditions.push(`"eventID"::TEXT LIKE $${paramIndex++}`);
     }
 
     const sql = `
-      SELECT * FROM EventInfo
+      SELECT * FROM "EventInfo"
       WHERE ${conditions.join(' OR ')}
-      ORDER BY eventDate DESC
+      ORDER BY "eventDate" DESC
       LIMIT 50
     `;
     const params = conditions.map(() => like);
 
-    db.all(sql, params, (err2, rows) => {
-      if (err2) {
-        console.error("❌ Search error:", err2);
-        return res.status(500).json({ error: String(err2) });
-      }
-      res.json(rows);
-    });
-  });
+    const rows = await dbAll(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Search error:", err);
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 
@@ -487,15 +581,15 @@ app.put("/api/events/:eventID/manual-sales", async (req, res) => {
     const netSales = grossSales - refunds - discounts;
 
     await dbRun(
-      `INSERT INTO SalesSummary (eventID, grossSales, netSales, discounts, refunds, totalCollected, DatePulledAt)
-       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(eventID) DO UPDATE SET
-         grossSales = excluded.grossSales,
-         netSales = excluded.netSales,
-         discounts = excluded.discounts,
-         refunds = excluded.refunds,
-         totalCollected = excluded.totalCollected,
-         DatePulledAt = CURRENT_TIMESTAMP`,
+      `INSERT INTO "SalesSummary" ("eventID", "grossSales", "netSales", "discounts", "refunds", "totalCollected", "DatePulledAt")
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT("eventID") DO UPDATE SET
+         "grossSales" = EXCLUDED."grossSales",
+         "netSales" = EXCLUDED."netSales",
+         "discounts" = EXCLUDED."discounts",
+         "refunds" = EXCLUDED."refunds",
+         "totalCollected" = EXCLUDED."totalCollected",
+         "DatePulledAt" = NOW()`,
       [eventID, grossSales, netSales, discounts, refunds, totalCollected]
     );
 
@@ -509,107 +603,93 @@ app.put("/api/events/:eventID/manual-sales", async (req, res) => {
 
 
 // Get permits for an event
-app.get("/api/events/:eventID/permits", (req, res) => {
-  const eventID = req.params.eventID;
-
-  const sql = `
-    SELECT permitID, fileName, originalName, mimeType, uploadedAt
-    FROM EventPermits
-    WHERE eventID = ?
-  `;
-
-  db.all(sql, [eventID], (err, rows) => {
-    if (err) {
-      console.error("Permit fetch error:", err);
-      return res.status(500).json({ error: "Failed to load permits" });
-    }
+app.get("/api/events/:eventID/permits", async (req, res) => {
+  try {
+    const eventID = req.params.eventID;
+    const rows = await dbAll(
+      `SELECT "permitID", "fileName", "originalName", "mimeType", "uploadedAt"
+       FROM "EventPermits"
+       WHERE "eventID" = $1`,
+      [eventID]
+    );
     res.json(rows);
-  });
+  } catch (err) {
+    console.error("Permit fetch error:", err);
+    res.status(500).json({ error: "Failed to load permits" });
+  }
 });
 
 // -------------------------------
 // GET /api/events/:id (single)
 // -------------------------------
-app.get("/api/events/:id", (req, res) => {
-  const id = req.params.id;
-
-  db.get(
-    "SELECT * FROM EventInfo WHERE eventID = ?",
-    [id],
-    (err, row) => {
-      if (err) {
-        console.error("❌ Error reading event:", err);
-        return res.status(500).json({ error: "Error reading event." });
-      }
-      if (!row) {
-        return res.status(404).json({ error: "Event not found." });
-      }
-      res.json(row);
+app.get("/api/events/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const row = await dbGet(
+      `SELECT * FROM "EventInfo" WHERE "eventID" = $1`,
+      [id]
+    );
+    if (!row) {
+      return res.status(404).json({ error: "Event not found." });
     }
-  );
+    res.json(row);
+  } catch (err) {
+    console.error("❌ Error reading event:", err);
+    res.status(500).json({ error: "Error reading event." });
+  }
 });
 
 
 // -------------------------------
 // GET /api/company
 // -------------------------------
-app.get("/api/company", (req, res) => {
-  const { id } = req.query;
+app.get("/api/company", async (req, res) => {
+  try {
+    const { id } = req.query;
+    let sql = `SELECT * FROM "Companies"`;
+    const params = [];
 
-  let sql = "SELECT * FROM Companies";
-  const params = [];
-
-  if (id) {
-    sql += " WHERE companyID = ?";
-    params.push(id);
-  }
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      console.error("❌ Error fetching company data:", err);
-      return res.status(500).json({ error: "Failed to read company data" });
+    if (id) {
+      sql += ` WHERE "companyID" = $1`;
+      params.push(id);
     }
+
+    const rows = await dbAll(sql, params);
     res.json({ Companies: rows });
-  });
+  } catch (err) {
+    console.error("❌ Error fetching company data:", err);
+    res.status(500).json({ error: "Failed to read company data" });
+  }
 });
 
 
 // -------------------------------
 // GET /api/employees
 // -------------------------------
-app.get("/api/employees", (req, res) => {
-  const sql = `
-    SELECT EmployeeID, EmployeeName, Role
-    FROM EmployeeTracker
-    ORDER BY EmployeeName ASC
-  `;
-
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error("❌ Error fetching employees:", err);
-      return res.status(500).json({ error: "Failed to load employees" });
-    }
+app.get("/api/employees", async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT "EmployeeID", "EmployeeName", "Role"
+       FROM "EmployeeTracker"
+       ORDER BY "EmployeeName" ASC`
+    );
     res.json(rows);
-  });
+  } catch (err) {
+    console.error("❌ Error fetching employees:", err);
+    res.status(500).json({ error: "Failed to load employees" });
+  }
 });
 
 
 
 // -------------------------------
-// GET /api/formTemplates (sqlite3 SAFE)
+// GET /api/formTemplates
 // -------------------------------
-app.get("/api/formTemplates", (req, res) => {
-  const sql = `
-    SELECT *
-    FROM FormTemplate
-    ORDER BY CreatedAt DESC
-  `;
-
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error("❌ Error reading form templates:", err);
-      return res.status(500).json({ error: "Failed to load templates" });
-    }
+app.get("/api/formTemplates", async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT * FROM "FormTemplate" ORDER BY "CreatedAt" DESC`
+    );
 
     const templates = rows.map(row => ({
       TemplateID: row.TemplateID,
@@ -618,39 +698,37 @@ app.get("/api/formTemplates", (req, res) => {
       CreatedAt: row.CreatedAt
     }));
 
-   
     res.json(templates);
-  });
+  } catch (err) {
+    console.error("❌ Error reading form templates:", err);
+    res.status(500).json({ error: "Failed to load templates" });
+  }
 });
 
 // POST /api/formTemplates
-app.post("/api/formTemplates", (req, res) => {
+app.post("/api/formTemplates", async (req, res) => {
   const { TemplateName, Fields } = req.body;
 
   if (!TemplateName) {
     return res.status(400).json({ error: "TemplateName is required." });
   }
 
-  const sql = `
-    INSERT INTO FormTemplate (TemplateName, Fields)
-    VALUES (?, ?)
-  `;
+  try {
+    const result = await pool.query(
+      `INSERT INTO "FormTemplate" ("TemplateName", "Fields")
+       VALUES ($1, $2)
+       RETURNING "TemplateID"`,
+      [TemplateName, JSON.stringify(Fields || [])]
+    );
 
-  db.run(
-    sql,
-    [TemplateName, JSON.stringify(Fields || [])],
-    function (err) {
-      if (err) {
-        console.error("❌ Error saving template:", err);
-        return res.status(500).json({ error: "Failed to save template." });
-      }
-
-      res.json({
-        success: true,
-        TemplateID: this.lastID
-      });
-    }
-  );
+    res.json({
+      success: true,
+      TemplateID: result.rows[0].TemplateID
+    });
+  } catch (err) {
+    console.error("❌ Error saving template:", err);
+    res.status(500).json({ error: "Failed to save template." });
+  }
 });
 
 
@@ -698,75 +776,67 @@ app.post("/api/company",
       .matches(/^[a-zA-Z\s\-&,]+$/).withMessage('Vendor category contains invalid characters'),
   ],
   handleValidationErrors,
-  (req, res) => {
+  async (req, res) => {
   const c = req.body;
 
-  const sql = `
-    INSERT INTO Companies
-    (companyName, phone, contactName, vendorCategory, email)
-    VALUES (?, ?, ?, ?, ?)
-  `;
+  try {
+    const result = await pool.query(
+      `INSERT INTO "Companies"
+       ("companyName", "phone", "contactName", "vendorCategory", "email")
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING "companyID"`,
+      [
+        c.companyName,
+        c.phone || null,
+        c.contactName || null,
+        c.vendorCategory || null,
+        c.email || null
+      ]
+    );
 
-  db.run(
-    sql,
-    [
-      c.companyName,
-      c.phone || null,
-      c.contactName || null,
-      c.vendorCategory || null,
-      c.email || null
-    ],
-    function (err) {
-      if (err) {
-        console.error("❌ Error inserting Company", err);
-        return res.status(500).json({ error: "Failed to save company." });
-      }
-
-      res.json({
-        success: true,
-        companyID: this.lastID
-      });
-    }
-  );
+    res.json({
+      success: true,
+      companyID: result.rows[0].companyID
+    });
+  } catch (err) {
+    console.error("❌ Error inserting Company", err);
+    res.status(500).json({ error: "Failed to save company." });
+  }
 });
 
 
 // -------------------------------
 // POST /api/employees
 // -------------------------------
-app.post("/api/employees", (req, res) => {
+app.post("/api/employees", async (req, res) => {
   const { employeeName, role, phone, hourlyRate } = req.body;
 
   if (!employeeName) {
     return res.status(400).json({ error: "Employee name required." });
   }
 
-  const sql = `
-    INSERT INTO EmployeeTracker
-    (employeeName, role, phone, hourlyRate)
-    VALUES (?, ?, ?, ?)
-  `;
+  try {
+    const result = await pool.query(
+      `INSERT INTO "EmployeeTracker"
+       ("employeeName", "role", "phone", "hourlyRate")
+       VALUES ($1, $2, $3, $4)
+       RETURNING "EmployeeID"`,
+      [
+        employeeName,
+        role || null,
+        phone || null,
+        hourlyRate || null
+      ]
+    );
 
-  db.run(
-    sql,
-    [
-      employeeName,
-      role || null,
-      phone || null,
-      hourlyRate || null
-    ],
-    function (err) {
-      if (err) {
-        console.error("❌ Error adding employee:", err);
-        return res.status(500).json({ error: "Failed to add employee." });
-      }
-
-      res.json({
-        success: true,
-        EmployeeID: this.lastID
-      });
-    }
-  );
+    res.json({
+      success: true,
+      EmployeeID: result.rows[0].EmployeeID
+    });
+  } catch (err) {
+    console.error("❌ Error adding employee:", err);
+    res.status(500).json({ error: "Failed to add employee." });
+  }
 });
 
 // -------------------------------
@@ -806,73 +876,69 @@ app.post("/api/events",
     body('giftCardSales').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Gift card sales must be a positive number'),
   ],
   handleValidationErrors,
-  (req, res) => {
-  const e = coerceEvent(req.body);
+  async (req, res) => {
+  try {
+    const e = coerceEvent(req.body);
 
-  const sql = `
-    INSERT INTO EventInfo (
-      eventName, eventDate, applicationDate, finalizedDate,
-      eventFee, squareLocationId, time, employees,
-      eventRating, eventHost, notes, status, eventType,
-      numDays, coordinator, grossSales, tips, netSales,
-      totalSales, isFinalized, customFields,
-      healthDeptFee, mileageReimbursement, eventRunnerFees,
-      giftCardSales,
-      cash, card, wallet, other, cashApp,
-      taxOverride, state, zipCode
-    )
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,?,?,?,?,?,?,?,?,?,?)
-  `;
+    const sql = `
+      INSERT INTO "EventInfo" (
+        "eventName", "eventDate", "applicationDate", "finalizedDate",
+        "eventFee", "squareLocationId", "time", "employees",
+        "eventRating", "eventHost", "notes", "status", "eventType",
+        "numDays", "coordinator", "grossSales", "tips", "netSales",
+        "totalSales", "isFinalized", "customFields",
+        "healthDeptFee", "mileageReimbursement", "eventRunnerFees",
+        "giftCardSales",
+        "cash", "card", "wallet", "Other", "cashApp",
+        "taxOverride", "state", "zipCode"
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+              $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+      RETURNING "eventID"
+    `;
 
-  const params = [
-    e.eventName,
-    e.eventDate,
-    e.applicationDate,
-    e.finalizedDate,
-    e.eventFee,
-    e.squareLocationId,
-    e.time,
-    e.employees,
-    e.eventRating,
-    e.eventHost,
-    e.notes,
-    e.status,
-    e.eventType,
-    e.numDays,
-    e.coordinator,
-    e.grossSales,
-    e.tips,
-    e.netSales,
-    e.totalSales,
-    e.isFinalized,
-    e.customFields,
-    e.healthDeptFee ?? 0,
-    e.mileageReimbursement ?? 0,
-    e.eventRunnerFees ?? 0,
-    e.giftCardSales ?? 0,
-    e.cash ?? 0,
-    e.card ?? 0,
-    e.wallet ?? 0,
-    e.other ?? 0,
-    e.cashApp ?? 0,
-    e.taxOverride ?? null,
-    e.state,
-    e.zipCode ?? null,
-  ];
+    const params = [
+      e.eventName,
+      e.eventDate,
+      e.applicationDate,
+      e.finalizedDate,
+      e.eventFee,
+      e.squareLocationId,
+      e.time,
+      e.employees,
+      e.eventRating,
+      e.eventHost,
+      e.notes,
+      e.status,
+      e.eventType,
+      e.numDays,
+      e.coordinator,
+      e.grossSales,
+      e.tips,
+      e.netSales,
+      e.totalSales,
+      e.isFinalized,
+      e.customFields,
+      e.healthDeptFee ?? 0,
+      e.mileageReimbursement ?? 0,
+      e.eventRunnerFees ?? 0,
+      e.giftCardSales ?? 0,
+      e.cash ?? 0,
+      e.card ?? 0,
+      e.wallet ?? 0,
+      e.other ?? 0,
+      e.cashApp ?? 0,
+      e.taxOverride ?? null,
+      e.state,
+      e.zipCode ?? null,
+    ];
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      console.error("❌ Error inserting event:", err);
-      return res.status(500).json({ error: String(err) });
-    }
-
-    // IMPORTANT: sqlite3 uses this.lastID
-    res.json({
-      success: true,
-      eventID: this.lastID
-    });
-  });
+    const result = await pool.query(sql, params);
+    res.json({ success: true, eventID: result.rows[0].eventID });
+  } catch (err) {
+    console.error("❌ Error inserting event:", err);
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // -------------------------------
@@ -903,73 +969,73 @@ app.put("/api/events/:id",
     body('giftCardSales').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Gift card sales must be positive'),
   ],
   handleValidationErrors,
-  (req, res) => {
-  const id = req.params.id;
-  const e = coerceEvent(req.body);
+  async (req, res) => {
+  try {
+    const id = req.params.id;
+    const e = coerceEvent(req.body);
 
-  const sql = `
-    UPDATE EventInfo SET
-      eventName=?, eventDate=?, applicationDate=?, finalizedDate=?,
-      eventFee=?, squareLocationId=?, time=?, employees=?,
-      eventRating=?, eventHost=?, notes=?, status=?, eventType=?,
-      numDays=?, coordinator=?, grossSales=?, tips=?, netSales=?,
-      totalSales=?, isFinalized=?, customFields=?,
-      healthDeptFee=?, mileageReimbursement=?, eventRunnerFees=?,
-      giftCardSales=?,
-      cash=?, card=?, wallet=?, other=?, cashApp=?,
-      taxOverride=?, state=?, zipCode=?
-    WHERE eventID=?
-  `;
+    const sql = `
+      UPDATE "EventInfo" SET
+        "eventName"=$1, "eventDate"=$2, "applicationDate"=$3, "finalizedDate"=$4,
+        "eventFee"=$5, "squareLocationId"=$6, "time"=$7, "employees"=$8,
+        "eventRating"=$9, "eventHost"=$10, "notes"=$11, "status"=$12, "eventType"=$13,
+        "numDays"=$14, "coordinator"=$15, "grossSales"=$16, "tips"=$17, "netSales"=$18,
+        "totalSales"=$19, "isFinalized"=$20, "customFields"=$21,
+        "healthDeptFee"=$22, "mileageReimbursement"=$23, "eventRunnerFees"=$24,
+        "giftCardSales"=$25,
+        "cash"=$26, "card"=$27, "wallet"=$28, "Other"=$29, "cashApp"=$30,
+        "taxOverride"=$31, "state"=$32, "zipCode"=$33
+      WHERE "eventID"=$34
+    `;
 
-  const params = [
-    e.eventName,
-    e.eventDate,
-    e.applicationDate,
-    e.finalizedDate,
-    e.eventFee,
-    e.squareLocationId,
-    e.time,
-    e.employees,
-    e.eventRating,
-    e.eventHost,
-    e.notes,
-    e.status,
-    e.eventType,
-    e.numDays,
-    e.coordinator,
-    e.grossSales,
-    e.tips,
-    e.netSales,
-    e.totalSales,
-    e.isFinalized,
-    e.customFields,
-    e.healthDeptFee ?? 0,
-    e.mileageReimbursement ?? 0,
-    e.eventRunnerFees ?? 0,
-    e.giftCardSales ?? 0,
-    e.cash ?? 0,
-    e.card ?? 0,
-    e.wallet ?? 0,
-    e.other ?? 0,
-    e.cashApp ?? 0,
-    e.taxOverride ?? null,
-    e.state,
-    e.zipCode ?? null,
-    id
-  ];
+    const params = [
+      e.eventName,
+      e.eventDate,
+      e.applicationDate,
+      e.finalizedDate,
+      e.eventFee,
+      e.squareLocationId,
+      e.time,
+      e.employees,
+      e.eventRating,
+      e.eventHost,
+      e.notes,
+      e.status,
+      e.eventType,
+      e.numDays,
+      e.coordinator,
+      e.grossSales,
+      e.tips,
+      e.netSales,
+      e.totalSales,
+      e.isFinalized,
+      e.customFields,
+      e.healthDeptFee ?? 0,
+      e.mileageReimbursement ?? 0,
+      e.eventRunnerFees ?? 0,
+      e.giftCardSales ?? 0,
+      e.cash ?? 0,
+      e.card ?? 0,
+      e.wallet ?? 0,
+      e.other ?? 0,
+      e.cashApp ?? 0,
+      e.taxOverride ?? null,
+      e.state,
+      e.zipCode ?? null,
+      id
+    ];
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      console.error("❌ Error updating event:", err);
-      return res.status(500).json({ error: String(err) });
-    }
+    const result = await pool.query(sql, params);
 
-    if (this.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Event not found." });
     }
 
     res.json({ success: true });
-  });
+  } catch (err) {
+    console.error("❌ Error updating event:", err);
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 /**
@@ -998,9 +1064,9 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
 
    const ev = await dbGet(
   `
-  SELECT eventDate, squareLocationId
-  FROM EventInfo
-  WHERE eventID = ?
+  SELECT "eventDate", "squareLocationId"
+  FROM "EventInfo"
+  WHERE "eventID" = $1
   `,
   [eventID]
 );
@@ -1232,63 +1298,54 @@ console.log({ grossSales, discounts, netSales, totalCollected });
     // 5️⃣ SAVE SUMMARY
     // ─────────────────────────────────────────────
   const salesSql = `
-  INSERT INTO SalesSummary (
-    eventID,
-    grossSales,
-    netSales,
-    discounts,
-    refunds,
-    tips,
-    totalCollected,
-    squareFees,
-    DatePulledAt
+  INSERT INTO "SalesSummary" (
+    "eventID",
+    "grossSales",
+    "netSales",
+    "discounts",
+    "refunds",
+    "tips",
+    "totalCollected",
+    "squareFees",
+    "DatePulledAt"
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-  ON CONFLICT(eventID) DO UPDATE SET
-    grossSales = excluded.grossSales,
-    netSales = excluded.netSales,
-    discounts = excluded.discounts,
-    refunds = excluded.refunds,
-    tips = excluded.tips,
-    totalCollected = excluded.totalCollected,
-    squareFees = excluded.squareFees,
-    DatePulledAt = CURRENT_TIMESTAMP
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+  ON CONFLICT("eventID") DO UPDATE SET
+    "grossSales" = EXCLUDED."grossSales",
+    "netSales" = EXCLUDED."netSales",
+    "discounts" = EXCLUDED."discounts",
+    "refunds" = EXCLUDED."refunds",
+    "tips" = EXCLUDED."tips",
+    "totalCollected" = EXCLUDED."totalCollected",
+    "squareFees" = EXCLUDED."squareFees",
+    "DatePulledAt" = NOW()
 `;
 
-db.run(
-  salesSql,
-  [
-    eventID,
-    grossSales,
-    netSales,
-    discounts,
-    refunds,
-    tips,
-    totalCollected,
-    squareFees
-  ],
-  err => {
-    if (err) {
-      console.error("❌ Failed to save SalesSummary:", err);
-      return res.status(500).json({ error: "Failed to save sales summary" });
-    }
+    await pool.query(salesSql, [
+      eventID,
+      grossSales,
+      netSales,
+      discounts,
+      refunds,
+      tips,
+      totalCollected,
+      squareFees
+    ]);
 
-    saveDrinkSales(eventID, drinkRows, () => {
-      res.json({
-        success: true,
-        sales: {
-          grossSales,
-          netSales,
-          discounts,
-          refunds,
-          tips,
-          totalCollected,
-          squareFees
-        }
-      });
+    await saveDrinkSales(eventID, drinkRows);
+
+    res.json({
+      success: true,
+      sales: {
+        grossSales,
+        netSales,
+        discounts,
+        refunds,
+        tips,
+        totalCollected,
+        squareFees
+      }
     });
-  }
-);
 
 
   } catch (err) {
@@ -1317,83 +1374,54 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     }
 
     // Run everything atomically
-    await new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run("BEGIN");
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-        // 1️⃣ Clear existing labor rows
-        db.run(
-          `DELETE FROM EventLabor WHERE eventID = ?`,
-          [eventID],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-          }
+      // 1️⃣ Clear existing labor rows
+      await client.query(
+        `DELETE FROM "EventLabor" WHERE "eventID" = $1`,
+        [eventID]
+      );
+
+      // 2️⃣ Insert new labor rows
+      for (const row of laborRows) {
+        await client.query(
+          `INSERT INTO "EventLabor"
+           ("eventID", "employeeName", "hoursWorked", "hourlyRate", "flatRate")
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            eventID,
+            row.employeeName,
+            Number(row.hoursWorked) || 0,
+            Number(row.hourlyRate) || 0,
+            Number(row.flatRate) || 0
+          ]
         );
+      }
 
-        // 2️⃣ Insert new labor rows
-        const insertSql = `
-          INSERT INTO EventLabor
-          (eventID, employeeName, hoursWorked, hourlyRate, flatRate)
-          VALUES (?, ?, ?, ?, ?)
-        `;
+      // 3️⃣ Ensure EventExpenses row exists, then update laborFees
+      const laborFees = laborRows.reduce((sum, r) => {
+        const flat = Number(r.flatRate) || 0;
+        return sum + (flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0));
+      }, 0);
 
-        for (const row of laborRows) {
-          db.run(
-            insertSql,
-            [
-              eventID,
-              row.employeeName,
-              Number(row.hoursWorked) || 0,
-              Number(row.hourlyRate) || 0,
-              Number(row.flatRate) || 0
-            ],
-            err => {
-              if (err) {
-                db.run("ROLLBACK");
-                return reject(err);
-              }
-            }
-          );
-        }
+      await client.query(
+        `INSERT INTO "EventExpenses" ("eventID") VALUES ($1) ON CONFLICT("eventID") DO NOTHING`,
+        [eventID]
+      );
+      await client.query(
+        `UPDATE "EventExpenses" SET "laborFees" = $1 WHERE "eventID" = $2`,
+        [laborFees, eventID]
+      );
 
-        // 3️⃣ Ensure EventExpenses row exists, then update laborFees
-        const laborFees = laborRows.reduce((sum, r) => {
-          const flat = Number(r.flatRate) || 0;
-          return sum + (flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0));
-        }, 0);
-
-        db.run(
-          `INSERT INTO EventExpenses (eventID) VALUES (?) ON CONFLICT(eventID) DO NOTHING`,
-          [eventID],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-
-            db.run(
-              `UPDATE EventExpenses SET laborFees = ? WHERE eventID = ?`,
-              [laborFees, eventID],
-              err => {
-                if (err) {
-                  db.run("ROLLBACK");
-                  return reject(err);
-                }
-
-                // 4️⃣ Commit
-                db.run("COMMIT", err => {
-                  if (err) return reject(err);
-                  resolve();
-                });
-              }
-            );
-          }
-        );
-      });
-    });
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     res.json({ success: true });
 
@@ -1417,7 +1445,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // --------------------------------------------------
     // 1️⃣ Event existence check
     // --------------------------------------------------
-    const event = await dbGet(`SELECT * FROM EventInfo WHERE eventID = ?`, [eventID]);
+    const event = await dbGet(`SELECT * FROM "EventInfo" WHERE "eventID" = $1`, [eventID]);
     if (!event) {
       return res.status(404).json({ error: "Event not found." });
     }
@@ -1426,7 +1454,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // 2️⃣ Enforce finalize limit (Starter rule)
     // --------------------------------------------------
     const countRow = await dbGet(
-      `SELECT COUNT(*) as count FROM EventInfo WHERE isFinalized = 1`,
+      `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1`,
       []
     );
     const count = countRow?.count ?? 0;
@@ -1441,7 +1469,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // --------------------------------------------------
     // 3️⃣ Square data required
     // --------------------------------------------------
-    const square = await dbGet(`SELECT * FROM SalesSummary WHERE eventID = ?`, [eventID]);
+    const square = await dbGet(`SELECT * FROM "SalesSummary" WHERE "eventID" = $1`, [eventID]);
     if (!square) {
       return res.status(400).json({
         error: "Square sales have not been pulled for this event."
@@ -1484,18 +1512,18 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // --------------------------------------------------
     const upd = await dbRun(
       `
-      UPDATE EventInfo SET
-        internalScore = ?,
-        externalScore = ?,
-        eventScore = ?,
-        isFinalized = 1,
-        finalizedDate = CURRENT_TIMESTAMP
-      WHERE eventID = ?
+      UPDATE "EventInfo" SET
+        "internalScore" = $1,
+        "externalScore" = $2,
+        "eventScore" = $3,
+        "isFinalized" = 1,
+        "finalizedDate" = NOW()
+      WHERE "eventID" = $4
       `,
       [internalScore, externalScore, eventScore, eventID]
     );
 
-    if (upd.changes === 0) {
+    if (upd.rowCount === 0) {
       return res.status(404).json({ error: "Event not found." });
     }
 
@@ -1519,7 +1547,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
 // PUT /api/events/:id/adjustments
 // Save AdditionalFees, Discounts, Tips for an event
 // ---------------------------------------------------------
-app.put("/api/events/:id/adjustments", (req, res) => {
+app.put("/api/events/:id/adjustments", async (req, res) => {
   try {
     const eventID = Number(req.params.id);
     if (!eventID) {
@@ -1527,9 +1555,7 @@ app.put("/api/events/:id/adjustments", (req, res) => {
     }
 
     // Ensure event exists
-    const exists = db
-      .prepare("SELECT 1 FROM EventInfo WHERE eventID = ?")
-      .get(eventID);
+    const exists = await dbGet('SELECT 1 FROM "EventInfo" WHERE "eventID" = $1', [eventID]);
 
     if (!exists) {
       return res.status(404).json({ error: "Event not found." });
@@ -1538,7 +1564,7 @@ app.put("/api/events/:id/adjustments", (req, res) => {
     // Expect { additionalFees: [], discounts: [], tips: [] }
     const { additionalFees, discounts, tips } = req.body || {};
 
-    saveEventAdjustments(eventID, {
+    await saveEventAdjustments(eventID, {
       additionalFees,
       discounts,
       tips
@@ -1570,7 +1596,7 @@ app.put("/api/events/:id/ratings", async (req, res) => {
 
     // 1️⃣ Check event exists
     const exists = await dbGet(
-      "SELECT 1 FROM EventInfo WHERE eventID = ?",
+      'SELECT 1 FROM "EventInfo" WHERE "eventID" = $1',
       [id]
     );
 
@@ -1581,20 +1607,20 @@ app.put("/api/events/:id/ratings", async (req, res) => {
     // 2️⃣ Update ratings
     const result = await dbRun(
       `
-      UPDATE EventInfo SET
-        teamArrivalRating = ?,
-        teamExecutionRating = ?,
-        teamCommunicationRating = ?,
-        teamCleanUpRating = ?,
-        teamProfessionalismRating = ?,
-        internalNotes = ?,
-        vendorAccessRating = ?,
-        eventOrganizationRating = ?,
-        crowdQualityRating = ?,
-        weatherImpactRating = ?,
-        hostCommunicationRating = ?,
-        externalNotes = ?
-      WHERE eventID = ?
+      UPDATE "EventInfo" SET
+        "teamArrivalRating" = $1,
+        "teamExecutionRating" = $2,
+        "teamCommunicationRating" = $3,
+        "teamCleanUpRating" = $4,
+        "teamProfessionalismRating" = $5,
+        "internalNotes" = $6,
+        "vendorAccessRating" = $7,
+        "eventOrganizationRating" = $8,
+        "crowdQualityRating" = $9,
+        "weatherImpactRating" = $10,
+        "hostCommunicationRating" = $11,
+        "externalNotes" = $12
+      WHERE "eventID" = $13
       `,
       [
         r.teamArrivalRating,
@@ -1614,7 +1640,7 @@ app.put("/api/events/:id/ratings", async (req, res) => {
     );
 
     // Defensive: should never happen because of exists check
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Event not found." });
     }
 
@@ -1651,16 +1677,17 @@ app.post("/api/events/:eventID/employees", async (req, res) => {
 
     const result = await dbRun(
       `
-      INSERT INTO EventEmployees
-        (eventID, employeeID, hoursWorked, hourlyRate, totalPay)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO "EventEmployees"
+        ("eventID", "employeeID", "hoursWorked", "hourlyRate", "totalPay")
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING "eventEmployeeID"
       `,
       [eventID, employeeID, hours, wage, totalPay]
     );
 
     res.json({
       success: true,
-      shiftID: result.lastID,
+      shiftID: result.rows[0].eventEmployeeID,
       eventID,
       employeeID,
       hoursWorked: hours,
@@ -1688,11 +1715,11 @@ app.delete("/api/events/:eventID/employees/:shiftID", async (req, res) => {
     }
 
     const result = await dbRun(
-      `DELETE FROM EventEmployees WHERE eventEmployeeID = ?`,
+      `DELETE FROM "EventEmployees" WHERE "eventEmployeeID" = $1`,
       [shiftID]
     );
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Shift not found" });
     }
 
@@ -1717,37 +1744,31 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 
   try {
-    const event = await dbGet(`SELECT eventID FROM EventInfo WHERE eventID = ?`, [id]);
+    const event = await dbGet(`SELECT "eventID" FROM "EventInfo" WHERE "eventID" = $1`, [id]);
     if (!event) return res.status(404).json({ error: "Event not found." });
 
-    await new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run("BEGIN TRANSACTION");
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-        const tables = [
-          "EventExpenses", "EventLabor", "EventEmployees",
-          "SalesSummary", "DrinkSales", "EventSupplies",
-          "Discounts", "AdditionalFees", "EventPermits"
-        ];
+      const tables = [
+        "EventExpenses", "EventLabor", "EventEmployees",
+        "SalesSummary", "DrinkSales", "EventSupplies",
+        "Discounts", "AdditionalFees", "EventPermits"
+      ];
 
-        for (const table of tables) {
-          db.run(`DELETE FROM ${table} WHERE eventID = ?`, [id], err => {
-            if (err && !err.message.includes("no such table")) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-          });
-        }
+      for (const table of tables) {
+        await client.query(`DELETE FROM "${table}" WHERE "eventID" = $1`, [id]).catch(() => {});
+      }
 
-        db.run("DELETE FROM EventInfo WHERE eventID = ?", [id], function (err) {
-          if (err) {
-            db.run("ROLLBACK");
-            return reject(err);
-          }
-          db.run("COMMIT", err => (err ? reject(err) : resolve()));
-        });
-      });
-    });
+      await client.query('DELETE FROM "EventInfo" WHERE "eventID" = $1', [id]);
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -1792,10 +1813,11 @@ app.put("/api/events/:eventID/expenses", async (req, res) => {
 
     const sets = [];
     const values = [];
+    let paramIndex = 1;
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
-        sets.push(`${field} = ?`);
+        sets.push(`"${field}" = $${paramIndex++}`);
         values.push(Number(req.body[field]));
       }
     }
@@ -1804,15 +1826,15 @@ app.put("/api/events/:eventID/expenses", async (req, res) => {
       return res.status(400).json({ error: "No valid fields to update" });
     }
 
-    sets.push("updatedAt = CURRENT_TIMESTAMP");
+    sets.push('"updatedAt" = NOW()');
     values.push(eventID);
 
     const result = await dbRun(
-      `UPDATE EventExpenses SET ${sets.join(", ")} WHERE eventID = ?`,
+      `UPDATE "EventExpenses" SET ${sets.join(", ")} WHERE "eventID" = $${paramIndex}`,
       values
     );
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Event expenses not found" });
     }
 
@@ -1841,14 +1863,15 @@ app.post("/api/events/:eventID/additional-fees", async (req, res) => {
 
     const result = await dbRun(
       `
-      INSERT INTO AdditionalFees (eventID, feeName, feeAmount)
-      VALUES (?, ?, ?)
+      INSERT INTO "AdditionalFees" ("eventID", "feeName", "feeAmount")
+      VALUES ($1, $2, $3)
+      RETURNING "id"
       `,
       [eventID, feeName, amount]
     );
 
     res.json({
-      id: result.lastID
+      id: result.rows[0].id
     });
 
   } catch (err) {
@@ -1874,14 +1897,14 @@ app.put("/api/additional-fees/:id", async (req, res) => {
 
     const result = await dbRun(
       `
-      UPDATE AdditionalFees
-      SET feeName = ?, feeAmount = ?
-      WHERE id = ?
+      UPDATE "AdditionalFees"
+      SET "feeName" = $1, "feeAmount" = $2
+      WHERE "id" = $3
       `,
       [feeName, amount, id]
     );
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Fee not found" });
     }
 
@@ -1902,11 +1925,11 @@ app.delete("/api/additional-fees/:id", async (req, res) => {
     }
 
     const result = await dbRun(
-      `DELETE FROM AdditionalFees WHERE id = ?`,
+      `DELETE FROM "AdditionalFees" WHERE "id" = $1`,
       [id]
     );
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Fee not found" });
     }
 
@@ -1944,25 +1967,26 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
     // 3️⃣ Insert row (NO totalCost here)
     const insertResult = await dbRun(
       `
-      INSERT INTO EventSupplies (
-        eventID,
-        itemName,
-        unitCost,
-        quantityUsed
+      INSERT INTO "EventSupplies" (
+        "eventID",
+        "itemName",
+        "unitCost",
+        "quantityUsed"
       )
-      VALUES (?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4)
+      RETURNING "id"
       `,
       [eventID, itemName.trim(), uCost, qty]
     );
 
-    // 4️⃣ Return newly created row via VIEW
+    // 4️⃣ Return newly created row
     const newSupply = await dbGet(
       `
-      SELECT *
-      FROM vw_event_supplies
-      WHERE id = ?
+      SELECT *, ("unitCost" * "quantityUsed") AS "totalCost"
+      FROM "EventSupplies"
+      WHERE "id" = $1
       `,
-      [insertResult.lastID]
+      [insertResult.rows[0].id]
     );
 
     res.json(newSupply);
@@ -2000,9 +2024,9 @@ app.put("/api/supplies/:id", async (req, res) => {
     // 3️⃣ Ensure row exists
     const existing = await dbGet(
       `
-      SELECT id
-      FROM EventSupplies
-      WHERE id = ?
+      SELECT "id"
+      FROM "EventSupplies"
+      WHERE "id" = $1
       `,
       [supplyID]
     );
@@ -2014,22 +2038,22 @@ app.put("/api/supplies/:id", async (req, res) => {
     // 4️⃣ Update base table ONLY
     await dbRun(
       `
-      UPDATE EventSupplies
+      UPDATE "EventSupplies"
       SET
-        itemName = ?,
-        unitCost = ?,
-        quantityUsed = ?
-      WHERE id = ?
+        "itemName" = $1,
+        "unitCost" = $2,
+        "quantityUsed" = $3
+      WHERE "id" = $4
       `,
       [itemName.trim(), uCost, qty, supplyID]
     );
 
-    // 5️⃣ Return updated row via VIEW
+    // 5️⃣ Return updated row
     const updatedSupply = await dbGet(
       `
-      SELECT *
-      FROM vw_event_supplies
-      WHERE id = ?
+      SELECT *, ("unitCost" * "quantityUsed") AS "totalCost"
+      FROM "EventSupplies"
+      WHERE "id" = $1
       `,
       [supplyID]
     );
@@ -2054,9 +2078,9 @@ app.delete("/api/supplies/:id", async (req, res) => {
     // 2️⃣ Ensure row exists
     const existing = await dbGet(
       `
-      SELECT id, eventID
-      FROM EventSupplies
-      WHERE id = ?
+      SELECT "id", "eventID"
+      FROM "EventSupplies"
+      WHERE "id" = $1
       `,
       [supplyID]
     );
@@ -2068,14 +2092,14 @@ app.delete("/api/supplies/:id", async (req, res) => {
     // 3️⃣ Delete
     const result = await dbRun(
       `
-      DELETE FROM EventSupplies
-      WHERE id = ?
+      DELETE FROM "EventSupplies"
+      WHERE "id" = $1
       `,
       [supplyID]
     );
 
     // Defensive: should not happen because of existence check
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Supply item not found" });
     }
 
@@ -2104,9 +2128,9 @@ app.get("/api/events/:eventID/labor", async (req, res) => {
     const rows = await dbAll(
       `
       SELECT *
-      FROM EventLabor
-      WHERE eventID = ?
-      ORDER BY employeeName
+      FROM "EventLabor"
+      WHERE "eventID" = $1
+      ORDER BY "employeeName"
       `,
       [eventID]
     );
@@ -2173,9 +2197,9 @@ app.put("/api/square/labor/:eventID", async (req, res) => {
     // 1️⃣ Verify event + Square location
     const event = await dbGet(
       `
-      SELECT eventDate, squareLocationId
-      FROM EventInfo
-      WHERE eventID = ?
+      SELECT "eventDate", "squareLocationId"
+      FROM "EventInfo"
+      WHERE "eventID" = $1
       `,
       [eventID]
     );
@@ -2203,89 +2227,46 @@ app.put("/api/square/labor/:eventID", async (req, res) => {
       0
     );
 
-    // 4️⃣ Save labor atomically (sqlite3-safe)
-    await new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run("BEGIN TRANSACTION");
+    // 4️⃣ Save labor atomically
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-        // Clear existing labor
-        db.run(
-          `DELETE FROM EventLabor WHERE eventID = ?`,
-          [eventID],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
+      // Clear existing labor
+      await client.query(
+        `DELETE FROM "EventLabor" WHERE "eventID" = $1`,
+        [eventID]
+      );
 
-            const insertStmt = db.prepare(`
-              INSERT INTO EventLabor
-              (eventID, employeeName, hoursWorked, hourlyRate)
-              VALUES (?, ?, ?, ?)
-            `);
-
-            let index = 0;
-
-            const insertNext = () => {
-              if (index >= laborRows.length) {
-                insertStmt.finalize(err => {
-                  if (err) {
-                    db.run("ROLLBACK");
-                    return reject(err);
-                  }
-
-                  // Update laborFees
-                  db.run(
-                    `
-                    UPDATE EventExpenses
-                    SET laborFees = ?
-                    WHERE eventID = ?
-                    `,
-                    [laborFees, eventID],
-                    err => {
-                      if (err) {
-                        db.run("ROLLBACK");
-                        return reject(err);
-                      }
-
-                      db.run("COMMIT", err => {
-                        if (err) {
-                          db.run("ROLLBACK");
-                          return reject(err);
-                        }
-                        resolve();
-                      });
-                    }
-                  );
-                });
-                return;
-              }
-
-              const r = laborRows[index++];
-
-              insertStmt.run(
-                eventID,
-                r.employeeName,
-                r.hoursWorked,
-                r.hourlyRate,
-                err => {
-                  if (err) {
-                    insertStmt.finalize(() => {
-                      db.run("ROLLBACK");
-                      reject(err);
-                    });
-                    return;
-                  }
-                  insertNext();
-                }
-              );
-            };
-
-            insertNext();
-          }
+      // Insert each labor row
+      for (const r of laborRows) {
+        await client.query(
+          `
+          INSERT INTO "EventLabor"
+          ("eventID", "employeeName", "hoursWorked", "hourlyRate")
+          VALUES ($1, $2, $3, $4)
+          `,
+          [eventID, r.employeeName, r.hoursWorked, r.hourlyRate]
         );
-      });
-    });
+      }
+
+      // Update laborFees
+      await client.query(
+        `
+        UPDATE "EventExpenses"
+        SET "laborFees" = $1
+        WHERE "eventID" = $2
+        `,
+        [laborFees, eventID]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     // 5️⃣ Respond
     res.json({
@@ -2325,28 +2306,19 @@ app.get("*", (req, res) => {
 // ================================
 // HELPER FUNCTIONS
 //==================================
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
-  });
+async function dbGet(sql, params = []) {
+  const result = await pool.query(sql, params);
+  return result.rows[0] || null;
 }
 
-function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+async function dbAll(sql, params = []) {
+  const result = await pool.query(sql, params);
+  return result.rows;
 }
 
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
+async function dbRun(sql, params = []) {
+  const result = await pool.query(sql, params);
+  return { rowCount: result.rowCount, rows: result.rows };
 }
 
 
@@ -2404,8 +2376,8 @@ async function buildEventLabor(eventID) {
     });
   }
 
-  // BEFORE returning: save to SQLite
-  saveEventLabor(eventID, laborResults);
+  // BEFORE returning: save to PostgreSQL
+  await saveEventLabor(eventID, laborResults);
 
   return laborResults;
 }
@@ -2413,19 +2385,14 @@ async function buildEventLabor(eventID) {
 
 async function findOrCreateEmployee(name) {
   let emp = await dbGet(
-    `SELECT * FROM EmployeeTracker WHERE employeeName = ?`,
+    `SELECT * FROM "EmployeeTracker" WHERE "employeeName" = $1`,
     [name]
   );
 
   if (!emp) {
-    const ins = await dbRun(
-      `INSERT INTO EmployeeTracker (employeeName) VALUES (?)`,
-      [name]
-    );
-
     emp = await dbGet(
-      `SELECT * FROM EmployeeTracker WHERE EmployeeID = ?`,
-      [ins.lastID]
+      `INSERT INTO "EmployeeTracker" ("employeeName") VALUES ($1) RETURNING *`,
+      [name]
     );
   }
 
@@ -2437,60 +2404,46 @@ async function findOrCreateEmployee(name) {
 async function saveEventLabor(eventID, laborList) {
   if (!Array.isArray(laborList)) return;
 
-  await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run("BEGIN");
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-      // 1️⃣ Delete previous labor
-      db.run(
-        `DELETE FROM EventEmployees WHERE eventID = ?`,
-        [eventID],
-        err => {
-          if (err) {
-            db.run("ROLLBACK");
-            return reject(err);
-          }
-        }
-      );
+    // 1️⃣ Delete previous labor
+    await client.query(
+      `DELETE FROM "EventEmployees" WHERE "eventID" = $1`,
+      [eventID]
+    );
 
-      // 2️⃣ Insert new labor rows
-      const insertSql = `
-        INSERT INTO EventEmployees (
-          eventID, employeeID, hoursWorked, hourlyRate, totalPay,
-          startTime, endTime, squareTimecardID
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+    // 2️⃣ Insert new labor rows
+    const insertSql = `
+      INSERT INTO "EventEmployees" (
+        "eventID", "employeeID", "hoursWorked", "hourlyRate", "totalPay",
+        "startTime", "endTime", "squareTimecardID"
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `;
 
-      for (const entry of laborList) {
-        db.run(
-          insertSql,
-          [
-            eventID,
-            entry.employeeID,
-            entry.hours,
-            entry.wage,
-            entry.totalPay,
-            entry.start,
-            entry.end,
-            entry.squareTimecardID || null
-          ],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-          }
-        );
-      }
+    for (const entry of laborList) {
+      await client.query(insertSql, [
+        eventID,
+        entry.employeeID,
+        entry.hours,
+        entry.wage,
+        entry.totalPay,
+        entry.start,
+        entry.end,
+        entry.squareTimecardID || null
+      ]);
+    }
 
-      // 3️⃣ Commit
-      db.run("COMMIT", err => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  });
+    // 3️⃣ Commit
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 //HELPER FUNCTION SECTION
@@ -2528,13 +2481,13 @@ async function refreshSquareLaborToken(row) {
     // Update token row
     await dbRun(
       `
-      UPDATE SquareAuth
-      SET accessToken = ?,
-          refreshToken = ?,
-          merchantId = ?,
-          expiresAt = ?,
-          updatedAt = datetime('now')
-      WHERE id = ?
+      UPDATE "SquareAuth"
+      SET "accessToken" = $1,
+          "refreshToken" = $2,
+          "merchantId" = $3,
+          "expiresAt" = $4,
+          "updatedAt" = NOW()
+      WHERE "id" = $5
       `,
       [
         newAccessToken,
@@ -2550,9 +2503,9 @@ async function refreshSquareLaborToken(row) {
     // Return updated row
     const updated = await dbGet(
       `
-      SELECT id, accessToken, refreshToken, merchantId, expiresAt
-      FROM SquareAuth
-      WHERE id = ?
+      SELECT "id", "accessToken", "refreshToken", "merchantId", "expiresAt"
+      FROM "SquareAuth"
+      WHERE "id" = $1
       `,
       [row.id]
     );
@@ -2610,9 +2563,9 @@ async function getSquareLaborToken() {
 async function fetchSquareTimecardsForEvent(eventID) {
   const event = await dbGet(
     `
-    SELECT eventDate, squareLocationId
-    FROM EventInfo
-    WHERE eventID = ?
+    SELECT "eventDate", "squareLocationId"
+    FROM "EventInfo"
+    WHERE "eventID" = $1
     `,
     [eventID]
   );
@@ -2738,67 +2691,49 @@ async function fetchSquareTimecardsForEvent(eventID) {
   const { table, columns } = config;
   if (!Array.isArray(rows)) return;
 
-  await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run("BEGIN");
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-      // 1️⃣ Delete existing rows
-      db.run(
-        `DELETE FROM ${table} WHERE eventID = ?`,
-        [eventID],
-        err => {
-          if (err) {
-            db.run("ROLLBACK");
-            return reject(err);
-          }
-        }
-      );
+    // 1️⃣ Delete existing rows
+    await client.query(
+      `DELETE FROM "${table}" WHERE "eventID" = $1`,
+      [eventID]
+    );
 
-      // If no rows, just commit delete
-      if (!rows.length) {
-        return db.run("COMMIT", err =>
-          err ? reject(err) : resolve()
-        );
-      }
-
+    // If no rows, just commit delete
+    if (rows.length) {
       // 2️⃣ Build INSERT statement
-      const colNames = ["eventID", ...columns.map(c => c.name)];
-      const placeholders = colNames.map(() => "?").join(", ");
+      const colNames = ['"eventID"', ...columns.map(c => `"${c.name}"`)];
+      const placeholders = colNames.map((_, i) => `$${i + 1}`).join(", ");
 
       const insertSql = `
-        INSERT INTO ${table} (${colNames.join(", ")})
+        INSERT INTO "${table}" (${colNames.join(", ")})
         VALUES (${placeholders})
       `;
 
       for (const row of rows) {
-        db.run(
-          insertSql,
-          [
-            eventID,
-            ...columns.map(c => row[c.prop] ?? null)
-          ],
-          err => {
-            if (err) {
-              db.run("ROLLBACK");
-              return reject(err);
-            }
-          }
-        );
+        await client.query(insertSql, [
+          eventID,
+          ...columns.map(c => row[c.prop] ?? null)
+        ]);
       }
+    }
 
-      // 3️⃣ Commit
-      db.run("COMMIT", err => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  });
+    // 3️⃣ Commit
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 	// ---------------------------------------------------------
 	// Save all "adjustment" sub-tables: Fees, Discounts, Tips
 	// ---------------------------------------------------------
-	function saveEventAdjustments(eventID, payload) {
+	async function saveEventAdjustments(eventID, payload) {
 	  const {
 		additionalFees = [],
 		discounts = [],
@@ -2806,7 +2741,7 @@ async function fetchSquareTimecardsForEvent(eventID) {
 	  } = payload || {};
 
 	  // AdditionalFees: { feeName, feeAmount }
-	  saveSubTableRows(eventID, additionalFees, {
+	  await saveSubTableRows(eventID, additionalFees, {
 		table: "AdditionalFees",
 		columns: [
 		  { name: "feeName",   prop: "feeName" },
@@ -2815,7 +2750,7 @@ async function fetchSquareTimecardsForEvent(eventID) {
 	  });
 
 	  // Discounts: { discountName, discountAmount }
-	  saveSubTableRows(eventID, discounts, {
+	  await saveSubTableRows(eventID, discounts, {
 		table: "Discounts",
 		columns: [
 		  { name: "discountName",   prop: "discountName" },
@@ -2824,7 +2759,7 @@ async function fetchSquareTimecardsForEvent(eventID) {
 	  });
 
 	  // TipTracker: { tipAmount }
-	  saveSubTableRows(eventID, tips, {
+	  await saveSubTableRows(eventID, tips, {
 		table: "TipTracker",
 		columns: [
 		  { name: "tipAmount", prop: "tipAmount" }
@@ -2939,7 +2874,7 @@ async function fetchSalesTaxRate(zipCode) {
   if (!zipCode || !ZIP_TAX_API_KEY) return { rate: 0, detail: null };
 
   try {
-    const url = `https://api.zip-tax.com/request/v40?key=${ZIP_TAX_API_KEY}&postalcode=${zipCode}`;
+    const url = `https://api.zip-tax.com/request/v60?key=${ZIP_TAX_API_KEY}&postalcode=${zipCode}`;
     const res = await fetch(url);
     const json = await res.json();
 
@@ -2981,22 +2916,19 @@ async function buildPostEventReport(eventID) {
   try {
     // 1️⃣ Base EventInfo
     const event = await dbGet(
-      `SELECT * FROM EventInfo WHERE eventID = ?`,
+      `SELECT * FROM "EventInfo" WHERE "eventID" = $1`,
       [eventID]
     );
 
     if (!event) return null;
 
     // 2️⃣ Ensure EventExpenses row exists
-    await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO EventExpenses (eventID)
-         VALUES (?)
-         ON CONFLICT(eventID) DO NOTHING`,
-        [eventID],
-        err => (err ? reject(err) : resolve())
-      );
-    });
+    await dbRun(
+      `INSERT INTO "EventExpenses" ("eventID")
+       VALUES ($1)
+       ON CONFLICT("eventID") DO NOTHING`,
+      [eventID]
+    );
 
     // 3️⃣ Load related data
     const [
@@ -3006,15 +2938,19 @@ async function buildPostEventReport(eventID) {
       supplyRows,
       discountRows,
       salesSummary,
-      drinkSales
+      drinkSales,
+      tipRows,
+      additionalFeeRows
     ] = await Promise.all([
-      dbGet(`SELECT * FROM EventExpenses WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM EventEmployees WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM EventLabor WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT *, (unitCost * quantityUsed) AS totalCost FROM EventSupplies WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM Discounts WHERE eventID = ?`, [eventID]),
-      dbGet(`SELECT * FROM SalesSummary WHERE eventID = ?`, [eventID]),
-      dbAll(`SELECT * FROM DrinkSales WHERE eventID = ?`, [eventID])
+      dbGet(`SELECT * FROM "EventExpenses" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "EventEmployees" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "EventLabor" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT *, ("unitCost" * "quantityUsed") AS "totalCost" FROM "EventSupplies" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "Discounts" WHERE "eventID" = $1`, [eventID]),
+      dbGet(`SELECT * FROM "SalesSummary" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "DrinkSales" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "TipTracker" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "AdditionalFees" WHERE "eventID" = $1`, [eventID])
     ]);
 
     const laborRows = [
@@ -3030,38 +2966,28 @@ async function buildPostEventReport(eventID) {
       supplies: supplyRows || [],
       discounts: discountRows || [],
       sales: salesSummary || {},
-      drinkSales: drinkSales || []
+      drinkSales: drinkSales || [],
+      tips: tipRows || [],
+      additionalFees: additionalFeeRows || []
     };
    
    // -------------------------------------------
    // 🏛️ SALES TAX CALCULATION (via zip-tax.com)
    // -------------------------------------------
    const zipCode = event.zipCode || null;
+   console.log("🏛️ Tax lookup:", { zipCode, hasApiKey: !!ZIP_TAX_API_KEY });
    const taxData = await fetchSalesTaxRate(zipCode);
-   const stateRate = taxData.rate;
-   const federalTaxRate = 0.153;
-   
-   // Calculate Net Profit first
-   const netProfit =
-    (report.sales?.netSales || 0)
-    - (report.expenses?.totalExpenses || 0)
-    - (report.expenses?.laborFees || 0)
-    - (report.expenses?.coordinatorFee || 0)
-    - (report.supplies?.reduce((sum, s) => sum + (s.totalCost || 0), 0) || 0);
+   console.log("🏛️ Tax result:", { rate: taxData.rate, state: taxData.detail?.state });
 
-   // Only tax positive profit
-   
-   const stateRevenueTax = netProfit > 0 ? netProfit * stateRate : 0;
-   const federalTaxes = netProfit  * federalTaxRate;
-   const finalProfit = netProfit - stateRevenueTax - federalTaxes;
+   const totalCollected = Number(report.sales?.totalCollected || 0);
+   const stateFoodTax = totalCollected * 0.0804;
 
-   // Attach to report
+   // Attach rates + computed food tax
    report.taxes = {
     zipCode,
-    stateRate,
-    stateRevenueTax,
-    federalTaxes,
-    finalProfit,
+    stateRate: taxData.rate,
+    federalTaxRate: 0.153,
+    stateFoodTax,
     taxDetail: taxData.detail,
    };
 
@@ -3074,56 +3000,39 @@ async function buildPostEventReport(eventID) {
   }
 }
 
-function saveDrinkSales(eventID, rows, done) {
-  db.serialize(() => {
-    db.run("BEGIN");
+async function saveDrinkSales(eventID, rows) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-    db.run(
-      `DELETE FROM DrinkSales WHERE eventID = ?`,
-      [eventID],
-      err => {
-        if (err) {
-          console.error("❌ Failed to clear DrinkSales:", err);
-          db.run("ROLLBACK");
-          return done?.(err);
-        }
-      }
+    await client.query(
+      `DELETE FROM "DrinkSales" WHERE "eventID" = $1`,
+      [eventID]
     );
 
     const insertSql = `
-      INSERT INTO DrinkSales
-      (eventID, drinkName, unitPrice, quantitySold, totalCost)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO "DrinkSales"
+      ("eventID", "name", "unitPrice", "quantitySold", "totalCost")
+      VALUES ($1, $2, $3, $4, $5)
     `;
 
     for (const r of rows) {
-      db.run(
-        insertSql,
-        [
-          eventID,
-          r.drinkName,
-          r.unitPrice,
-          r.quantitySold,
-          r.totalCost
-        ],
-        err => {
-          if (err) {
-            console.error("❌ DrinkSales insert failed:", err);
-            db.run("ROLLBACK");
-            return done?.(err);
-          }
-        }
-      );
+      await client.query(insertSql, [
+        eventID,
+        r.drinkName,
+        r.unitPrice,
+        r.quantitySold,
+        r.totalCost
+      ]);
     }
 
-    db.run("COMMIT", err => {
-      if (err) {
-        console.error("❌ Commit failed:", err);
-        return done?.(err);
-      }
-      done?.();
-    });
-  });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 
@@ -3133,7 +3042,7 @@ function saveDrinkSales(eventID, rows, done) {
 
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, "0.0.0.0", () =>
-      console.log(`🚀 SQLite backend running on port ${PORT}`)
+      console.log(`🚀 PostgreSQL backend running on port ${PORT}`)
     );
   } catch (err) {
     console.error("❌ Failed to start server:", err);
