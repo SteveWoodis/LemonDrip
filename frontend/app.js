@@ -3715,6 +3715,7 @@ function normalizeReportPayload(raw) {
     eventInfo,
     customFields: raw.customFields || raw.CustomFields || {},
     sales: raw.sales || raw.Sales || null,
+    expenses: raw.expenses || raw.Expenses || null,
     employees: raw.employees || raw.labor || raw.Labor || [],
     supplies: raw.supplies || raw.Supplies || [],
     discountsList: raw.discountsList || raw.Discounts || [],
@@ -3889,10 +3890,39 @@ function renderPostEventReport(report) {
       </section>
     `;
   }
-  //EXPENSES
+  // EXPENSES
+  if (report.expenses) {
+    const expenseLabels = {
+      healthDeptFee: "Health Dept Fee",
+      eventFee: "Event Fee",
+      mileageReimbursement: "Mileage Reimbursement",
+      eventRunnerFees: "Event Runner Fees",
+      employeeBonus: "Employee Bonus",
+      coordinatorFee: "Coordinator Fee",
+      posFee: "POS Fee",
+      supplyFees: "Supply Costs",
+      laborFees: "Labor Fees"
+    };
 
+    const expenseRows = Object.entries(expenseLabels)
+      .filter(([key]) => Number(report.expenses[key] || 0) !== 0)
+      .map(([key, label]) => `
+        <div class="kv-row">
+          <div class="kv-label">${label}</div>
+          <div class="kv-value">$${Number(report.expenses[key] || 0).toFixed(2)}</div>
+        </div>
+      `)
+      .join("");
 
-  
+    if (expenseRows) {
+      html += `
+        <section class="report-block">
+          ${sectionHeader("Expenses", "💰")}
+          ${expenseRows}
+        </section>
+      `;
+    }
+  }
 
   // TOTALS
   if (report.totals) {
@@ -4111,6 +4141,34 @@ async function downloadPostEventPDF() {
       ["itemName", "quantityUsed", "unitCost", "totalCost"],
       "Supplies Used"
     );
+  }
+
+  // =============================
+  // EXPENSES
+  //=============================
+  if (report.expenses) {
+    const expenseLabels = {
+      healthDeptFee: "Health Dept Fee",
+      eventFee: "Event Fee",
+      mileageReimbursement: "Mileage Reimbursement",
+      eventRunnerFees: "Event Runner Fees",
+      employeeBonus: "Employee Bonus",
+      coordinatorFee: "Coordinator Fee",
+      posFee: "POS Fee",
+      supplyFees: "Supply Costs",
+      laborFees: "Labor Fees"
+    };
+
+    const expenseKV = {};
+    Object.entries(expenseLabels).forEach(([key, label]) => {
+      const val = Number(report.expenses[key] || 0);
+      if (val !== 0) expenseKV[label] = `$${val.toFixed(2)}`;
+    });
+
+    if (Object.keys(expenseKV).length) {
+      sectionHeader("Expenses");
+      renderKeyValueBlock(expenseKV);
+    }
   }
 
   // =============================

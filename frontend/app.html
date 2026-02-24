@@ -15,12 +15,15 @@
         <span class="brand-subtitle">Vendor Intelligence for Events</span>
       </div>
 		  <div class="nav-buttons">
-			   <div class="header-buttons">
-          <button id="btnHome" onclick="window.location.href='/'">Home</button>
-		      <button id="btnAdd" onclick='openAddEventForUser()'>➕ Add Event</button>
-		      <button id="btnCompany" onclick="navigateTo('companySection')">Register Company</button>
-		      <button id="btnDesign" onclick="navigateTo('designFormSection')">🧩 Design Event Form</button>
-		      <button id="btnManage" onclick="navigateTo('manageSection')"> Manage Events </button>
+        <button class="hamburger" onclick="toggleMobileNav()" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+			   <div class="header-buttons" id="headerButtonsDrawer">
+          <button id="btnHome" onclick="closeMobileNav(); window.location.href='/'">Home</button>
+		      <button id="btnAdd" onclick="closeMobileNav(); openAddEventForUser()">➕ Add Event</button>
+		      <button id="btnCompany" onclick="closeMobileNav(); navigateTo('companySection')">Register Company</button>
+		      <button id="btnDesign" onclick="closeMobileNav(); navigateTo('designFormSection')">🧩 Design Event Form</button>
+		      <button id="btnManage" onclick="closeMobileNav(); navigateTo('manageSection')"> Manage Events </button>
 		     </div>
 	    </div>
   </header>
@@ -180,6 +183,19 @@
 
 
 
+  <script>
+    function toggleMobileNav() {
+      document.getElementById("headerButtonsDrawer").classList.toggle("is-open");
+      document.querySelector(".hamburger").classList.toggle("is-open");
+    }
+    function closeMobileNav() {
+      document.getElementById("headerButtonsDrawer").classList.remove("is-open");
+      document.querySelector(".hamburger").classList.remove("is-open");
+    }
+    document.addEventListener("click", function(e) {
+      if (!e.target.closest(".nav-buttons")) closeMobileNav();
+    });
+  </script>
   <script src="app.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
