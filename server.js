@@ -5,6 +5,7 @@
 // Core deps
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
+require('dotenv').config();
 
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
@@ -13,15 +14,13 @@ function handleValidationErrors(req, res, next) {
   }
   next();
 }
-const { Pool } = require("pg");
+const { Pool } = require('pg');
+
 const pool = new Pool({
-  host: "localhost",
-  user: "postgres",
-  password: "",
-  database: "venview",
-  port: 5432
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
-require("dotenv").config();
+
 
 
 // Middleware / utils
@@ -143,7 +142,7 @@ async function initDb() {
         "updatedAt" TIMESTAMP DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS "DrinkSales" (
+      CREATE TABLE IF NOT EXISTS "InventorySales" (
         "id" SERIAL PRIMARY KEY,
         "eventID" INTEGER REFERENCES "EventInfo"("eventID"),
         "name" TEXT,
@@ -206,6 +205,22 @@ async function initDb() {
        END $$`,
       `ALTER TABLE "SalesSummary" ADD COLUMN IF NOT EXISTS "DatePulledAt" TIMESTAMP DEFAULT NOW()`,
       `DO $$
+       BEGIN
+         IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'DrinkSales')
+            AND NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'InventorySales')
+         THEN
+           ALTER TABLE "DrinkSales" RENAME TO "InventorySales";
+         END IF;
+       END $$`,
+      `DO $$
+       BEGIN
+         IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = '"InventorySales"'::regclass AND attname = 'drinkName' AND attnum > 0)
+            AND NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = '"InventorySales"'::regclass AND attname = 'name' AND attnum > 0)
+         THEN
+           ALTER TABLE "InventorySales" RENAME COLUMN "drinkName" TO "name";
+         END IF;
+       END $$`,
+      `DO $$
        DECLARE t TEXT; c TEXT; seq_name TEXT;
        BEGIN
          FOR t, c IN VALUES
@@ -254,13 +269,13 @@ async function initDb() {
          IF NOT EXISTS (
            SELECT 1 FROM pg_attrdef ad
            JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
-           WHERE a.attrelid = '"DrinkSales"'::regclass AND a.attname = 'id'
+           WHERE a.attrelid = '"InventorySales"'::regclass AND a.attname = 'id'
              AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval%'
-         ) THEN
-           CREATE SEQUENCE IF NOT EXISTS "DrinkSales_id_seq";
-           PERFORM setval('"DrinkSales_id_seq"', COALESCE((SELECT MAX("id") FROM "DrinkSales"), 0) + 1, false);
-           ALTER TABLE "DrinkSales" ALTER COLUMN "id" SET DEFAULT nextval('"DrinkSales_id_seq"');
-           ALTER SEQUENCE "DrinkSales_id_seq" OWNED BY "DrinkSales"."id";
+           ) THEN
+           CREATE SEQUENCE IF NOT EXISTS "InventorySales_id_seq";
+           PERFORM setval('"InventorySales_id_seq"', COALESCE((SELECT MAX("id") FROM "InventorySales"), 0) + 1, false);
+           ALTER TABLE "InventorySales" ALTER COLUMN "id" SET DEFAULT nextval('"InventorySales_id_seq"');
+           ALTER SEQUENCE "InventorySales_id_seq" OWNED BY "InventorySales"."id";
          END IF;
        END $$`,
       `DO $$
@@ -1055,8 +1070,7 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
 
   let orders = [];
   let ordersUsable = false;
-  let drinkRows = [];
-  const USER_PLAN = process.env.USER_PLAN || "starter";
+  let inventoryRows = [];
   const IS_PRO = USER_PLAN === "pro";
 
   try {
@@ -1214,10 +1228,10 @@ for (const order of orders) {
 }
 
 
-drinkRows = Array.from(drinkMap.values());
+inventoryRows = Array.from(drinkMap.values());
 
 console.table(
-  drinkRows.map(d => ({
+  inventoryRows.map(d => ({
     drink: d.drinkName,
     qty: d.quantitySold,
     unitPrice: d.unitPrice,
@@ -1332,7 +1346,7 @@ console.log({ grossSales, discounts, netSales, totalCollected });
       squareFees
     ]);
 
-    await saveDrinkSales(eventID, drinkRows);
+    await saveInventorySales(eventID, inventoryRows);
 
     res.json({
       success: true,
@@ -1451,19 +1465,22 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 2️⃣ Enforce finalize limit (Starter rule)
+    // 2️⃣ Enforce finalize limit (Starter only)
     // --------------------------------------------------
-    const countRow = await dbGet(
-      `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1`,
-      []
-    );
-    const count = countRow?.count ?? 0;
+    const plan = req.body?.plan || "starter";
+    if (plan === "starter") {
+      const countRow = await dbGet(
+        `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1`,
+        []
+      );
+      const count = countRow?.count ?? 0;
 
-    if (count >= 1 && event.isFinalized !== 1) {
-      return res.status(403).json({
-        code: "FINALIZE_LIMIT_REACHED",
-        message: "Finalize limit reached"
-      });
+      if (count >= 1 && event.isFinalized !== 1) {
+        return res.status(403).json({
+          code: "FINALIZE_LIMIT_REACHED",
+          message: "Finalize limit reached"
+        });
+      }
     }
 
     // --------------------------------------------------
@@ -1753,7 +1770,7 @@ app.delete("/api/events/:id", async (req, res) => {
 
       const tables = [
         "EventExpenses", "EventLabor", "EventEmployees",
-        "SalesSummary", "DrinkSales", "EventSupplies",
+        "SalesSummary", "InventorySales", "EventSupplies",
         "Discounts", "AdditionalFees", "EventPermits"
       ];
 
@@ -2284,6 +2301,12 @@ app.put("/api/square/labor/:eventID", async (req, res) => {
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+const USER_PLAN = process.env.USER_PLAN || "starter";
+
+app.get("/api/config", (req, res) => {
+  res.json({ plan: USER_PLAN });
 });
 
 
@@ -2938,7 +2961,7 @@ async function buildPostEventReport(eventID) {
       supplyRows,
       discountRows,
       salesSummary,
-      drinkSales,
+      inventorySales,
       tipRows,
       additionalFeeRows
     ] = await Promise.all([
@@ -2948,7 +2971,7 @@ async function buildPostEventReport(eventID) {
       dbAll(`SELECT *, ("unitCost" * "quantityUsed") AS "totalCost" FROM "EventSupplies" WHERE "eventID" = $1`, [eventID]),
       dbAll(`SELECT * FROM "Discounts" WHERE "eventID" = $1`, [eventID]),
       dbGet(`SELECT * FROM "SalesSummary" WHERE "eventID" = $1`, [eventID]),
-      dbAll(`SELECT * FROM "DrinkSales" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "InventorySales" WHERE "eventID" = $1`, [eventID]),
       dbAll(`SELECT * FROM "TipTracker" WHERE "eventID" = $1`, [eventID]),
       dbAll(`SELECT * FROM "AdditionalFees" WHERE "eventID" = $1`, [eventID])
     ]);
@@ -2966,7 +2989,7 @@ async function buildPostEventReport(eventID) {
       supplies: supplyRows || [],
       discounts: discountRows || [],
       sales: salesSummary || {},
-      drinkSales: drinkSales || [],
+      inventorySales: inventorySales || [],
       tips: tipRows || [],
       additionalFees: additionalFeeRows || []
     };
@@ -2980,7 +3003,7 @@ async function buildPostEventReport(eventID) {
    console.log("🏛️ Tax result:", { rate: taxData.rate, state: taxData.detail?.state });
 
    const totalCollected = Number(report.sales?.totalCollected || 0);
-   const stateFoodTax = totalCollected * 0.0804;
+   const stateFoodTax = totalCollected * (taxData.rate || 0);
 
    // Attach rates + computed food tax
    report.taxes = {
@@ -3000,18 +3023,18 @@ async function buildPostEventReport(eventID) {
   }
 }
 
-async function saveDrinkSales(eventID, rows) {
+async function saveInventorySales(eventID, rows) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     await client.query(
-      `DELETE FROM "DrinkSales" WHERE "eventID" = $1`,
+      `DELETE FROM "InventorySales" WHERE "eventID" = $1`,
       [eventID]
     );
 
     const insertSql = `
-      INSERT INTO "DrinkSales"
+      INSERT INTO "InventorySales"
       ("eventID", "name", "unitPrice", "quantitySold", "totalCost")
       VALUES ($1, $2, $3, $4, $5)
     `;

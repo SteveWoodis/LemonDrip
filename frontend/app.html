@@ -61,7 +61,7 @@
     	  <input type="text" id="contactName" placeholder="ContactName">
     	  <input type="text" id="vendorCategory" placeholder="Vendor Category">
     	  <input type="text" id="email" placeholder="email">
-          <button type="button" onclick="addCompany(event)">Submit</button>
+          <button type="button" onclick="withSpinner(this, () => addCompany(event))">Submit</button>
     	  <button type="button" onclick="clearEventForm()">Clear</button>
         </div>
 
@@ -77,7 +77,7 @@
           <option value="">-- Select Template --</option>
         </select>
         <button type="button" onclick="useSelectedTemplate()">⚡ Activate</button>
-    	<p class="field-warning">NOTE: Field Name and Field Date are required Fields for All Templates.  </p>
+    	<p class="field-warning"><strong>NOTE: Field Name, Field Date and ZipCode are required Fields for All Templates.</strong>  </p>
       </div>
 
       <div class="form-builder-controls">
@@ -110,7 +110,7 @@
       <div id="formPreview" class="preview-card"></div>
 
       <div class="form-buttons">
-        <button type="button" onclick="saveTemplate()">💾 Save Template</button>
+        <button type="button" onclick="withSpinner(this, saveTemplate)">💾 Save Template</button>
         <button type="button" onclick="clearEventForm()">🧹 Clear</button>
       </div>
     </section>
@@ -127,8 +127,8 @@
         <input type="text" id="manageSearchName" placeholder="eventName">
         <input type="date" id="manageSearchDate">
         <input type="text" id="manageSearchID" placeholder="eventID">
-        <button type="button" onclick="manageSearch()">🔍 Search</button>
-        <button type="button" onclick="loadAllEvents()">📋 List All</button>
+        <button type="button" onclick="withSpinner(this, manageSearch)">🔍 Search</button>
+        <button type="button" onclick="withSpinner(this, loadAllEvents)">📋 List All</button>
     	<button type="button" class="btn-secondary" onclick="clearManageSearch()">🧹 Clear</button>
 
       </div>
@@ -168,7 +168,7 @@
           </div>
 
           <div class="report-buttons">
-            <button class="btn-primary" onclick="downloadPostEventPDF()">📄 Download PDF</button>
+            <button class="btn-primary" onclick="withSpinner(this, downloadPostEventPDF)">📄 Download PDF</button>
             <button class="btn-secondary" onclick="navigateTo('manageSection')">⬅ Back to Manage Events</button>
           </div>
       </div>
