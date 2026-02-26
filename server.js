@@ -3,9 +3,41 @@
 // -------------------------------
 
 // Core deps
+const cors = require("cors");
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
-require('dotenv').config();
+
+ 
+// -------------------------------
+// 🔐 SuperTokens Auth
+// -------------------------------
+const supertokens = require("supertokens-node");
+const Session = require("supertokens-node/recipe/session");
+const EmailPassword = require("supertokens-node/recipe/emailpassword");
+const { middleware: stMiddleware, errorHandler: stErrorHandler } = require("supertokens-node/framework/express");
+const { verifySession } = require("supertokens-node/recipe/session/framework/express");
+
+const ST_PORT = process.env.PORT || 8080;
+supertokens.init({
+  framework: "express",
+  supertokens: {
+    connectionURI: process.env.SUPERTOKENS_URI || "https://venview.aws.supertokens.io",
+    apiKey: process.env.SUPERTOKENS_API_KEY,
+  },
+  appInfo: {
+    appName: "VenView Events",
+    apiDomain: process.env.API_DOMAIN || `http://localhost:${ST_PORT}`,
+    websiteDomain: process.env.WEBSITE_DOMAIN || `http://localhost:${ST_PORT}`,
+    apiBasePath: "/auth",
+    websiteBasePath: "/auth",
+  },
+  recipeList: [
+    EmailPassword.init(),
+    Session.init(),
+  ],
+});
+
+console.log("SuperToken URI", supertokens.connectionURI);
 
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
@@ -24,7 +56,7 @@ const pool = new Pool({
 
 
 // Middleware / utils
-const cors = require("cors");
+
 const multer = require("multer");
 const axios = require("axios");
 const crypto = require("crypto");
@@ -343,10 +375,18 @@ app.use((req, res, next) => {
 
 
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.WEBSITE_DOMAIN || `http://localhost:${ST_PORT}`,
+  allowedHeaders: ["content-type", ...supertokens.getAllCORSHeaders()],
+  credentials: true,
+}));
+app.use(stMiddleware());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Protect all /api routes with session verification
+app.use("/api", verifySession());
 
 
 // -------------------------------
@@ -396,6 +436,11 @@ const activeOAuthStates = new Set();
 
 
 
+
+// Get current user info
+app.get("/api/me", (req, res) => {
+  res.json({ userId: req.session.getUserId() });
+});
 
 // -------------------------------
 // 🔍 GET /api/events (list/search)
@@ -3058,6 +3103,9 @@ async function saveInventorySales(eventID, rows) {
   }
 }
 
+
+// SuperTokens error handler (must be after all routes)
+app.use(stErrorHandler());
 
 (async () => {
   try {

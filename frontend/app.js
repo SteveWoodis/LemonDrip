@@ -17,6 +17,105 @@ window.availableTemplates = [];
 
 window.USER_PLAN = "starter"; // default until server responds
 
+// ---------------------------
+// 🔐 SuperTokens Auth
+// ---------------------------
+supertokens.init({
+  apiDomain: window.location.origin,
+  apiBasePath: "/auth",
+});
+
+let authMode = "signin"; // "signin" or "signup"
+
+function toggleAuthMode(e) {
+  e.preventDefault();
+  authMode = authMode === "signin" ? "signup" : "signin";
+  document.getElementById("authTitle").textContent =
+    authMode === "signin" ? "Sign In" : "Sign Up";
+  document.getElementById("authSubtitle").textContent =
+    authMode === "signin"
+      ? "Welcome back! Sign in to manage your events."
+      : "Create your account to get started.";
+  document.getElementById("authSubmitBtn").textContent =
+    authMode === "signin" ? "Sign In" : "Sign Up";
+  document.getElementById("authToggleText").textContent =
+    authMode === "signin" ? "Don't have an account?" : "Already have an account?";
+  document.getElementById("authToggleLink").textContent =
+    authMode === "signin" ? "Sign Up" : "Sign In";
+  document.getElementById("authError").textContent = "";
+}
+
+async function handleAuth(e) {
+  e.preventDefault();
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const errorEl = document.getElementById("authError");
+  errorEl.textContent = "";
+
+  try {
+    const url = authMode === "signup"
+      ? "/auth/signup"
+      : "/auth/signin";
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ formFields: [
+        { id: "email", value: email },
+        { id: "password", value: password },
+      ]}),
+    });
+
+    const data = await res.json();
+
+    if (data.status === "OK") {
+      showAuthenticatedUI();
+    } else if (data.status === "FIELD_ERROR") {
+      errorEl.textContent = data.formFields.map(f => f.error).join(". ");
+    } else if (data.status === "WRONG_CREDENTIALS_ERROR") {
+      errorEl.textContent = "Incorrect email or password.";
+    } else {
+      errorEl.textContent = data.message || "Authentication failed.";
+    }
+  } catch (err) {
+    console.error("Auth error:", err);
+    errorEl.textContent = "Unable to connect. Please try again.";
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch("/auth/signout", { method: "POST" });
+  } catch (err) {
+    console.warn("Logout request failed:", err);
+  }
+  showUnauthenticatedUI();
+}
+
+async function checkSession() {
+  const exists = await supertokens.doesSessionExist();
+  if (exists) {
+    showAuthenticatedUI();
+  } else {
+    showUnauthenticatedUI();
+  }
+}
+
+function showAuthenticatedUI() {
+  document.getElementById("authSection").classList.add("hidden");
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnLogout")
+    .forEach(b => { if (b) b.style.display = ""; });
+  loadAppState();
+}
+
+function showUnauthenticatedUI() {
+  document.querySelectorAll(".app-shell > section")
+    .forEach(sec => sec.classList.add("hidden"));
+  document.getElementById("authSection").classList.remove("hidden");
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnLogout")
+    .forEach(b => { if (b) b.style.display = "none"; });
+}
+
 // Button spinner helper
 async function withSpinner(btn, asyncFn) {
   if (!btn || btn.disabled) return;
@@ -231,9 +330,7 @@ function buildEventPayloadFromTemplate({ raw, template }) {
 
 // ---------------------------
 // 💾 Persistent State (localStorage)// 🔗 Backend base URL
-const API_BASE = window.location.hostname === "localhost"
-  ? "http://localhost:3000"
-  : window.location.origin;
+const API_BASE = window.location.origin;
 
 // ---------------------------
 // 🔄 Event Normalization Helpers
@@ -469,7 +566,7 @@ window.addEventListener("popstate", (event) => {
 
 // On initial page load
 window.addEventListener("DOMContentLoaded", () => {
-  loadAppState();
+  checkSession();
 });
 
 // ---------------------------
@@ -688,7 +785,7 @@ function buildTableHTML(results, containerId = "searchResults") {
           taxes: report.taxes
         });
 
-        console.log("⭐ FULL REPORT EVENT LOADED right before loadEventIntoDashboard:", report);
+       // console.log("⭐ FULL REPORT EVENT LOADED right before loadEventIntoDashboard:", report);
         loadEventIntoDashboard(report.event);
       } catch (err) {
         console.error("❌ Error loading event details:", err);
@@ -2432,7 +2529,7 @@ const expenses = report.expenses || {};
 const discounts = report.discounts || [];
 const taxes = report.taxes || {};
 
-console.log("PRINT OUT for taxes: ",taxes);
+//console.log("PRINT OUT for taxes: ",taxes);
 
 const discountTotal = discounts.reduce(
   (sum, d) => sum + (Number(d.discountAmount) || 0),
@@ -3215,7 +3312,7 @@ async function loadEventIntoDashboard(evt) {
   }
 
   const event = normalizeEvent(evt);
-  console.log("Dashboard event Object", event);
+ // console.log("Dashboard event Object", event);
 
   window.activeEvent = event;
   window.currentEventId = event.eventID;
@@ -3261,7 +3358,7 @@ try {
 
   report = await reportRes.json();
 
-  console.log("Loaded Report:", report);
+ // console.log("Loaded Report:", report);
 
 } catch (err) {
   console.error("Report load failed:", err);

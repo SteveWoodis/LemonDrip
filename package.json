@@ -17,6 +17,7 @@
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "pg": "^8.18.0",
+    "supertokens-node": "^24.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
