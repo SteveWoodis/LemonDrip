@@ -1,0 +1,5 @@
+
+
+curl -X PUT http://localhost:3000/api/admin/plan \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "<supertokens-user-id>", "plan": "pro"}'

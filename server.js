@@ -53,7 +53,54 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// ---------------------------
+// 🔐 Plan Enforcement
+// ---------------------------
+const PLAN_RANK = { starter: 0, pro: 1 };
 
+async function getUserPlan(req) {
+  const payload = req.session.getAccessTokenPayload();
+  if (payload?.plan === "starter" || payload?.plan === "pro") {
+    return payload.plan;
+  }
+
+  const userId = req.session.getUserId();
+  const { rows } = await pool.query(
+    `SELECT "plan" FROM "UserPlan" WHERE "userId" = $1`,
+    [userId]
+  );
+
+  let plan = rows[0]?.plan;
+  if (!plan) {
+    plan = "starter";
+    await pool.query(
+      `INSERT INTO "UserPlan" ("userId", "plan") VALUES ($1, $2)
+       ON CONFLICT ("userId") DO NOTHING`,
+      [userId, plan]
+    );
+  }
+
+  await req.session.mergeIntoAccessTokenPayload({ plan });
+  return plan;
+}
+
+function requirePlan(minPlan) {
+  return async (req, res, next) => {
+    try {
+      const plan = await getUserPlan(req);
+      if (PLAN_RANK[plan] >= PLAN_RANK[minPlan]) return next();
+      return res.status(403).json({
+        error: "Upgrade required",
+        code: "PLAN_UPGRADE_REQUIRED",
+        requiredPlan: minPlan,
+        currentPlan: plan,
+      });
+    } catch (err) {
+      console.error("requirePlan error:", err);
+      return res.status(500).json({ error: "Unable to verify plan" });
+    }
+  };
+}
 
 // Middleware / utils
 
@@ -185,6 +232,13 @@ async function initDb() {
         "metadata" TEXT,
         "rowCost" REAL,
         "source" TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS "UserPlan" (
+        "userId" TEXT PRIMARY KEY,
+        "plan" TEXT NOT NULL DEFAULT 'starter',
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
 
@@ -437,9 +491,52 @@ const activeOAuthStates = new Set();
 
 
 
-// Get current user info
-app.get("/api/me", (req, res) => {
-  res.json({ userId: req.session.getUserId() });
+// Get current user info + plan
+app.get("/api/me", async (req, res) => {
+  try {
+    const plan = await getUserPlan(req);
+    res.json({ userId: req.session.getUserId(), plan });
+  } catch (err) {
+    console.error("❌ /api/me error:", err);
+    res.status(500).json({ error: "Failed to load user info" });
+  }
+});
+
+// -------------------------------
+// 🔐 Admin: Update user plan
+// -------------------------------
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+
+app.put("/api/admin/plan", async (req, res) => {
+  try {
+    const adminUserId = req.session.getUserId();
+    const adminInfo = await supertokens.getUser(adminUserId);
+    const adminEmail = adminInfo?.emails?.[0] || "";
+
+    if (!ADMIN_EMAILS.includes(adminEmail.toLowerCase())) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    const { userId, plan } = req.body;
+    if (!userId || !["starter", "pro"].includes(plan)) {
+      return res.status(400).json({ error: "userId and plan ('starter'|'pro') required" });
+    }
+
+    await pool.query(
+      `INSERT INTO "UserPlan" ("userId", "plan", "updatedAt")
+       VALUES ($1, $2, NOW())
+       ON CONFLICT ("userId") DO UPDATE SET "plan" = $2, "updatedAt" = NOW()`,
+      [userId, plan]
+    );
+
+    // Revoke sessions so the user picks up the new plan on next request
+    await Session.revokeAllSessionsForUser(userId);
+
+    res.json({ success: true, userId, plan });
+  } catch (err) {
+    console.error("❌ Admin plan update error:", err);
+    res.status(500).json({ error: "Failed to update plan" });
+  }
 });
 
 // -------------------------------
@@ -795,7 +892,7 @@ app.post("/api/formTemplates", async (req, res) => {
 // -------------------------------
 // GET Square Location Cache
 // -------------------------------
-app.get("/api/square/locations", async (req, res) => {
+app.get("/api/square/locations", requirePlan("pro"), async (req, res) => {
   try {
     const url = "https://connect.squareup.com/v2/locations";
     const response = await fetch(url, {
@@ -1091,6 +1188,18 @@ app.put("/api/events/:id",
       return res.status(404).json({ error: "Event not found." });
     }
 
+    // Sync expense fields to EventExpenses table
+    await pool.query(
+      `INSERT INTO "EventExpenses" ("eventID", "eventFee", "healthDeptFee", "mileageReimbursement", "eventRunnerFees")
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT("eventID") DO UPDATE SET
+         "eventFee" = EXCLUDED."eventFee",
+         "healthDeptFee" = EXCLUDED."healthDeptFee",
+         "mileageReimbursement" = EXCLUDED."mileageReimbursement",
+         "eventRunnerFees" = EXCLUDED."eventRunnerFees"`,
+      [id, e.eventFee ?? 0, e.healthDeptFee ?? 0, e.mileageReimbursement ?? 0, e.eventRunnerFees ?? 0]
+    );
+
     res.json({ success: true });
   } catch (err) {
     console.error("❌ Error updating event:", err);
@@ -1106,7 +1215,7 @@ app.put("/api/events/:id",
  * Canonical discount formula (matches Square dashboard):
  *   discounts = grossSales - netSales - refunds
  */
-app.put("/api/square/sales/:eventID", async (req, res) => {
+app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
  
   let refunds = 0;
   let squareReportedTax = 0;
@@ -1116,7 +1225,7 @@ app.put("/api/square/sales/:eventID", async (req, res) => {
   let orders = [];
   let ordersUsable = false;
   let inventoryRows = [];
-  const IS_PRO = USER_PLAN === "pro";
+  const IS_PRO = (await getUserPlan(req)) === "pro";
 
   try {
     const eventID = Number(req.params.eventID);
@@ -1512,7 +1621,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // --------------------------------------------------
     // 2️⃣ Enforce finalize limit (Starter only)
     // --------------------------------------------------
-    const plan = req.body?.plan || "starter";
+    const plan = await getUserPlan(req);
     if (plan === "starter") {
       const countRow = await dbGet(
         `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1`,
@@ -2249,7 +2358,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.put("/api/square/labor/:eventID", async (req, res) => {
+app.put("/api/square/labor/:eventID", requirePlan("pro"), async (req, res) => {
   try {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
@@ -2348,10 +2457,13 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-const USER_PLAN = process.env.USER_PLAN || "starter";
-
-app.get("/api/config", (req, res) => {
-  res.json({ plan: USER_PLAN });
+app.get("/api/config", async (req, res) => {
+  try {
+    const plan = await getUserPlan(req);
+    res.json({ plan });
+  } catch (err) {
+    res.json({ plan: "starter" });
+  }
 });
 
 

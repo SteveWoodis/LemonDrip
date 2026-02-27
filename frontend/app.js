@@ -3461,7 +3461,7 @@ try {
           const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ plan: window.USER_PLAN })
+            body: JSON.stringify({})
           });
 
           const out = await res.json();
@@ -4342,17 +4342,19 @@ async function uploadEventPermits(eventID) {
 
 window.addEventListener("DOMContentLoaded", async () => {
   try {
-    const res = await fetch(`${API_BASE}/api/config`);
-    const config = await res.json();
-    window.USER_PLAN = config.plan || "starter";
-    console.log("📋 Plan loaded:", window.USER_PLAN);
+    const res = await fetch(`${API_BASE}/api/me`);
+    if (res.ok) {
+      const data = await res.json();
+      window.USER_PLAN = data.plan || "starter";
+      console.log("📋 Plan loaded:", window.USER_PLAN);
+    }
   } catch (err) {
     console.warn("⚠️ Failed to fetch plan, defaulting to starter");
   }
 
   if (window.USER_PLAN === "starter") {
     const eventDashboard = document.getElementById("eventDashboardSection");
-      if (eventDashboard) {
+    if (eventDashboard) {
       eventDashboard.classList.add("hidden");
     }
     document.getElementById("btnDesign")?.remove();
