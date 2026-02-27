@@ -1698,3 +1698,32 @@ select:focus {
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--border);
 }
+
+/* Empty states */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--muted);
+}
+.empty-state h3 {
+  margin: 0.5rem 0 0.25rem;
+  color: var(--text);
+  font-size: 1.25rem;
+}
+.empty-state p {
+  margin: 0 0 1.25rem;
+}
+.empty-state-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+.empty-state-cell {
+  text-align: center;
+  padding: 1.5rem !important;
+  color: var(--muted);
+}
+.empty-state-inline {
+  text-align: center;
+  padding: 1rem 0;
+  color: var(--muted);
+}

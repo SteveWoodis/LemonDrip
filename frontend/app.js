@@ -700,7 +700,13 @@ function buildTableHTML(results, containerId = "searchResults") {
   container.innerHTML = "";
 
   if (!results.length) {
-    container.textContent = "No matching events found.";
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <h3>No events yet</h3>
+        <p>Create your first event to start tracking profit.</p>
+        <button class="btn-primary" onclick="openAddEventForUser()">➕ Add Your First Event</button>
+      </div>`;
     return;
   }
 
@@ -2852,8 +2858,9 @@ function renderLaborCard(event) {
   if (!rows.length) {
     html += `
       <tr>
-        <td colspan="6" class="muted">
-          No labor entries yet.
+        <td colspan="6" class="empty-state-cell">
+          <div class="empty-state-icon">👷</div>
+          No labor entries yet — add a shift below.
         </td>
       </tr>
     `;
@@ -3161,7 +3168,7 @@ function renderSupplyCostsCard(items = []) {
   `).join("");
 
   const html = `
-    ${rows || "<p>No supply costs recorded.</p>"}
+    ${rows || '<div class="empty-state-inline"><span class="empty-state-icon">📦</span> No supply costs recorded — add items below.</div>'}
 
     <div class="row">
       <input id="newSupplyName" placeholder="Item">
