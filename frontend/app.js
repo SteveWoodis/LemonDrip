@@ -931,14 +931,18 @@ async function manageSearch() {
   const date = document.getElementById("manageSearchDate").value.trim();
   const id = document.getElementById("manageSearchID").value.trim();
 
-  const q = name || date || id;
-  if (!q) {
+  if (!name && !date && !id) {
     showToast("Please enter a search term.", "warning");
     return;
   }
 
+  const params = new URLSearchParams();
+  if (name) params.set("name", name);
+  if (date) params.set("date", date);
+  if (id) params.set("id", id);
+
   try {
-    const res = await fetch(`${API_BASE}/api/events/search?q=${encodeURIComponent(q)}`);
+    const res = await fetch(`${API_BASE}/api/events?${params}`);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       console.error("Search error:", data);
@@ -946,7 +950,7 @@ async function manageSearch() {
       return;
     }
     const data = await res.json();
-    const results = Array.isArray(data) ? data : [];
+    const results = (data.Events || []).map(formatEvent);
     buildTableHTML(results, "manageResults");
   } catch (err) {
     console.error("Search network error:", err);
@@ -954,6 +958,9 @@ async function manageSearch() {
   }
 }
 
+function exportEventsCSV() {
+  window.location.href = `${API_BASE}/api/events/export/csv`;
+}
 
 //---------------
 // Add Company - get company information for potential SASS down the road.

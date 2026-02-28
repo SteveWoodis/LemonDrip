@@ -591,6 +591,57 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
+// -------------------------------
+// 📥 GET /api/events/export/csv
+// -------------------------------
+app.get("/api/events/export/csv", async (req, res) => {
+  try {
+    const rows = await dbAll(`
+      SELECT
+        e."eventID", e."eventName", e."eventDate", e."eventType",
+        e."numDays", e."coordinator", e."eventHost", e."eventLocation",
+        e."status", e."isFinalized", e."finalizedDate", e."eventFee",
+        COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
+        COALESCE(s."totalCollected", 0)
+          - COALESCE(x."healthDeptFee", 0) - COALESCE(x."eventFee", 0)
+          - COALESCE(x."mileageReimbursement", 0) - COALESCE(x."eventRunnerFees", 0)
+          - COALESCE(x."employeeBonus", 0) - COALESCE(x."coordinatorFee", 0)
+          - COALESCE(x."posFee", 0) - COALESCE(x."supplyFees", 0)
+          - COALESCE(x."laborFees", 0) AS "netProfit"
+      FROM "EventInfo" e
+      LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
+      LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
+      ORDER BY e."eventDate" DESC
+    `, []);
+
+    const columns = [
+      "eventID", "eventName", "eventDate", "eventType", "numDays",
+      "coordinator", "eventHost", "eventLocation", "status",
+      "isFinalized", "finalizedDate", "eventFee", "grossSales", "netProfit"
+    ];
+
+    const escape = (v) => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    };
+
+    let csv = columns.join(",") + "\n";
+    for (const row of rows) {
+      csv += columns.map((c) => escape(row[c])).join(",") + "\n";
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="venview-events.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error("❌ CSV export error:", err);
+    res.status(500).json({ error: "Failed to export events." });
+  }
+});
+
 
 // -------------------------------
 // 🔐 OAuth routes for Labor (Shifts)
