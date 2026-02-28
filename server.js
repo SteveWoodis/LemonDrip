@@ -545,26 +545,41 @@ app.put("/api/admin/plan", async (req, res) => {
 app.get("/api/events", async (req, res) => {
   try {
     const { name, date, id } = req.query;
-    let sql = `SELECT * FROM "EventInfo" WHERE 1=1`;
+    let sql = `SELECT e.*,
+      COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
+      COALESCE(s."totalCollected", 0)
+        - COALESCE(x."healthDeptFee", 0)
+        - COALESCE(x."eventFee", 0)
+        - COALESCE(x."mileageReimbursement", 0)
+        - COALESCE(x."eventRunnerFees", 0)
+        - COALESCE(x."employeeBonus", 0)
+        - COALESCE(x."coordinatorFee", 0)
+        - COALESCE(x."posFee", 0)
+        - COALESCE(x."supplyFees", 0)
+        - COALESCE(x."laborFees", 0) AS "netProfit"
+      FROM "EventInfo" e
+      LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
+      LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
+      WHERE 1=1`;
     const params = [];
     let paramIndex = 1;
 
     if (name) {
-      sql += ` AND "eventName" LIKE $${paramIndex++}`;
+      sql += ` AND e."eventName" LIKE $${paramIndex++}`;
       params.push(`%${name}%`);
     }
 
     if (date) {
-      sql += ` AND "eventDate" = $${paramIndex++}`;
+      sql += ` AND e."eventDate" = $${paramIndex++}`;
       params.push(date);
     }
 
     if (id) {
-      sql += ` AND "eventID" = $${paramIndex++}`;
+      sql += ` AND e."eventID" = $${paramIndex++}`;
       params.push(id);
     }
 
-    sql += ` ORDER BY "eventDate" DESC`;
+    sql += ` ORDER BY e."eventDate" DESC`;
 
     const rows = await dbAll(sql, params);
 
@@ -1218,7 +1233,6 @@ app.put("/api/events/:id",
 app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
  
   let refunds = 0;
-  let squareReportedTax = 0;
   let totalCollected = 0;
   let discounts = 0;
 

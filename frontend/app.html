@@ -13,13 +13,17 @@
   <meta property="og:url" content="https://venview.fly.dev/app.html">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 </head>
 <body>
 	<div class="app-shell">
   <header>
       <div class="brand">
-        <span class="brand-title">Venview Events</span>
-        <span class="brand-subtitle">Vendor Intelligence for Events</span>
+        <img src="images/venview-icon-lg.png" alt="VenView" class="brand-logo">
+        <div class="brand-text">
+          <span class="brand-title">VenView Events</span>
+          <span class="brand-subtitle">Vendor Intelligence for Events</span>
+        </div>
       </div>
 		  <div class="nav-buttons">
         <button class="hamburger" onclick="toggleMobileNav()" aria-label="Menu">
@@ -75,12 +79,14 @@
     </button>
 
       </div>
+      <div id="proAddEventFields">
     	<label for="permitFiles">Permit Documents:</label>
     	<input type="file" id="permitFiles" multiple>
     	<label>Square Location</label>
-    <select id="form_squareLocationId">
-      <option value="">Select Square Location…</option>
-    </select>
+        <select id="form_squareLocationId">
+          <option value="">Select Square Location…</option>
+        </select>
+      </div>
 
       <!-- 🧩 Dynamic Form Area -->
       <form id="eventForm" onsubmit="submitEvent(event); return false;" class="event-form">
@@ -212,8 +218,60 @@
 
     </section>
 
-
-
+  <!-- ⚡ Upgrade to Pro Modal -->
+  <div class="modal-overlay" id="upgradeOverlay">
+    <div class="upgrade-modal" id="upgradeModal">
+      <div class="modal-header">
+        <button class="modal-close" onclick="closeUpgradeModal()" aria-label="Close">✕</button>
+        <div class="pro-badge">⚡ Venview Pro</div>
+        <h2>Unlock the full picture.</h2>
+        <p>See every event's true profit, track trends over time, and make smarter decisions — faster.</p>
+      </div>
+      <div class="trigger-reason" id="triggerReason">
+        <span class="reason-icon">🔒</span>
+        <span id="triggerReasonText">This feature requires Venview Pro.</span>
+      </div>
+      <div class="modal-body">
+        <p class="features-label">Everything in Pro</p>
+        <ul class="feature-list">
+          <li>
+            <span class="feature-check fi-reports">✓</span>
+            <div><strong>Post-Event Reports</strong><br><span>Full profit &amp; loss breakdown, shareable and printable</span></div>
+          </li>
+          <li>
+            <span class="feature-check fi-events">✓</span>
+            <div><strong>Unlimited finalized events</strong><br><span>Track every market, festival, and pop-up you run</span></div>
+          </li>
+          <li>
+            <span class="feature-check fi-pdf">✓</span>
+            <div><strong>PDF export</strong><br><span>Download branded reports for your records or accountant</span></div>
+          </li>
+          <li>
+            <span class="feature-check fi-history">✓</span>
+            <div><strong>Full event history</strong><br><span>Compare events over time to find your most profitable markets</span></div>
+          </li>
+          <li>
+            <span class="feature-check fi-square">✓</span>
+            <div><strong>Square POS sync</strong><br><span>Pull real sales data — fees, refunds, and discounts included</span></div>
+          </li>
+          <li>
+            <span class="feature-check fi-design">✓</span>
+            <div><strong>Custom form templates</strong><br><span>Design event forms that match exactly how you work</span></div>
+          </li>
+        </ul>
+        <div class="starter-note">
+          <span class="lock-icon">📋</span>
+          <span>You're on <strong>Venview Starter</strong> — includes 1 finalized event and basic profit summary.</span>
+        </div>
+      </div>
+      <div class="modal-divider"></div>
+      <div class="modal-footer">
+        <button class="cta-btn cta-primary" onclick="handleUpgradeClick()">⚡ Upgrade to Pro</button>
+        <p class="price-note">Cancel anytime &nbsp;·&nbsp; No spreadsheets, no guesswork</p>
+        <button class="cta-btn cta-secondary" onclick="closeUpgradeModal()">Maybe later</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     function toggleMobileNav() {

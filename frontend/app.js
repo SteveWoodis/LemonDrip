@@ -27,6 +27,10 @@ supertokens.init({
 
 let authMode = "signin"; // "signin" or "signup"
 
+// ---------------------------
+// 🔐 SuperTokens Auth Mode
+// Allows user to toggle between Sign in and Sign Up
+// ---------------------------
 function toggleAuthMode(e) {
   e.preventDefault();
   authMode = authMode === "signin" ? "signup" : "signin";
@@ -45,6 +49,10 @@ function toggleAuthMode(e) {
   document.getElementById("authError").textContent = "";
 }
 
+// ---------------------------
+// 🔐 SuperTokens Authentication
+// Allows for passing of Username and Password
+// ---------------------------
 async function handleAuth(e) {
   e.preventDefault();
   const email = document.getElementById("authEmail").value.trim();
@@ -83,6 +91,9 @@ async function handleAuth(e) {
   }
 }
 
+// ---------------------------
+// 🔐 SuperTokens Auth - Logout
+// ---------------------------
 async function handleLogout() {
   try {
     await fetch("/auth/signout", { method: "POST" });
@@ -91,6 +102,7 @@ async function handleLogout() {
   }
   showUnauthenticatedUI();
 }
+
 
 async function checkSession() {
   const exists = await supertokens.doesSessionExist();
@@ -101,10 +113,29 @@ async function checkSession() {
   }
 }
 
-function showAuthenticatedUI() {
+async function showAuthenticatedUI() {
   document.getElementById("authSection").classList.add("hidden");
   document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnLogout")
     .forEach(b => { if (b) b.style.display = ""; });
+
+  // Fetch the user's plan from the server
+  try {
+    const res = await fetch(`${API_BASE}/api/me`);
+    if (res.ok) {
+      const data = await res.json();
+      window.USER_PLAN = data.plan || "starter";
+      console.log("📋 Plan loaded:", window.USER_PLAN);
+    }
+  } catch (err) {
+    console.warn("⚠️ Failed to fetch plan, defaulting to starter");
+  }
+
+  // Apply starter restrictions
+  if (window.USER_PLAN === "starter") {
+    document.getElementById("btnDesign")?.remove();
+    document.getElementById("btnCompany")?.remove();
+  }
+
   loadAppState();
 }
 
@@ -479,9 +510,6 @@ function normalizeEvent(e) {
     normalized.sales = {};
   }
 
-  normalized.sales.squareReportedTax = n(
-    srcSales.squareReportedTax ?? e.squareReportedTax
-  );
   normalized.sales.squareFees = n(
     srcSales.squareFees ?? e.squareFees
   );
@@ -520,9 +548,40 @@ function getFinalizedEventCount() {
 //---------------------
 //showUpgradeModal
 //---------------------
-function showUpgradeModal(title, message) {
-  showToast(`${title} ${message} Upgrade to Pro to continue.`, "warning", 5000);
+const upgradeContexts = {
+  report: { icon: '📊', text: 'Post-Event Reports are a Pro feature.' },
+  finalize: { icon: '✅', text: 'Starter includes 1 finalized event. Upgrade to track more.' },
+  history: { icon: '📋', text: 'Viewing finalized event history requires Pro.' },
+  pdf: { icon: '📄', text: 'PDF export is a Pro feature.' },
+};
+
+function showUpgradeModal(context) {
+  const ctx = upgradeContexts[context] || { icon: '🔒', text: context };
+  document.getElementById('triggerReasonText').textContent = ctx.text;
+  document.querySelector('.trigger-reason .reason-icon').textContent = ctx.icon;
+
+  const overlay = document.getElementById('upgradeOverlay');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
+
+function closeUpgradeModal() {
+  document.getElementById('upgradeOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleUpgradeClick() {
+  closeUpgradeModal();
+  window.location.href = '/upgrade';
+}
+
+// Close modal on overlay click or Escape key
+document.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('upgradeOverlay')) closeUpgradeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeUpgradeModal();
+});
 
 //
 // ---------------------------
@@ -626,6 +685,9 @@ function formatEvent(e) {
     eventID: n.eventID,
     eventName: n.eventName,
     eventDate: n.eventDate,
+    numDays: n.numDays,
+    grossSales: n.grossSales,
+    netProfit: n.netProfit,
     coordinator: n.coordinator,
     eventLocation: n.eventLocation,
     squareLocationId: n.squareLocationId,
@@ -712,7 +774,6 @@ function buildTableHTML(results, containerId = "searchResults") {
 
   const displayColumns = [
     { key: "eventID", label: "Event ID" },
-    { key: "companyID", label: "Company ID" },
     { key: "eventName", label: "Event Name" },
     { key: "eventDate", label: "Event Date" },
     { key: "numDays", label: "Num Days" },
@@ -741,7 +802,10 @@ function buildTableHTML(results, containerId = "searchResults") {
       const td = tr.insertCell();
       let val = event[col.key] ?? "";
 
-      if (col.key === "eventName" && event.isFinalized) {
+      if (col.key === "grossSales" || col.key === "netProfit") {
+        const num = Number(val) || 0;
+        td.textContent = `$${num.toFixed(2)}`;
+      } else if (col.key === "eventName" && event.isFinalized) {
         const spanName = document.createElement("span");
         spanName.textContent = val;
 
@@ -766,10 +830,7 @@ function buildTableHTML(results, containerId = "searchResults") {
           return;
         }
         if (window.USER_PLAN === "starter" && event.isFinalized === 1) {
-          showUpgradeModal(
-            "Event history is a Pro feature.",
-            "Upgrade to view finalized events and trends."
-          );
+          showUpgradeModal("history");
           return;
         }
 
@@ -946,6 +1007,13 @@ async function buildExpandedDetails(event) {
 
 // Load Square locations into the Add Event form
 async function loadSquareLocationsIntoForm() {
+  const proFields = document.getElementById("proAddEventFields");
+  if (window.USER_PLAN === "starter") {
+    if (proFields) proFields.style.display = "none";
+    return;
+  }
+  if (proFields) proFields.style.display = "";
+
   try {
     const res = await fetch(
       `${API_BASE}/api/square/locations`
@@ -973,29 +1041,42 @@ async function loadSquareLocationsIntoForm() {
 }
 
 async function editEvent(eventData) {
-  const info = eventData.EventInfo || eventData;
-
   if (!eventData) {
     showToast("No Event Data to load.", "warning");
     return;
   }
-  console.log("Editing Event.", eventData);
 
-  window.activeEvent = eventData;
-  window.activeeventID = eventData.eventID || eventData["Event ID"];
+  const eventID = eventData.eventID || eventData.EventID || eventData["Event ID"];
+  if (!eventID) {
+    showToast("Event ID missing — cannot edit.", "error");
+    return;
+  }
+
+  // Fetch the full event from the API so all fields are available
+  let info;
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}`);
+    if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+    info = await res.json();
+  } catch (err) {
+    console.error("❌ Failed to fetch full event for editing:", err);
+    showToast("Could not load event details.", "error");
+    return;
+  }
+
+  console.log("Editing Event.", info);
+
+  window.activeEvent = info;
+  window.activeeventID = eventID;
   window.isEditing = true;
-
-  console.log("What is the activeeventID? ", window.activeeventID);
 
   // Show Add/Edit form
   openAddEventForUser();
-
 
   // Determine active template
   const activeTemplateName =
     document.getElementById("templateSelect")?.value ||
     "Default Template";
-  console.log("Current template is:", activeTemplateName);
 
   const template = window.availableTemplates?.find(
     (t) => t.templateName === activeTemplateName
@@ -1015,30 +1096,32 @@ async function editEvent(eventData) {
     sqSelect.value = info.squareLocationId;
   }
 
-  // Prefill dynamic fields based on label
+  // Prefill dynamic fields from the full event data
   const formContainer = document.getElementById("eventForm");
   const inputs = formContainer.querySelectorAll(
     "input, select, textarea"
   );
 
-  console.log("Newly Edited Form:", inputs);
-
   inputs.forEach((input) => {
-    const labelKey = input.id
-      .replace(/^form_/, "")
-      .replace(/_/g, " ");
+    const rawKey = input.id.replace(/^form_/, "");
+    const labelKey = rawKey.replace(/_/g, " ");
+    // Map label to canonical DB key (e.g. "Event_Location" → "eventLocation")
+    const dbKey = CANONICAL_LABEL_TO_DBKEY[labelKey] || CANONICAL_LABEL_TO_DBKEY[rawKey];
+    // Try canonical DB key first, then exact match, then case-insensitive
     const match = Object.keys(info).find(
-      (k) => k.toLowerCase() === labelKey.toLowerCase()
+      (k) => (dbKey && k === dbKey) || k === rawKey || k.toLowerCase() === rawKey.toLowerCase()
     );
     if (!match) return;
 
     const val = info[match];
+    if (val === null || val === undefined) return;
+
     if (input.multiple && Array.isArray(val)) {
       Array.from(input.options).forEach((opt) => {
         opt.selected = val.includes(opt.value);
       });
     } else {
-      input.value = val ?? "";
+      input.value = val;
     }
   });
 }
@@ -1231,10 +1314,7 @@ async function submitEvent(e) {
   if (window.USER_PLAN === "starter") {
     const finalizedCount = getFinalizedEventCount();
     if (!window.isEditing && finalizedCount >= 1) {
-      showUpgradeModal(
-        "You’ve completed your first event.",
-        "Upgrade to Pro to analyze unlimited events."
-      );
+      showUpgradeModal("finalize");
       return;
     }
   }
@@ -3455,10 +3535,7 @@ try {
       if (window.USER_PLAN === "starter" && event.isFinalized === 0) {
         const finalizedCount = getFinalizedEventCount();
         if (finalizedCount >= 1) {
-          showUpgradeModal(
-            "Starter includes 1 finalized event.",
-            "Upgrade to Pro to finalize more events."
-          );
+          showUpgradeModal("finalize");
           return;
         }
       }
@@ -3475,10 +3552,7 @@ try {
           console.log("Finalize Limit", out);
 
           if (res.status === 403 && out.code === "FINALIZE_LIMIT_REACHED") {
-            showUpgradeModal(
-              "Starter includes 1 finalized event.",
-              "Upgrade to Pro to finalize more events."
-            );
+            showUpgradeModal("finalize");
             return;
           }
 
@@ -3498,7 +3572,7 @@ try {
     reportBtn.classList.add("btn-primary");
     reportBtn.addEventListener("click", () => {
       if (window.USER_PLAN !== "pro") {
-        showStarterUpgrade("Post-Event Reports are a Pro feature.");
+        showStarterUpgrade("report");
         return;
       }
       openPostEventReport(event);
@@ -3830,10 +3904,7 @@ function normalizeReportPayload(raw) {
 
 async function openPostEventReport(eventData) {
   if (window.USER_PLAN === "starter") {
-    showUpgradeModal(
-      "Post-Event Reports are a Pro feature.",
-      "Upgrade to unlock full reports and comparisons."
-    );
+    showUpgradeModal("report");
     return;
   }
   try {
@@ -4125,10 +4196,7 @@ function renderTable(rows) {
 
 async function downloadPostEventPDF() {
   if (window.USER_PLAN === "starter") {
-  showUpgradeModal(
-    "PDF reports are a Pro feature.",
-    "Upgrade to export and share event reports."
-  );
+  showUpgradeModal("pdf");
   return;
   }
 
@@ -4348,6 +4416,8 @@ async function uploadEventPermits(eventID) {
 
 
 window.addEventListener("DOMContentLoaded", async () => {
+  const exists = await supertokens.doesSessionExist();
+  if (exists){
   try {
     const res = await fetch(`${API_BASE}/api/me`);
     if (res.ok) {
@@ -4367,6 +4437,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btnDesign")?.remove();
     document.getElementById("btnCompany")?.remove();
   }
+}
 });
 
 
@@ -4626,12 +4697,8 @@ function loadRecentActivity() {
   `;
 }
 
-function showStarterUpgrade(reason = "") {
-  const base = "Starter includes 1 finalized event.";
-  const perks = "Pro unlocks unlimited events, reports, and exports.";
-  const message = reason ? `${reason}\n\n${base}\n${perks}` : `${base}\n${perks}`;
-
-  showUpgradeModal("Upgrade to Pro", message);
+function showStarterUpgrade(context = "report") {
+  showUpgradeModal(context);
 }
 window.addEventListener("DOMContentLoaded", async () => {
   await populateTemplateDropdown();
