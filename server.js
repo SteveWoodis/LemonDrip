@@ -21,7 +21,7 @@ const ST_PORT = process.env.PORT || 8080;
 supertokens.init({
   framework: "express",
   supertokens: {
-    connectionURI: process.env.SUPERTOKENS_URI || "https://venview.aws.supertokens.io",
+    connectionURI: process.env.SUPERTOKENS_CONNECTION_URI || "https://venview.aws.supertokens.io",
     apiKey: process.env.SUPERTOKENS_API_KEY,
   },
   appInfo: {
@@ -2178,6 +2178,22 @@ app.delete("/api/additional-fees/:id", async (req, res) => {
 });
 
 
+// Recalculate supplyFees in EventExpenses from EventSupplies
+async function recalcSupplyFees(eventID) {
+  const row = await dbGet(
+    `SELECT COALESCE(SUM("unitCost" * "quantityUsed"), 0) AS "total"
+     FROM "EventSupplies" WHERE "eventID" = $1`,
+    [eventID]
+  );
+  const supplyFees = Number(row?.total) || 0;
+  await dbRun(
+    `INSERT INTO "EventExpenses" ("eventID", "supplyFees")
+     VALUES ($1, $2)
+     ON CONFLICT ("eventID") DO UPDATE SET "supplyFees" = $2`,
+    [eventID, supplyFees]
+  );
+}
+
 app.post("/api/events/:eventID/supplies", async (req, res) => {
   try {
     // 1️⃣ Validate eventID
@@ -2224,6 +2240,9 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
       `,
       [insertResult.rows[0].id]
     );
+
+    // 5️⃣ Auto-recalculate supplyFees in EventExpenses
+    await recalcSupplyFees(eventID);
 
     res.json(newSupply);
 
@@ -2294,6 +2313,9 @@ app.put("/api/supplies/:id", async (req, res) => {
       [supplyID]
     );
 
+    // 6️⃣ Auto-recalculate supplyFees in EventExpenses
+    await recalcSupplyFees(updatedSupply.eventID);
+
     res.json(updatedSupply);
 
   } catch (err) {
@@ -2339,7 +2361,10 @@ app.delete("/api/supplies/:id", async (req, res) => {
       return res.status(404).json({ error: "Supply item not found" });
     }
 
-    // 4️⃣ Return minimal confirmation
+    // 4️⃣ Auto-recalculate supplyFees in EventExpenses
+    await recalcSupplyFees(existing.eventID);
+
+    // 5️⃣ Return minimal confirmation
     res.json({
       success: true,
       deletedSupplyId: supplyID,

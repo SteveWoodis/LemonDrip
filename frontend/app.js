@@ -2691,7 +2691,7 @@ const discountTotal = discounts.reduce(
       <div class="ledger-row"><span class="ledger-label">Mileage Reimbursement</span><span class="ledger-amount">-${fmt(expenses.mileageReimbursement)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Employee Bonus</span><span class="ledger-amount">-${fmt(expenses.employeeBonus)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Event Runner Fees</span><span class="ledger-amount">-${fmt(expenses.eventRunnerFees)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Supply Costs</span><span class="ledger-amount">-${fmt(expenses.supplyFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Supply Fees</span><span class="ledger-amount">-${fmt(expenses.supplyFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Labor Fees</span><span class="ledger-amount">-${fmt(expenses.laborFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Coordinator Fee</span><span class="ledger-amount">-${fmt(coordinatorFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
@@ -2854,7 +2854,7 @@ function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
       <span class="auto-labor-fees">${fmtMoney(expenses.laborFees)}</span>
     </div>
     <div>Supply Fees (auto): ${fmtMoney(expenses.supplyFees)}</div>
-    <div>State Food Tax (8.04%) (auto): ${fmtMoney(stateFoodTax)}</div>
+    <div>State Food Tax (auto): ${fmtMoney(stateFoodTax)}</div>
     <hr>
     <strong>
       Total Expenses:
@@ -3255,7 +3255,7 @@ function renderSupplyCostsCard(items = []) {
   `).join("");
 
   const html = `
-    ${rows || '<div class="empty-state-inline"><span class="empty-state-icon">📦</span> No supply costs recorded — add items below.</div>'}
+    ${rows || '<div class="empty-state-inline"><span class="empty-state-icon">📦</span> No supply fees recorded — add items below.</div>'}
 
     <div class="row">
       <input id="newSupplyName" placeholder="Item">
@@ -3265,14 +3265,14 @@ function renderSupplyCostsCard(items = []) {
     </div>
 
     <hr>
-    <div><strong>Total Supply Cost:</strong> <span id="supplyTotal">${fmt(total)}</span></div>
+    <div><strong>Total Supply Fees:</strong> <span id="supplyTotal">${fmt(total)}</span></div>
 
     <div class="supply-actions">
-      <button class="btn-primary" onclick="withSpinner(this, calculateSupplyCosts)">🧮 Calculate Supply Costs</button>
+      <button class="btn-primary" onclick="withSpinner(this, calculateSupplyCosts)">🧮 Calculate Supply Fees</button>
     </div>
   `;
 
-  return createCollapsibleCard("Supply Costs", html);
+  return createCollapsibleCard("Supply Fees", html);
 }
 
 async function addSupply() {
@@ -3299,33 +3299,12 @@ async function addSupply() {
   const newRow = await res.json();
   if (!res.ok) {
     console.error("❌ Failed to add supply:", newRow);
+    showToast("Failed to add supply item.", "error");
     return;
   }
 
-  // Append new row into the card without reloading
-  const card = document.getElementById("supplycostsCard");
-  const firstRow = card?.querySelector(".row");
-  const noItems = card?.querySelector("p");
-  if (noItems) noItems.remove();
-
-  const rowHTML = `
-    <div class="row supply-row" data-supply-id="${newRow.id}">
-      <input type="text" class="supply-name" value="${newRow.itemName}">
-      <input type="number" class="supply-unit-cost" step="0.01" value="${newRow.unitCost}">
-      <input type="number" class="supply-qty" step="1" value="${newRow.quantityUsed}">
-      <span class="supply-line-total">${fmt(newRow.totalCost || 0)}</span>
-      <button onclick="deleteSupply(${newRow.id})">🗑</button>
-    </div>
-  `;
-
-  if (firstRow) {
-    firstRow.insertAdjacentHTML("beforebegin", rowHTML);
-  }
-
-  // Clear inputs
-  document.getElementById("newSupplyName").value = "";
-  document.getElementById("newSupplyUnitCost").value = "";
-  document.getElementById("newSupplyQty").value = "";
+  showToast("Supply added!", "success");
+  await reloadEventDashboard();
 }
 
 
@@ -4082,7 +4061,7 @@ function renderPostEventReport(report) {
       employeeBonus: "Employee Bonus",
       coordinatorFee: "Coordinator Fee",
       posFee: "POS Fee",
-      supplyFees: "Supply Costs",
+      supplyFees: "Supply Fees",
       laborFees: "Labor Fees"
     };
 
@@ -4334,7 +4313,7 @@ async function downloadPostEventPDF() {
       employeeBonus: "Employee Bonus",
       coordinatorFee: "Coordinator Fee",
       posFee: "POS Fee",
-      supplyFees: "Supply Costs",
+      supplyFees: "Supply Fees",
       laborFees: "Labor Fees"
     };
 
