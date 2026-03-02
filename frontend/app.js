@@ -124,6 +124,7 @@ async function showAuthenticatedUI() {
     if (res.ok) {
       const data = await res.json();
       window.USER_PLAN = data.plan || "starter";
+      window.USER_ID = data.userId || "";
       console.log("📋 Plan loaded:", window.USER_PLAN);
     }
   } catch (err) {
@@ -134,6 +135,11 @@ async function showAuthenticatedUI() {
   if (window.USER_PLAN === "starter") {
     document.getElementById("btnDesign")?.remove();
     document.getElementById("btnCompany")?.remove();
+  }
+
+  // Show welcome modal on first login
+  if (window.USER_ID && !localStorage.getItem(`venview_welcome_seen_${window.USER_ID}`)) {
+    showWelcomeModal();
   }
 
   loadAppState();
@@ -214,6 +220,33 @@ function showInlineError(containerId, message, onRetry) {
   if (onRetry) {
     el.querySelector(".inline-error-retry")?.addEventListener("click", onRetry);
   }
+}
+
+// ---------------------------
+// 📝 Post-Finalize Feedback Banner
+// ---------------------------
+function showPostFinalizeFeedbackBanner() {
+  if (localStorage.getItem(`venview_feedback_dismissed_${window.USER_ID || ""}`)) return;
+
+  const existing = document.getElementById("feedback-banner");
+  if (existing) return;
+
+  const banner = document.createElement("div");
+  banner.id = "feedback-banner";
+  banner.className = "feedback-banner";
+  banner.innerHTML = `
+    <span>📝 How's your beta experience? <a href="https://docs.google.com/forms/d/e/1FAIpQLSfS_BRqEMyCYWdAEwdKY4EgpNxQkksuV-m04U4Orrvl9GLdsg/viewform?usp=publish-editor" target="_blank" rel="noopener">Share your feedback</a> — 5 quick questions!</span>
+    <button class="feedback-banner-close" aria-label="Dismiss">&times;</button>
+  `;
+
+  banner.querySelector(".feedback-banner-close").addEventListener("click", () => {
+    localStorage.setItem(`venview_feedback_dismissed_${window.USER_ID || ""}`, "true");
+    banner.classList.remove("feedback-banner-visible");
+    banner.addEventListener("transitionend", () => banner.remove());
+  });
+
+  document.body.appendChild(banner);
+  requestAnimationFrame(() => banner.classList.add("feedback-banner-visible"));
 }
 
 // -----------------------------
@@ -580,7 +613,34 @@ document.addEventListener('click', (e) => {
   if (e.target === document.getElementById('upgradeOverlay')) closeUpgradeModal();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeUpgradeModal();
+  if (e.key === 'Escape') {
+    closeUpgradeModal();
+    closeWelcomeModal();
+  }
+});
+
+//---------------------
+// Welcome Beta Modal
+//---------------------
+function showWelcomeModal() {
+  const overlay = document.getElementById('welcomeOverlay');
+  if (overlay) {
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeWelcomeModal() {
+  const overlay = document.getElementById('welcomeOverlay');
+  if (overlay) {
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  if (window.USER_ID) localStorage.setItem(`venview_welcome_seen_${window.USER_ID}`, "true");
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('welcomeOverlay')) closeWelcomeModal();
 });
 
 //
@@ -3543,6 +3603,7 @@ try {
           }
 
           showToast("Event finalized!", "success");
+          showPostFinalizeFeedbackBanner();
           await reloadEventDashboard();
 
         } catch (err) {
@@ -4409,6 +4470,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (res.ok) {
       const data = await res.json();
       window.USER_PLAN = data.plan || "starter";
+      window.USER_ID = data.userId || "";
       console.log("📋 Plan loaded:", window.USER_PLAN);
     }
   } catch (err) {

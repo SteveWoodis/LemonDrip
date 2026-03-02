@@ -84,6 +84,16 @@ async function getUserPlan(req) {
   return plan;
 }
 
+async function assertOwnsEvent(req, eventID) {
+  const userId = req.session.getUserId();
+  const row = await dbGet(
+    `SELECT 1 FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
+    [eventID, userId]
+  );
+  if (!row) return false;
+  return true;
+}
+
 function requirePlan(minPlan) {
   return async (req, res, next) => {
     try {
@@ -192,6 +202,9 @@ async function initDb() {
         "state" TEXT,
         "zipCode" TEXT
       );
+
+      ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "userId" TEXT;
+      CREATE INDEX IF NOT EXISTS "EventInfo_userId_idx" ON "EventInfo" ("userId");
 
       CREATE TABLE IF NOT EXISTS "SalesSummary" (
         "SalesID" SERIAL PRIMARY KEY,
@@ -544,6 +557,7 @@ app.put("/api/admin/plan", async (req, res) => {
 // -------------------------------
 app.get("/api/events", async (req, res) => {
   try {
+    const userId = req.session.getUserId();
     const { name, date, id } = req.query;
     let sql = `SELECT e.*,
       COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
@@ -560,9 +574,9 @@ app.get("/api/events", async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
-      WHERE 1=1`;
-    const params = [];
-    let paramIndex = 1;
+      WHERE e."userId" = $1`;
+    const params = [userId];
+    let paramIndex = 2;
 
     if (name) {
       sql += ` AND e."eventName" LIKE $${paramIndex++}`;
@@ -596,6 +610,7 @@ app.get("/api/events", async (req, res) => {
 // -------------------------------
 app.get("/api/events/export/csv", async (req, res) => {
   try {
+    const userId = req.session.getUserId();
     const rows = await dbAll(`
       SELECT
         e."eventID", e."eventName", e."eventDate", e."eventType",
@@ -611,8 +626,9 @@ app.get("/api/events/export/csv", async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
+      WHERE e."userId" = $1
       ORDER BY e."eventDate" DESC
-    `, []);
+    `, [userId]);
 
     const columns = [
       "eventID", "eventName", "eventDate", "eventType", "numDays",
@@ -752,6 +768,7 @@ app.get("/api/events/search", async (req, res) => {
   if (!q) return res.json([]);
 
   try {
+    const userId = req.session.getUserId();
     const like = `%${q}%`;
 
     // Query information_schema for column names (replaces PRAGMA table_info)
@@ -766,7 +783,7 @@ app.get("/api/events/search", async (req, res) => {
       'eventType', 'notes', 'customFields'
     ].filter(c => colNames.includes(c));
 
-    let paramIndex = 1;
+    let paramIndex = 2;
     const conditions = searchCols.map(c => `"${c}" LIKE $${paramIndex++}`);
     if (colNames.includes('eventID')) {
       conditions.push(`"eventID"::TEXT LIKE $${paramIndex++}`);
@@ -774,11 +791,11 @@ app.get("/api/events/search", async (req, res) => {
 
     const sql = `
       SELECT * FROM "EventInfo"
-      WHERE ${conditions.join(' OR ')}
+      WHERE "userId" = $1 AND (${conditions.join(' OR ')})
       ORDER BY "eventDate" DESC
       LIMIT 50
     `;
-    const params = conditions.map(() => like);
+    const params = [userId, ...conditions.map(() => like)];
 
     const rows = await dbAll(sql, params);
     res.json(rows);
@@ -795,6 +812,9 @@ app.put("/api/events/:eventID/manual-sales", async (req, res) => {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
     }
 
     const grossSales = Number(req.body.grossSales) || 0;
@@ -828,7 +848,10 @@ app.put("/api/events/:eventID/manual-sales", async (req, res) => {
 // Get permits for an event
 app.get("/api/events/:eventID/permits", async (req, res) => {
   try {
-    const eventID = req.params.eventID;
+    const eventID = Number(req.params.eventID);
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
     const rows = await dbAll(
       `SELECT "permitID", "fileName", "originalName", "mimeType", "uploadedAt"
        FROM "EventPermits"
@@ -847,10 +870,11 @@ app.get("/api/events/:eventID/permits", async (req, res) => {
 // -------------------------------
 app.get("/api/events/:id", async (req, res) => {
   try {
+    const userId = req.session.getUserId();
     const id = req.params.id;
     const row = await dbGet(
-      `SELECT * FROM "EventInfo" WHERE "eventID" = $1`,
-      [id]
+      `SELECT * FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
+      [id, userId]
     );
     if (!row) {
       return res.status(404).json({ error: "Event not found." });
@@ -1101,11 +1125,12 @@ app.post("/api/events",
   handleValidationErrors,
   async (req, res) => {
   try {
+    const userId = req.session.getUserId();
     const e = coerceEvent(req.body);
 
     const sql = `
       INSERT INTO "EventInfo" (
-        "eventName", "eventDate", "applicationDate", "finalizedDate",
+        "userId", "eventName", "eventDate", "applicationDate", "finalizedDate",
         "eventFee", "squareLocationId", "time", "employees",
         "eventRating", "eventHost", "notes", "status", "eventType",
         "numDays", "coordinator", "grossSales", "tips", "netSales",
@@ -1115,12 +1140,13 @@ app.post("/api/events",
         "cash", "card", "wallet", "Other", "cashApp",
         "taxOverride", "state", "zipCode"
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-              $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
+              $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
       RETURNING "eventID"
     `;
 
     const params = [
+      userId,
       e.eventName,
       e.eventDate,
       e.applicationDate,
@@ -1194,6 +1220,7 @@ app.put("/api/events/:id",
   handleValidationErrors,
   async (req, res) => {
   try {
+    const userId = req.session.getUserId();
     const id = req.params.id;
     const e = coerceEvent(req.body);
 
@@ -1208,7 +1235,7 @@ app.put("/api/events/:id",
         "giftCardSales"=$25,
         "cash"=$26, "card"=$27, "wallet"=$28, "Other"=$29, "cashApp"=$30,
         "taxOverride"=$31, "state"=$32, "zipCode"=$33
-      WHERE "eventID"=$34
+      WHERE "eventID"=$34 AND "userId"=$35
     `;
 
     const params = [
@@ -1245,7 +1272,8 @@ app.put("/api/events/:id",
       e.taxOverride ?? null,
       e.state,
       e.zipCode ?? null,
-      id
+      id,
+      userId
     ];
 
     const result = await pool.query(sql, params);
@@ -1294,6 +1322,9 @@ app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
 
   try {
     const eventID = Number(req.params.eventID);
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
 
    const ev = await dbGet(
   `
@@ -1605,6 +1636,9 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     if (!eventID || !Array.isArray(laborRows)) {
       return res.status(400).json({ error: "Invalid payload" });
     }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
 
     // Run everything atomically
     const client = await pool.connect();
@@ -1670,6 +1704,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
 // -------------------------------
 app.put("/api/events/:id/finalize", async (req, res) => {
   try {
+    const userId = req.session.getUserId();
     const eventID = Number(req.params.id);
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid event id." });
@@ -1678,7 +1713,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // --------------------------------------------------
     // 1️⃣ Event existence check
     // --------------------------------------------------
-    const event = await dbGet(`SELECT * FROM "EventInfo" WHERE "eventID" = $1`, [eventID]);
+    const event = await dbGet(`SELECT * FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`, [eventID, userId]);
     if (!event) {
       return res.status(404).json({ error: "Event not found." });
     }
@@ -1689,8 +1724,8 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     const plan = await getUserPlan(req);
     if (plan === "starter") {
       const countRow = await dbGet(
-        `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1`,
-        []
+        `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1 AND "userId" = $1`,
+        [userId]
       );
       const count = countRow?.count ?? 0;
 
@@ -1754,9 +1789,9 @@ app.put("/api/events/:id/finalize", async (req, res) => {
         "eventScore" = $3,
         "isFinalized" = 1,
         "finalizedDate" = NOW()
-      WHERE "eventID" = $4
+      WHERE "eventID" = $4 AND "userId" = $5
       `,
-      [internalScore, externalScore, eventScore, eventID]
+      [internalScore, externalScore, eventScore, eventID, userId]
     );
 
     if (upd.rowCount === 0) {
@@ -1789,11 +1824,7 @@ app.put("/api/events/:id/adjustments", async (req, res) => {
     if (!eventID) {
       return res.status(400).json({ error: "Invalid eventID." });
     }
-
-    // Ensure event exists
-    const exists = await dbGet('SELECT 1 FROM "EventInfo" WHERE "eventID" = $1', [eventID]);
-
-    if (!exists) {
+    if (!(await assertOwnsEvent(req, eventID))) {
       return res.status(404).json({ error: "Event not found." });
     }
 
@@ -1829,14 +1860,7 @@ app.put("/api/events/:id/ratings", async (req, res) => {
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Invalid event ID." });
     }
-
-    // 1️⃣ Check event exists
-    const exists = await dbGet(
-      'SELECT 1 FROM "EventInfo" WHERE "eventID" = $1',
-      [id]
-    );
-
-    if (!exists) {
+    if (!(await assertOwnsEvent(req, id))) {
       return res.status(404).json({ error: "Event not found." });
     }
 
@@ -1900,6 +1924,9 @@ app.post("/api/events/:eventID/employees", async (req, res) => {
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
     }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
     if (!employeeID) {
       return res.status(400).json({ error: "employeeID required" });
     }
@@ -1944,6 +1971,10 @@ app.post("/api/events/:eventID/employees", async (req, res) => {
 // ---------------------------------------------
 app.delete("/api/events/:eventID/employees/:shiftID", async (req, res) => {
   try {
+    const eventID = Number(req.params.eventID);
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
     const shiftID = Number(req.params.shiftID);
 
     if (!Number.isFinite(shiftID)) {
@@ -1974,13 +2005,14 @@ app.delete("/api/events/:eventID/employees/:shiftID", async (req, res) => {
 // DELETE /api/events/:id
 // -------------------------------
 app.delete("/api/events/:id", async (req, res) => {
+  const userId = req.session.getUserId();
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid eventID" });
   }
 
   try {
-    const event = await dbGet(`SELECT "eventID" FROM "EventInfo" WHERE "eventID" = $1`, [id]);
+    const event = await dbGet(`SELECT "eventID" FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`, [id, userId]);
     if (!event) return res.status(404).json({ error: "Event not found." });
 
     const client = await pool.connect();
@@ -1997,7 +2029,7 @@ app.delete("/api/events/:id", async (req, res) => {
         await client.query(`DELETE FROM "${table}" WHERE "eventID" = $1`, [id]).catch(() => {});
       }
 
-      await client.query('DELETE FROM "EventInfo" WHERE "eventID" = $1', [id]);
+      await client.query('DELETE FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2', [id, userId]);
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -2021,6 +2053,9 @@ app.delete("/api/events/:id", async (req, res) => {
 app.get("/api/events/:id/report", async (req, res) => {
   try {
     const eventID = req.params.id;
+    const userId = req.session.getUserId();
+    const owns = await assertOwnsEvent(req, Number(eventID));
+    if (!owns) return res.status(404).json({ error: "Event not found." });
 
     // Build the unified report (already includes customFields, labor, supplies, sales, discounts)
     const report = await buildPostEventReport(eventID);
@@ -2039,6 +2074,9 @@ app.put("/api/events/:eventID/expenses", async (req, res) => {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
     }
 
     const allowedFields = [
@@ -2090,6 +2128,9 @@ app.post("/api/events/:eventID/additional-fees", async (req, res) => {
 
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
     }
     if (!feeName) {
       return res.status(400).json({ error: "feeName required" });
@@ -2200,6 +2241,9 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
     }
 
     // 2️⃣ Extract & validate payload
@@ -2385,6 +2429,9 @@ app.get("/api/events/:eventID/labor", async (req, res) => {
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
     }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
 
     const rows = await dbAll(
       `
@@ -2420,6 +2467,9 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     if (!eventID) {
       return res.status(400).json({ error: "Invalid eventID" });
     }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
 
     // 1️⃣ Fetch Square timecards
     const timecards = await fetchSquareTimecardsForEvent(eventID);
@@ -2453,6 +2503,9 @@ app.put("/api/square/labor/:eventID", requirePlan("pro"), async (req, res) => {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid eventID" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
     }
 
     // 1️⃣ Verify event + Square location

@@ -273,6 +273,80 @@
     </div>
   </div>
 
+  <!-- 🟡 Welcome Beta Modal -->
+  <div class="modal-overlay" id="welcomeOverlay">
+    <div class="welcome-modal">
+
+      <!-- Section 1: Welcome -->
+      <div class="welcome-header">
+        <div class="welcome-badge">🧪 Beta</div>
+        <h2>Welcome to VenView Beta</h2>
+        <p class="welcome-subtitle">You're helping us build the simplest way for event vendors to know if they actually made money.</p>
+        <p class="welcome-note">This beta version is focused on one thing:<br><strong>Getting you from event → to true profit in minutes.</strong></p>
+        <p class="welcome-note">Some features may evolve. Your feedback will shape the final product.</p>
+      </div>
+
+      <!-- Section 2: Steps -->
+      <div class="welcome-body">
+        <p class="welcome-section-label">Get started in 3 steps</p>
+        <div class="welcome-steps">
+
+          <div class="welcome-step">
+            <div class="step-number">1</div>
+            <h3>Add a Real Event</h3>
+            <p>Use a past event from the last 30 days.</p>
+            <ul>
+              <li>Farmers Market</li>
+              <li>Catering job</li>
+              <li>School event</li>
+              <li>Festival</li>
+            </ul>
+            <button class="btn-primary welcome-action" onclick="closeWelcomeModal(); openAddEventForUser()">Create Your First Event</button>
+          </div>
+
+          <div class="welcome-step">
+            <div class="step-number">2</div>
+            <h3>Connect &amp; Sync Sales</h3>
+            <p>If you use Square, connect your account. VenView will pull your real sales and tax data automatically.</p>
+            <p>If not, enter totals manually.</p>
+            <button class="btn-secondary welcome-action" onclick="closeWelcomeModal(); navigateTo('manageSection')">Sync Sales</button>
+          </div>
+
+          <div class="welcome-step">
+            <div class="step-number">3</div>
+            <h3>Add Your Costs</h3>
+            <p>Enter labor, supplies, event fees, permits, and food tax. Then open your Profit Summary.</p>
+            <button class="btn-secondary welcome-action" onclick="closeWelcomeModal(); navigateTo('manageSection')">View Profit Summary</button>
+          </div>
+
+        </div>
+
+        <!-- Section 3: What You'll Discover -->
+        <div class="welcome-discover">
+          <h3>What You'll Discover</h3>
+          <ul>
+            <li>✅ Your true net profit (after tax + fees)</li>
+            <li>✅ Your real labor cost impact</li>
+            <li>✅ Whether the event was worth it</li>
+            <li>✅ Where you lost margin</li>
+          </ul>
+        </div>
+
+        <!-- Section 5: Guardrails -->
+        <div class="welcome-guardrails">
+          <p>This is a beta version. Please report bugs. Financial calculations are based on the data entered or synced. If something looks incorrect, tell us.</p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="welcome-footer">
+        <button class="cta-btn cta-primary" onclick="closeWelcomeModal(); openAddEventForUser()">🚀 Let's Go — Create My First Event</button>
+        <button class="cta-btn cta-secondary" onclick="closeWelcomeModal()">I'll explore on my own</button>
+      </div>
+
+    </div>
+  </div>
+
   <script>
     function toggleMobileNav() {
       document.getElementById("headerButtonsDrawer").classList.toggle("is-open");
