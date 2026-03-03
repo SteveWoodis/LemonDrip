@@ -1125,12 +1125,18 @@ app.post("/api/events",
   handleValidationErrors,
   async (req, res) => {
   try {
-    const userId = req.session.getUserId();
-    const e = coerceEvent(req.body);
+   const userId = req.session.getUserId();
+   const e = coerceEvent(req.body);
 
-    const sql = `
-      INSERT INTO "EventInfo" (
-        "userId", "eventName", "eventDate", "applicationDate", "finalizedDate",
+   // Starter users cannot create multi-day events
+   const plan = await getUserPlan(req);
+   if (plan === "starter" && Number(e.numDays) > 1) {
+     e.numDays = 1;
+   }
+
+   const sql = `
+     INSERT INTO "EventInfo" (
+       "userId", "eventName", "eventDate", "applicationDate", "finalizedDate",
         "eventFee", "squareLocationId", "time", "employees",
         "eventRating", "eventHost", "notes", "status", "eventType",
         "numDays", "coordinator", "grossSales", "tips", "netSales",
@@ -1223,6 +1229,12 @@ app.put("/api/events/:id",
     const userId = req.session.getUserId();
     const id = req.params.id;
     const e = coerceEvent(req.body);
+
+    // Starter users cannot set multi-day events
+    const plan = await getUserPlan(req);
+    if (plan === "starter" && Number(e.numDays) > 1) {
+      e.numDays = 1;
+    }
 
     const sql = `
       UPDATE "EventInfo" SET
@@ -1328,7 +1340,7 @@ app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
 
    const ev = await dbGet(
   `
-  SELECT "eventDate", "squareLocationId"
+  SELECT "eventDate", "squareLocationId", "numDays"
   FROM "EventInfo"
   WHERE "eventID" = $1
   `,
@@ -1345,10 +1357,12 @@ app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
     const token = process.env.SQUARE_ACCESS_TOKEN;
 
     // ─────────────────────────────────────────────
-    // 1️⃣ DATE WINDOWS
+    // 1️⃣ DATE WINDOWS (supports multi-day events)
     // ─────────────────────────────────────────────
+    const numDays = Math.max(1, Number(ev.numDays) || 1);
     const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
     const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
+    localEnd.setDate(localEnd.getDate() + (numDays - 1));
 
     const orderStartISO = localStart.toISOString();
     const orderEndISO   = localEnd.toISOString();
@@ -1360,6 +1374,7 @@ app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
 
     console.log("orderStart", orderStartISO);
     console.log("orderEnd", orderEndISO);
+    if (numDays > 1) console.log(`📅 Multi-day event: ${numDays} days`);
 
     // ─────────────────────────────────────────────
     // 2️⃣ ORDERS (ITEMIZED SALES)
