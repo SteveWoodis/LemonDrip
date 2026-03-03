@@ -586,6 +586,7 @@ const upgradeContexts = {
   finalize: { icon: '✅', text: 'Starter includes 1 finalized event. Upgrade to track more.' },
   history: { icon: '📋', text: 'Viewing finalized event history requires Pro.' },
   pdf: { icon: '📄', text: 'PDF export is a Pro feature.' },
+  multiday: { icon: '📅', text: 'Multi-day events are a Pro feature. Upgrade to track festivals and multi-day markets.' },
 };
 
 function showUpgradeModal(context) {
@@ -1526,6 +1527,11 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
     }
   });
 
+  // Starter users: clamp numDays to 1
+  if (window.USER_PLAN !== "pro" && Number(canonical.numDays) > 1) {
+    canonical.numDays = 1;
+  }
+
   // --------------------------------------------------
   // 7️⃣ Final payload (immutable boundary)
   // --------------------------------------------------
@@ -2066,6 +2072,42 @@ console.log("✅ fields resolved:", fields);
         .replace(/\s+/g, "_")
         .replace(/[^a-zA-Z0-9_]/g, "");
       input.id = "form_" + safeLabel;
+
+      // Multi-day gating: Starter users locked to 1 day
+      if (/^number\s*of\s*days$/i.test(field.label)) {
+        if (window.USER_PLAN !== "pro") {
+          input.value = 1;
+          input.disabled = true;
+          input.title = "Multi-day events require Pro";
+          input.style.cursor = "pointer";
+          input.addEventListener("click", () => showUpgradeModal("multiday"));
+        } else {
+          input.min = "1";
+          input.max = "30";
+          // Auto-calculated end date display
+          const endDateSpan = document.createElement("span");
+          endDateSpan.id = "endDateDisplay";
+          endDateSpan.style.cssText = "font-size:0.85rem;color:#666;margin-left:8px;";
+          const updateEndDate = () => {
+            const dateInput = document.getElementById("form_Event_Date");
+            const days = Number(input.value) || 1;
+            if (dateInput?.value && days > 1) {
+              const end = new Date(dateInput.value);
+              end.setDate(end.getDate() + days - 1);
+              endDateSpan.textContent = `→ ends ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+            } else {
+              endDateSpan.textContent = "";
+            }
+          };
+          input.addEventListener("input", updateEndDate);
+          // Listen for date changes too (deferred since date field may not exist yet)
+          setTimeout(() => {
+            const dateInput = document.getElementById("form_Event_Date");
+            if (dateInput) dateInput.addEventListener("change", updateEndDate);
+          }, 0);
+          labelEl.appendChild(endDateSpan);
+        }
+      }
 
       // Employees dropdown special case
       if (
