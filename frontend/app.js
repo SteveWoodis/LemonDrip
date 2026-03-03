@@ -1074,6 +1074,46 @@ async function buildExpandedDetails(event) {
   // You can extend this if you want richer dashboard sections later.
 }
 
+// Initialize Number of Days field (injected outside template)
+function initNumDaysField(existingNumDays) {
+  const field = document.getElementById("numDaysField");
+  const input = document.getElementById("form_Number_of_Days");
+  const endDateSpan = document.getElementById("endDateDisplay");
+  if (!field || !input) return;
+
+  if (window.USER_PLAN !== "pro") {
+    input.value = 1;
+    input.disabled = true;
+    input.title = "Multi-day events require Pro";
+    input.style.cursor = "pointer";
+    input.addEventListener("click", () => showUpgradeModal("multiday"));
+    if (endDateSpan) endDateSpan.textContent = "";
+  } else {
+    input.disabled = false;
+    input.style.cursor = "";
+    input.value = existingNumDays || 1;
+
+    const updateEndDate = () => {
+      const dateInput = document.getElementById("form_Event_Date");
+      const days = Number(input.value) || 1;
+      if (dateInput?.value && days > 1 && endDateSpan) {
+        const end = new Date(dateInput.value + "T00:00:00");
+        end.setDate(end.getDate() + days - 1);
+        endDateSpan.textContent = `→ ends ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      } else if (endDateSpan) {
+        endDateSpan.textContent = "";
+      }
+    };
+    input.addEventListener("input", updateEndDate);
+    // Defer so the date field from the template exists
+    setTimeout(() => {
+      const dateInput = document.getElementById("form_Event_Date");
+      if (dateInput) dateInput.addEventListener("change", updateEndDate);
+      updateEndDate();
+    }, 0);
+  }
+}
+
 // Load Square locations into the Add Event form
 async function loadSquareLocationsIntoForm() {
   const proFields = document.getElementById("proAddEventFields");
@@ -1164,6 +1204,9 @@ async function editEvent(eventData) {
   if (sqSelect && info.squareLocationId) {
     sqSelect.value = info.squareLocationId;
   }
+
+  // Pre-fill Number of Days for editing
+  initNumDaysField(info.numDays);
 
   // Prefill dynamic fields from the full event data
   const formContainer = document.getElementById("eventForm");
@@ -1480,10 +1523,13 @@ console.log("🧪 CUSTOM FIELDS FINAL:", customFields);
 
 
   // --------------------------------------------------
-  // 4️⃣ Attach auxiliary known fields
+  // 4️⃣ Attach auxiliary known fields (outside template form)
   // --------------------------------------------------
   const sq = document.getElementById("form_squareLocationId");
   if (sq) canonical.squareLocationId = sq.value || null;
+
+  const numDaysInput = document.getElementById("form_Number_of_Days");
+  if (numDaysInput) canonical.numDays = Number(numDaysInput.value) || 1;
 
   if (Object.keys(customFields).length > 0) {
     canonical.customFields = customFields;
@@ -1844,6 +1890,7 @@ async function openAddEventForUser() {
   }
 
   loadSquareLocationsIntoForm();
+  initNumDaysField();
 }
 
 /*async function loadTemplates() {
@@ -2030,11 +2077,11 @@ console.log("✅ fields resolved:", fields);
 
   (fields[0]?.fields || fields).forEach(
     (field) => {
-      // Skip deprecated "Event Color"
+      // Skip deprecated "Event Color" and "Number of Days" (injected outside template)
       if (
         field &&
         typeof field.label === "string" &&
-        /^event\s*color$/i.test(field.label)
+        (/^event\s*color$/i.test(field.label) || /^number\s*of\s*days$/i.test(field.label))
       ) {
         return;
       }
@@ -2073,42 +2120,6 @@ console.log("✅ fields resolved:", fields);
         .replace(/\s+/g, "_")
         .replace(/[^a-zA-Z0-9_]/g, "");
       input.id = "form_" + safeLabel;
-
-      // Multi-day gating: Starter users locked to 1 day
-      if (/^number\s*of\s*days$/i.test(field.label)) {
-        if (window.USER_PLAN !== "pro") {
-          input.value = 1;
-          input.disabled = true;
-          input.title = "Multi-day events require Pro";
-          input.style.cursor = "pointer";
-          input.addEventListener("click", () => showUpgradeModal("multiday"));
-        } else {
-          input.min = "1";
-          input.max = "30";
-          // Auto-calculated end date display
-          const endDateSpan = document.createElement("span");
-          endDateSpan.id = "endDateDisplay";
-          endDateSpan.style.cssText = "font-size:0.85rem;color:#666;margin-left:8px;";
-          const updateEndDate = () => {
-            const dateInput = document.getElementById("form_Event_Date");
-            const days = Number(input.value) || 1;
-            if (dateInput?.value && days > 1) {
-              const end = new Date(dateInput.value);
-              end.setDate(end.getDate() + days - 1);
-              endDateSpan.textContent = `→ ends ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-            } else {
-              endDateSpan.textContent = "";
-            }
-          };
-          input.addEventListener("input", updateEndDate);
-          // Listen for date changes too (deferred since date field may not exist yet)
-          setTimeout(() => {
-            const dateInput = document.getElementById("form_Event_Date");
-            if (dateInput) dateInput.addEventListener("change", updateEndDate);
-          }, 0);
-          labelEl.appendChild(endDateSpan);
-        }
-      }
 
       // Employees dropdown special case
       if (
