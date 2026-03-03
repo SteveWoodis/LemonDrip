@@ -837,7 +837,6 @@ function buildTableHTML(results, containerId = "searchResults") {
     { key: "eventID", label: "Event ID" },
     { key: "eventName", label: "Event Name" },
     { key: "eventDate", label: "Event Date" },
-    { key: "numDays", label: "Num Days" },
     { key: "grossSales", label: "Gross Sales" },
     { key: "netProfit", label: "Net Profit" },
   ];
@@ -863,7 +862,9 @@ function buildTableHTML(results, containerId = "searchResults") {
       const td = tr.insertCell();
       let val = event[col.key] ?? "";
 
-      if (col.key === "grossSales" || col.key === "netProfit") {
+      if (col.key === "eventDate") {
+        td.textContent = formatDateRange(val, event.numDays);
+      } else if (col.key === "grossSales" || col.key === "netProfit") {
         const num = Number(val) || 0;
         td.textContent = `$${num.toFixed(2)}`;
       } else if (col.key === "eventName" && event.isFinalized) {
@@ -2180,6 +2181,24 @@ console.log("✅ fields resolved:", fields);
   formContainer.onsubmit = submitEvent;
   console.log("Form information", formContainer);
 }
+//------------------------
+// Helper: Format event date range
+//------------------------
+function formatDateRange(eventDate, numDays) {
+  const days = Number(numDays) || 1;
+  if (!eventDate || days <= 1) return eventDate || "";
+  const start = new Date(eventDate + "T00:00:00");
+  const end = new Date(start);
+  end.setDate(end.getDate() + days - 1);
+  const opts = { month: "short", day: "numeric" };
+  const startStr = start.toLocaleDateString("en-US", opts);
+  const endOpts = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()
+    ? { day: "numeric" }
+    : opts;
+  const endStr = end.toLocaleDateString("en-US", endOpts);
+  return `${startStr}–${endStr}, ${end.getFullYear()}`;
+}
+
 //------------------------
 //Helper Function For Currency
 //------------------------
@@ -3552,7 +3571,7 @@ try {
   const finalizedIndicator = document.getElementById("dashFinalizedIndicator");
 
   if (headerTitle) headerTitle.textContent = eventName;
-  if (headerDate) headerDate.textContent = eventDate;
+  if (headerDate) headerDate.textContent = formatDateRange(eventDate, event.numDays);
   if (finalizedIndicator) finalizedIndicator.innerHTML = "";
 
   if (finalizedIndicator && event.isFinalized === 1) {
