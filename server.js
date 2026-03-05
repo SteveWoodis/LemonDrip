@@ -602,6 +602,49 @@ app.put("/api/admin/plan", async (req, res) => {
 });
 
 // -------------------------------
+// 🔐 Admin: List all users with plans
+// -------------------------------
+app.get("/api/admin/users", verifySession(), async (req, res) => {
+  try {
+    const adminUserId = req.session.getUserId();
+    const adminInfo = await supertokens.getUser(adminUserId);
+    const adminEmail = adminInfo?.emails?.[0] || "";
+
+    if (!ADMIN_EMAILS.includes(adminEmail.toLowerCase())) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // Fetch all users from SuperTokens (paginate through all)
+    const users = [];
+    let paginationToken;
+    do {
+      const result = await supertokens.getUsersNewestFirst({
+        limit: 100,
+        paginationToken,
+      });
+      users.push(...result.users);
+      paginationToken = result.nextPaginationToken;
+    } while (paginationToken);
+
+    // Fetch all plans from DB
+    const { rows: planRows } = await pool.query(`SELECT "userId", "plan" FROM "UserPlan"`);
+    const planMap = Object.fromEntries(planRows.map(r => [r.userId, r.plan]));
+
+    const userList = users.map(u => ({
+      userId: u.id,
+      email: u.emails?.[0] || "",
+      plan: planMap[u.id] || "starter",
+      timeJoined: u.timeJoined,
+    }));
+
+    res.json({ users: userList });
+  } catch (err) {
+    console.error("❌ Admin list users error:", err);
+    res.status(500).json({ error: "Failed to list users" });
+  }
+});
+
+// -------------------------------
 // 🔍 GET /api/events (list/search)
 // -------------------------------
 app.get("/api/events", async (req, res) => {
