@@ -2683,6 +2683,32 @@ app.use(express.static(frontendPath, {
   }
 }));
 
+// ===================================
+// 📦 Vendor Inventory Routes (Part A)
+// ===================================
+
+// Download blank CSV template
+app.get("/api/inventory/template", (_req, res) => {
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", 'attachment; filename="inventory_template.csv"');
+  res.send("itemName,unitCost,category,sku\nExample Item,1.50,Supplies,ITEM-001\n");
+});
+
+// Get all inventory items for the current user
+app.get("/api/inventory", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const rows = await dbAll(
+      `SELECT * FROM "VendorInventory" WHERE "userId" = $1 ORDER BY "category" NULLS LAST, "itemName"`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Get inventory error:", err);
+    res.status(500).json({ error: "Failed to load inventory" });
+  }
+});
+// ⚠️  ALL app.get("/api/...") routes must be registered ABOVE this line
 // Catch-all: serve frontend for browser routes
 app.get("*", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
@@ -3424,30 +3450,8 @@ async function saveInventorySales(eventID, rows) {
 
 
 // ===================================
-// 📦 Vendor Inventory Routes (Part A)
+// 📦 Vendor Inventory Routes (Part A) — POST / PUT / DELETE
 // ===================================
-
-// Download blank CSV template
-app.get("/api/inventory/template", (_req, res) => {
-  res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", 'attachment; filename="inventory_template.csv"');
-  res.send("itemName,unitCost,category,sku\nExample Item,1.50,Supplies,ITEM-001\n");
-});
-
-// Get all inventory items for the current user
-app.get("/api/inventory", async (req, res) => {
-  try {
-    const userId = req.session.getUserId();
-    const rows = await dbAll(
-      `SELECT * FROM "VendorInventory" WHERE "userId" = $1 ORDER BY "category" NULLS LAST, "itemName"`,
-      [userId]
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Get inventory error:", err);
-    res.status(500).json({ error: "Failed to load inventory" });
-  }
-});
 
 // Upload CSV and insert/update items
 app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => {
@@ -3480,7 +3484,8 @@ app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => 
       const itemName = (cols[nameIdx] || "").trim();
       if (!itemName) continue;
 
-      const unitCost  = costIdx >= 0 ? (Number(cols[costIdx]) || 0) : 0;
+      const rawCost   = costIdx >= 0 ? (cols[costIdx] || "").replace(/[$,\s]/g, "") : "0";
+      const unitCost  = Number(rawCost) || 0;
       const category  = catIdx  >= 0 ? ((cols[catIdx] || "").trim() || null) : null;
       const sku       = skuIdx  >= 0 ? ((cols[skuIdx] || "").trim() || null) : null;
 
