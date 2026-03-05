@@ -13,6 +13,7 @@ const { body, param, validationResult } = require('express-validator');
 // -------------------------------
 const supertokens = require("supertokens-node");
 const Session = require("supertokens-node/recipe/session");
+const Dashboard = require("supertokens-node/recipe/dashboard");
 const EmailPassword = require("supertokens-node/recipe/emailpassword");
 const { middleware: stMiddleware, errorHandler: stErrorHandler } = require("supertokens-node/framework/express");
 const { verifySession } = require("supertokens-node/recipe/session/framework/express");
@@ -34,6 +35,7 @@ supertokens.init({
   recipeList: [
     EmailPassword.init(),
     Session.init(),
+    Dashboard.init(),
   ],
 });
 
@@ -3553,11 +3555,25 @@ app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => 
           );
         }
       } else {
-        await dbRun(
-          `INSERT INTO "VendorInventory" ("userId","itemName","unitCost","category","sku")
-           VALUES ($1,$2,$3,$4,$5)`,
-          [userId, itemName, unitCost, category, null]
+        // No SKU — dedup by itemName (case-insensitive) so re-uploading the same CSV is idempotent
+        const existing = await dbGet(
+          `SELECT "id" FROM "VendorInventory" WHERE "userId" = $1 AND LOWER("itemName") = LOWER($2)`,
+          [userId, itemName]
         );
+        if (existing) {
+          await dbRun(
+            `UPDATE "VendorInventory"
+             SET "unitCost" = $1, "category" = $2, "updatedAt" = NOW()
+             WHERE "id" = $3`,
+            [unitCost, category, existing.id]
+          );
+        } else {
+          await dbRun(
+            `INSERT INTO "VendorInventory" ("userId","itemName","unitCost","category","sku")
+             VALUES ($1,$2,$3,$4,$5)`,
+            [userId, itemName, unitCost, category, null]
+          );
+        }
       }
       count++;
     }
@@ -3603,6 +3619,21 @@ app.put("/api/inventory/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ Update inventory error:", err);
     res.status(500).json({ error: "Failed to update item" });
+  }
+});
+
+// Clear ALL inventory items for the current user
+app.delete("/api/inventory", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const result = await dbRun(
+      `DELETE FROM "VendorInventory" WHERE "userId" = $1`,
+      [userId]
+    );
+    res.json({ success: true, deleted: result.rowCount });
+  } catch (err) {
+    console.error("❌ Clear inventory error:", err);
+    res.status(500).json({ error: "Failed to clear inventory" });
   }
 });
 

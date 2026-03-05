@@ -4966,6 +4966,21 @@ function downloadInventoryTemplate() {
   window.location.href = `${API_BASE}/api/inventory/template`;
 }
 
+// ---- Clear all inventory for this user ----
+async function clearAllInventory() {
+  if (!confirm("This will permanently delete all inventory items for your account. Continue?")) return;
+
+  const res  = await fetch(`${API_BASE}/api/inventory`, { method: "DELETE" });
+  const json = await res.json();
+
+  if (!res.ok) { showToast(json.error || "Clear failed.", "error"); return; }
+
+  _inventoryCache = [];
+  showToast(`Cleared ${json.deleted} item${json.deleted !== 1 ? "s" : ""}.`, "success");
+  document.getElementById("inventoryTableContainer").innerHTML =
+    '<p class="inv-empty">No inventory items yet — upload a CSV to get started.</p>';
+}
+
 // ---- Inline save / delete ----
 async function saveInventoryItem(id, btn) {
   const row = btn.closest("tr.inv-row");
@@ -5038,6 +5053,8 @@ async function openInventoryPicker() {
   renderPickerList(_inventoryCache);
   populateInventoryCategoryFilter(_inventoryCache, "pickerCategoryFilter");
   document.getElementById("pickerSearch").value = "";
+  const pickerCatEl = document.getElementById("pickerCategoryFilter");
+  if (pickerCatEl) pickerCatEl.value = "";
   document.getElementById("inventoryPickerOverlay").classList.add("open");
   document.body.style.overflow = "hidden";
 }

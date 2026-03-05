@@ -197,6 +197,7 @@
           <span id="inventoryCsvFileName" class="inv-file-name">No file chosen</span>
           <button class="btn-primary" onclick="withSpinner(this, uploadInventoryCSV)">⬆ Upload</button>
           <button class="btn-secondary" onclick="downloadInventoryTemplate()">⬇ Download Template</button>
+          <button class="btn-danger" onclick="withSpinner(this, clearAllInventory)">🗑 Clear All</button>
         </div>
         <div class="inv-search-group">
           <input type="text" id="inventorySearch" placeholder="Search items…" oninput="filterInventoryTable()">
