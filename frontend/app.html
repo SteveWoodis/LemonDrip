@@ -33,8 +33,9 @@
           <button id="btnHome" onclick="closeMobileNav(); window.location.href='/'">Home</button>
 		      <button id="btnAdd" onclick="closeMobileNav(); openAddEventForUser()">➕ Add Event</button>
 		      <button id="btnCompany" onclick="closeMobileNav(); navigateTo('companySection')">Register Company</button>
-		      <button id="btnDesign" onclick="closeMobileNav(); navigateTo('designFormSection')">🧩 Design Event Form</button>
+		      <!--<button id="btnDesign" onclick="closeMobileNav(); navigateTo('designFormSection')">🧩 Design Event Form</button> --->
 		      <button id="btnManage" onclick="closeMobileNav(); navigateTo('manageSection')"> Manage Events </button>
+		      <button id="btnInventory" onclick="closeMobileNav(); navigateTo('inventorySection')">📦 My Inventory</button>
 		      <button id="btnLogout" onclick="closeMobileNav(); handleLogout()">🚪 Logout</button>
 		     </div>
 	    </div>
@@ -78,12 +79,6 @@
       Load Template
     </button>
 
-      </div>
-      <div id="numDaysField">
-        <label for="form_Number_of_Days">Number of Days
-          <input type="number" id="form_Number_of_Days" value="1" min="1" max="30">
-          <span id="endDateDisplay" style="font-size:0.85rem;color:#666;margin-left:8px;"></span>
-        </label>
       </div>
       <div id="proAddEventFields">
     	<label for="permitFiles">Permit Documents:</label>
@@ -185,6 +180,58 @@
     </section>
 
   
+
+    <!-- 📦 Inventory Management Section -->
+    <section id="inventorySection" class="card hidden">
+      <div class="inv-header">
+        <h2>📦 My Inventory</h2>
+        <p class="inv-subtitle">Upload your product catalog once — then pick items directly when logging supply costs for any event.</p>
+      </div>
+
+      <div class="inv-toolbar">
+        <div class="inv-upload-group">
+          <label class="inv-file-label" for="inventoryCsvFile">
+            Choose CSV
+            <input type="file" id="inventoryCsvFile" accept=".csv" style="display:none">
+          </label>
+          <span id="inventoryCsvFileName" class="inv-file-name">No file chosen</span>
+          <button class="btn-primary" onclick="withSpinner(this, uploadInventoryCSV)">⬆ Upload</button>
+          <button class="btn-secondary" onclick="downloadInventoryTemplate()">⬇ Download Template</button>
+        </div>
+        <div class="inv-search-group">
+          <input type="text" id="inventorySearch" placeholder="Search items…" oninput="filterInventoryTable()">
+          <select id="inventoryCategoryFilter" onchange="filterInventoryTable()">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="inventoryTableContainer" class="inv-table-wrap">
+        <p class="inv-empty">No inventory items yet — upload a CSV or items will appear here.</p>
+      </div>
+    </section>
+
+    <!-- 🛒 Inventory Picker Modal -->
+    <div class="modal-overlay" id="inventoryPickerOverlay">
+      <div class="inv-picker-modal">
+        <div class="inv-picker-header">
+          <h3>Pick Items from Inventory</h3>
+          <button class="modal-close" onclick="closeInventoryPicker()" aria-label="Close">✕</button>
+        </div>
+        <div class="inv-picker-search">
+          <input type="text" id="pickerSearch" placeholder="Search items…" oninput="filterPickerList()">
+          <select id="pickerCategoryFilter" onchange="filterPickerList()">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+        <div id="pickerListContainer" class="inv-picker-list"></div>
+        <div class="inv-picker-footer">
+          <span id="pickerSelectedCount" class="picker-count">0 items selected</span>
+          <button class="btn-secondary" onclick="closeInventoryPicker()">Cancel</button>
+          <button class="btn-primary" onclick="addPickedItemsToEvent()">➕ Add to Event</button>
+        </div>
+      </div>
+    </div>
 
     <section id="eventDashboardSection" class="card hidden dashboard-page">
 

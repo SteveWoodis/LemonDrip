@@ -249,19 +249,6 @@ function showPostFinalizeFeedbackBanner() {
   requestAnimationFrame(() => banner.classList.add("feedback-banner-visible"));
 }
 
-// -----------------------------
-// Home – Activity Image Rotator (STATE)
-// -----------------------------
- 
-const activityImages = [
-  "images/lemon-1.png",
-  "images/lemon-2.png",
-  "images/lemon-3.png",
-  "images/lemon-4.png",
-  "images/lemon-5.png",
-  "images/lemon-6.png"
-];
-
 const CANONICAL_EVENT_FIELDS = {
   "Event Name": "eventName",
   "Event Date": "eventDate",
@@ -273,12 +260,9 @@ const CANONICAL_EVENT_FIELDS = {
   "Coordinator": "coordinator",
   "Employees": "employees",
   "Notes": "notes",
-  "Number of Days": "numDays",
   "Square Location": "squareLocationId"
 };
 
-let activityImageIndex = 0;
-let activityImageTimer = null;
 
 function safeLabelFromText(label) {
   return String(label || "")
@@ -304,7 +288,6 @@ const CANONICAL_LABEL_TO_DBKEY = {
   "Coordinator": "coordinator",
   "Employees": "employees",
   "Notes": "notes",
-  "Number of Days": "numDays",
   "Event Fee": "eventFee",
   "Event Location": "eventLocation",
   "Permits": "permits",
@@ -350,6 +333,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
 });
 
+// ---------------------------
+// 🔌Builds Event from Template
+// ---------------------------
 
 function buildEventPayloadFromTemplate({ raw, template }) {
   const canonical = {};
@@ -586,7 +572,7 @@ const upgradeContexts = {
   finalize: { icon: '✅', text: 'Starter includes 1 finalized event. Upgrade to track more.' },
   history: { icon: '📋', text: 'Viewing finalized event history requires Pro.' },
   pdf: { icon: '📄', text: 'PDF export is a Pro feature.' },
-  multiday: { icon: '📅', text: 'Multi-day events are a Pro feature. Upgrade to track festivals and multi-day markets.' },
+  multiday: { icon: '📅', text: 'Starter supports up to 2-day events. Upgrade to Pro for longer festivals and multi-day markets.' },
 };
 
 function showUpgradeModal(context) {
@@ -1074,43 +1060,42 @@ async function buildExpandedDetails(event) {
   // You can extend this if you want richer dashboard sections later.
 }
 
-// Initialize Number of Days field (injected outside template)
+// Initialize Number of Days field (injected into form after Application Date)
 function initNumDaysField(existingNumDays) {
-  const field = document.getElementById("numDaysField");
   const input = document.getElementById("form_Number_of_Days");
   const endDateSpan = document.getElementById("endDateDisplay");
-  if (!field || !input) return;
+  if (!input) return;
 
+  input.disabled = false;
+  input.value = existingNumDays || 1;
+
+  const updateEndDate = () => {
+    const dateInput = document.getElementById("form_Event_Date");
+    const days = Number(input.value) || 1;
+    if (dateInput?.value && days > 1 && endDateSpan) {
+      const end = new Date(dateInput.value + "T00:00:00");
+      end.setDate(end.getDate() + days - 1);
+      endDateSpan.textContent = `→ ends ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    } else if (endDateSpan) {
+      endDateSpan.textContent = "";
+    }
+  };
+  input.addEventListener("input", updateEndDate);
+  setTimeout(() => {
+    const dateInput = document.getElementById("form_Event_Date");
+    if (dateInput) dateInput.addEventListener("change", updateEndDate);
+    updateEndDate();
+  }, 0);
+
+  // Starter users: show upgrade prompt if they try to set > 1
   if (window.USER_PLAN !== "pro") {
-    input.value = 1;
-    input.disabled = true;
-    input.title = "Multi-day events require Pro";
-    input.style.cursor = "pointer";
-    input.addEventListener("click", () => showUpgradeModal("multiday"));
-    if (endDateSpan) endDateSpan.textContent = "";
-  } else {
-    input.disabled = false;
-    input.style.cursor = "";
-    input.value = existingNumDays || 1;
-
-    const updateEndDate = () => {
-      const dateInput = document.getElementById("form_Event_Date");
-      const days = Number(input.value) || 1;
-      if (dateInput?.value && days > 1 && endDateSpan) {
-        const end = new Date(dateInput.value + "T00:00:00");
-        end.setDate(end.getDate() + days - 1);
-        endDateSpan.textContent = `→ ends ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-      } else if (endDateSpan) {
-        endDateSpan.textContent = "";
+    input.addEventListener("change", () => {
+      if (Number(input.value) > 2) {
+        showUpgradeModal("multiday");
+        input.value = 2;
+        if (endDateSpan) endDateSpan.textContent = "";
       }
-    };
-    input.addEventListener("input", updateEndDate);
-    // Defer so the date field from the template exists
-    setTimeout(() => {
-      const dateInput = document.getElementById("form_Event_Date");
-      if (dateInput) dateInput.addEventListener("change", updateEndDate);
-      updateEndDate();
-    }, 0);
+    });
   }
 }
 
@@ -1575,8 +1560,8 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
   });
 
   // Starter users: clamp numDays to 1
-  if (window.USER_PLAN !== "pro" && Number(canonical.numDays) > 1) {
-    canonical.numDays = 1;
+  if (window.USER_PLAN !== "pro" && Number(canonical.numDays) > 2) {
+    canonical.numDays = 2;
   }
 
   // --------------------------------------------------
@@ -2020,6 +2005,7 @@ function useSelectedTemplate() {
   console.log("📋 Loading template into Add Event form:", tpl);
 
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
+  initNumDaysField();
 
  showToast(`Loaded template: "${tpl.templateName}"`, "success");
 
@@ -2050,6 +2036,7 @@ function activateTemplate() {
   }
   console.log("Activating template:", tpl.TemplateName);
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
+  initNumDaysField();
   showToast(`"${tpl.TemplateName}" activated!`, "success");
 }
 
@@ -2177,6 +2164,24 @@ console.log("✅ fields resolved:", fields);
 
       labelEl.appendChild(input);
       formContainer.appendChild(labelEl);
+
+      // Inject Number of Days field right after Application Date
+      if (/^application\s*date$/i.test(field.label)) {
+        const ndLabel = document.createElement("label");
+        ndLabel.textContent = "Number of Days";
+        const ndInput = document.createElement("input");
+        ndInput.type = "number";
+        ndInput.id = "form_Number_of_Days";
+        ndInput.value = existing.numDays || existing.Number_of_Days || 1;
+        ndInput.min = "1";
+        ndInput.max = "30";
+        const endSpan = document.createElement("span");
+        endSpan.id = "endDateDisplay";
+        endSpan.style.cssText = "font-size:0.85rem;color:#666;margin-left:8px;";
+        ndLabel.appendChild(ndInput);
+        ndLabel.appendChild(endSpan);
+        formContainer.appendChild(ndLabel);
+      }
     }
   );
 
@@ -3400,6 +3405,7 @@ function renderSupplyCostsCard(items = []) {
     <div><strong>Total Supply Fees:</strong> <span id="supplyTotal">${fmt(total)}</span></div>
 
     <div class="supply-actions">
+      <button class="btn-secondary" onclick="openInventoryPicker()">📦 Pick from Inventory</button>
       <button class="btn-primary" onclick="withSpinner(this, calculateSupplyCosts)">🧮 Calculate Supply Fees</button>
     </div>
   `;
@@ -4806,7 +4812,7 @@ async function deleteLaborShift(shiftID) {
   }
 }
 
-function loadRecentActivity() {
+/*function loadRecentActivity() {
   const list = document.getElementById("recentActivityList");
   if (!list) return;
 
@@ -4815,7 +4821,7 @@ function loadRecentActivity() {
       Activity will appear here as events are added and finalized
     </li>
   `;
-}
+}*/
 
 function showStarterUpgrade(context = "report") {
   showUpgradeModal(context);
@@ -4824,30 +4830,306 @@ window.addEventListener("DOMContentLoaded", async () => {
   await populateTemplateDropdown();
 });
 
+// ============================================================
+// 📦 Vendor Inventory Module (Part A)
+// ============================================================
 
-function startActivityImageRotation() {
-  const img = document.getElementById("activityImage");
-  if (!img) return;
+// In-memory cache of the user's inventory for the picker
+let _inventoryCache = [];
 
-  // click to advance
-  img.onclick = () => advanceActivityImage();
+// ---- Section navigation hook ----
+// Extend navigateTo so that visiting inventorySection auto-loads items
+const _origNavigateTo = navigateTo;
+window.navigateTo = function(sectionId) {
+  _origNavigateTo(sectionId);
+  if (sectionId === "inventorySection") loadInventorySection();
+};
 
-  // auto-rotate every 6 seconds
-  clearInterval(activityImageTimer);
-  activityImageTimer = setInterval(advanceActivityImage, 6000);
+// Wire up the CSV file input label
+document.addEventListener("DOMContentLoaded", () => {
+  const fileInput = document.getElementById("inventoryCsvFile");
+  const fileLabel = document.getElementById("inventoryCsvFileName");
+  if (fileInput && fileLabel) {
+    fileInput.addEventListener("change", () => {
+      fileLabel.textContent = fileInput.files[0]?.name || "No file chosen";
+    });
+  }
+});
+
+// ---- Load & render inventory table ----
+async function loadInventorySection() {
+  const container = document.getElementById("inventoryTableContainer");
+  if (!container) return;
+  container.innerHTML = '<p class="inv-empty">Loading…</p>';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/inventory`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const items = await res.json();
+    _inventoryCache = items;
+    renderInventoryTable(items);
+    populateInventoryCategoryFilter(items, "inventoryCategoryFilter");
+  } catch (err) {
+    console.error("❌ loadInventorySection:", err);
+    container.innerHTML = '<p class="inv-empty">Failed to load inventory.</p>';
+  }
 }
 
-function advanceActivityImage() {
-  const img = document.getElementById("activityImage");
-  if (!img) return;
+function renderInventoryTable(items) {
+  const container = document.getElementById("inventoryTableContainer");
+  if (!container) return;
 
-  activityImageIndex =
-    (activityImageIndex + 1) % activityImages.length;
+  if (!items.length) {
+    container.innerHTML = '<p class="inv-empty">No inventory items yet — upload a CSV to get started.</p>';
+    return;
+  }
 
-  img.style.opacity = 0;
+  const rows = items.map(item => `
+    <tr class="inv-row" data-id="${item.id}">
+      <td><input class="inv-cell-input inv-name"     value="${escInv(item.itemName)}"  data-field="itemName"></td>
+      <td><input class="inv-cell-input inv-cost"     value="${Number(item.unitCost).toFixed(2)}" type="number" step="0.01" data-field="unitCost"></td>
+      <td><input class="inv-cell-input inv-category" value="${escInv(item.category || "")}" data-field="category"></td>
+      <td><input class="inv-cell-input inv-sku"      value="${escInv(item.sku || "")}" data-field="sku"></td>
+      <td>
+        <button class="inv-save-btn"   onclick="saveInventoryItem(${item.id}, this)">💾</button>
+        <button class="inv-delete-btn" onclick="deleteInventoryItem(${item.id}, this)">🗑</button>
+      </td>
+    </tr>
+  `).join("");
 
-  setTimeout(() => {
-    img.src = activityImages[activityImageIndex];
-    img.style.opacity = 1;
-  }, 200);
+  container.innerHTML = `
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th>Item Name</th>
+          <th>Unit Cost</th>
+          <th>Category</th>
+          <th>SKU</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
+
+function escInv(str) {
+  return String(str || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function populateInventoryCategoryFilter(items, selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const categories = [...new Set(items.map(i => i.category).filter(Boolean))].sort();
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All Categories</option>' +
+    categories.map(c => `<option value="${escInv(c)}" ${c === current ? "selected" : ""}>${escInv(c)}</option>`).join("");
+}
+
+function filterInventoryTable() {
+  const q   = (document.getElementById("inventorySearch")?.value || "").toLowerCase();
+  const cat = document.getElementById("inventoryCategoryFilter")?.value || "";
+  const filtered = _inventoryCache.filter(item =>
+    (!q   || item.itemName.toLowerCase().includes(q) || (item.sku || "").toLowerCase().includes(q)) &&
+    (!cat || item.category === cat)
+  );
+  renderInventoryTable(filtered);
+}
+
+// ---- CSV upload ----
+async function uploadInventoryCSV() {
+  const fileInput = document.getElementById("inventoryCsvFile");
+  if (!fileInput?.files?.length) {
+    showToast("Please choose a CSV file first.", "warning");
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append("file", fileInput.files[0]);
+
+  const res = await fetch(`${API_BASE}/api/inventory/upload`, { method: "POST", body: fd });
+  const json = await res.json();
+
+  if (!res.ok) {
+    showToast(json.error || "Upload failed.", "error");
+    return;
+  }
+
+  showToast(`Imported ${json.count} item${json.count !== 1 ? "s" : ""} successfully.`, "success");
+  fileInput.value = "";
+  document.getElementById("inventoryCsvFileName").textContent = "No file chosen";
+  await loadInventorySection();
+}
+
+// ---- Template download ----
+function downloadInventoryTemplate() {
+  window.location.href = `${API_BASE}/api/inventory/template`;
+}
+
+// ---- Inline save / delete ----
+async function saveInventoryItem(id, btn) {
+  const row = btn.closest("tr.inv-row");
+  if (!row) return;
+
+  const itemName = row.querySelector('[data-field="itemName"]')?.value?.trim();
+  const unitCost = Number(row.querySelector('[data-field="unitCost"]')?.value) || 0;
+  const category = row.querySelector('[data-field="category"]')?.value?.trim() || null;
+  const sku      = row.querySelector('[data-field="sku"]')?.value?.trim() || null;
+
+  if (!itemName) { showToast("Item name is required.", "warning"); return; }
+
+  const res  = await fetch(`${API_BASE}/api/inventory/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemName, unitCost, category, sku })
+  });
+  const json = await res.json();
+
+  if (!res.ok) { showToast(json.error || "Save failed.", "error"); return; }
+
+  // Update cache
+  const idx = _inventoryCache.findIndex(i => i.id === id);
+  if (idx !== -1) _inventoryCache[idx] = json;
+
+  showToast("Item saved.", "success");
+}
+
+async function deleteInventoryItem(id, btn) {
+  if (!confirm("Delete this item from your inventory?")) return;
+
+  const res  = await fetch(`${API_BASE}/api/inventory/${id}`, { method: "DELETE" });
+  const json = await res.json();
+
+  if (!res.ok) { showToast(json.error || "Delete failed.", "error"); return; }
+
+  _inventoryCache = _inventoryCache.filter(i => i.id !== id);
+  btn.closest("tr.inv-row")?.remove();
+
+  if (!document.querySelector(".inv-row")) {
+    document.getElementById("inventoryTableContainer").innerHTML =
+      '<p class="inv-empty">No inventory items yet — upload a CSV to get started.</p>';
+  }
+
+  showToast("Item deleted.", "success");
+}
+
+// ============================================================
+// 🛒 Inventory Picker (used from Supply Fees card)
+// ============================================================
+
+async function openInventoryPicker() {
+  if (window.activeEvent?.isFinalized === 1) {
+    showToast("This event has been finalized and can no longer be edited.", "warning");
+    return;
+  }
+  if (!window.currentEventId) {
+    showToast("No active event selected.", "warning");
+    return;
+  }
+
+  // Refresh cache if empty
+  if (!_inventoryCache.length) {
+    try {
+      const res = await fetch(`${API_BASE}/api/inventory`);
+      if (res.ok) _inventoryCache = await res.json();
+    } catch (_) { /* non-fatal */ }
+  }
+
+  renderPickerList(_inventoryCache);
+  populateInventoryCategoryFilter(_inventoryCache, "pickerCategoryFilter");
+  document.getElementById("pickerSearch").value = "";
+  document.getElementById("inventoryPickerOverlay").classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+
+function closeInventoryPicker() {
+  document.getElementById("inventoryPickerOverlay").classList.remove("open");
+  document.body.style.overflow = "";
+}
+
+// Close on backdrop click
+document.addEventListener("click", e => {
+  if (e.target === document.getElementById("inventoryPickerOverlay")) closeInventoryPicker();
+});
+
+function renderPickerList(items) {
+  const container = document.getElementById("pickerListContainer");
+  if (!container) return;
+
+  if (!items.length) {
+    container.innerHTML = '<p class="inv-picker-empty">No items match — try a different search or <a onclick="closeInventoryPicker(); navigateTo(\'inventorySection\')">upload your inventory</a>.</p>';
+    updatePickerCount();
+    return;
+  }
+
+  container.innerHTML = items.map(item => `
+    <label class="picker-row" data-id="${item.id}">
+      <input type="checkbox" class="picker-check" value="${item.id}" onchange="updatePickerCount()">
+      <span class="picker-name">${escInv(item.itemName)}</span>
+      ${item.category ? `<span class="picker-cat">${escInv(item.category)}</span>` : ""}
+      <span class="picker-cost">${fmt(item.unitCost)} ea.</span>
+      <input type="number" class="picker-qty" min="1" step="1" value="1" placeholder="Qty">
+    </label>
+  `).join("");
+}
+
+function filterPickerList() {
+  const q   = (document.getElementById("pickerSearch")?.value || "").toLowerCase();
+  const cat = document.getElementById("pickerCategoryFilter")?.value || "";
+  const filtered = _inventoryCache.filter(item =>
+    (!q   || item.itemName.toLowerCase().includes(q) || (item.sku || "").toLowerCase().includes(q)) &&
+    (!cat || item.category === cat)
+  );
+  renderPickerList(filtered);
+}
+
+function updatePickerCount() {
+  const count = document.querySelectorAll(".picker-check:checked").length;
+  const el = document.getElementById("pickerSelectedCount");
+  if (el) el.textContent = `${count} item${count !== 1 ? "s" : ""} selected`;
+}
+
+async function addPickedItemsToEvent() {
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+
+  const checked = document.querySelectorAll(".picker-check:checked");
+  if (!checked.length) {
+    showToast("Select at least one item.", "warning");
+    return;
+  }
+
+  let added = 0;
+  for (const cb of checked) {
+    const itemId   = Number(cb.value);
+    const row      = cb.closest(".picker-row");
+    const qty      = Number(row?.querySelector(".picker-qty")?.value) || 1;
+    const invItem  = _inventoryCache.find(i => i.id === itemId);
+    if (!invItem) continue;
+
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/supplies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itemName:     invItem.itemName,
+        unitCost:     invItem.unitCost,
+        quantityUsed: qty
+      })
+    });
+
+    if (res.ok) added++;
+    else console.error("❌ Failed to add supply from picker:", await res.json());
+  }
+
+  closeInventoryPicker();
+
+  if (added) {
+    showToast(`Added ${added} item${added !== 1 ? "s" : ""} to supply costs.`, "success");
+    await reloadEventDashboard();
+  } else {
+    showToast("No items were added.", "error");
+  }
+}
+
+
+

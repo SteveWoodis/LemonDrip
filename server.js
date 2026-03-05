@@ -253,6 +253,17 @@ async function initDb() {
         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS "VendorInventory" (
+        "id"        SERIAL PRIMARY KEY,
+        "userId"    TEXT NOT NULL,
+        "itemName"  TEXT NOT NULL,
+        "unitCost"  REAL NOT NULL DEFAULT 0,
+        "category"  TEXT,
+        "sku"       TEXT,
+        "updatedAt" TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS "VendorInventory_userId_idx" ON "VendorInventory" ("userId");
     `);
 
     console.log("✅ PostgreSQL schema initialized");
@@ -471,6 +482,44 @@ const storage = multer.diskStorage({
 
 
 const upload = multer({ storage });
+
+// In-memory multer for CSV uploads (no disk writes)
+const uploadCsv = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB max
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .csv files are accepted"));
+    }
+  },
+});
+
+// Parse a single CSV line respecting double-quoted fields
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
 
 
 
@@ -1128,11 +1177,11 @@ app.post("/api/events",
    const userId = req.session.getUserId();
    const e = coerceEvent(req.body);
 
-   // Starter users cannot create multi-day events
-   const plan = await getUserPlan(req);
-   if (plan === "starter" && Number(e.numDays) > 1) {
-     e.numDays = 1;
-   }
+   // Starter users limited to 2-day events
+    const plan = await getUserPlan(req);
+    if (plan === "starter" && Number(e.numDays) > 2) {
+      e.numDays = 2;
+    }
 
    const sql = `
      INSERT INTO "EventInfo" (
@@ -1230,10 +1279,10 @@ app.put("/api/events/:id",
     const id = req.params.id;
     const e = coerceEvent(req.body);
 
-    // Starter users cannot set multi-day events
+    // Starter users limited to 2-day events
     const plan = await getUserPlan(req);
-    if (plan === "starter" && Number(e.numDays) > 1) {
-      e.numDays = 1;
+    if (plan === "starter" && Number(e.numDays) > 2) {
+      e.numDays = 2;
     }
 
     const sql = `
@@ -3373,6 +3422,166 @@ async function saveInventorySales(eventID, rows) {
   }
 }
 
+
+// ===================================
+// 📦 Vendor Inventory Routes (Part A)
+// ===================================
+
+// Download blank CSV template
+app.get("/api/inventory/template", (_req, res) => {
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", 'attachment; filename="inventory_template.csv"');
+  res.send("itemName,unitCost,category,sku\nExample Item,1.50,Supplies,ITEM-001\n");
+});
+
+// Get all inventory items for the current user
+app.get("/api/inventory", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const rows = await dbAll(
+      `SELECT * FROM "VendorInventory" WHERE "userId" = $1 ORDER BY "category" NULLS LAST, "itemName"`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Get inventory error:", err);
+    res.status(500).json({ error: "Failed to load inventory" });
+  }
+});
+
+// Upload CSV and insert/update items
+app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const text = req.file.buffer.toString("utf8");
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) {
+      return res.status(400).json({ error: "CSV must contain a header row and at least one data row" });
+    }
+
+    const header = parseCSVLine(lines[0]).map(h => h.toLowerCase());
+    const nameIdx = header.indexOf("itemname");
+    const costIdx = header.indexOf("unitcost");
+    const catIdx  = header.indexOf("category");
+    const skuIdx  = header.indexOf("sku");
+
+    if (nameIdx === -1) {
+      return res.status(400).json({ error: "CSV must have an 'itemName' column" });
+    }
+
+    let count = 0;
+    for (const line of lines.slice(1)) {
+      const cols = parseCSVLine(line);
+      const itemName = (cols[nameIdx] || "").trim();
+      if (!itemName) continue;
+
+      const unitCost  = costIdx >= 0 ? (Number(cols[costIdx]) || 0) : 0;
+      const category  = catIdx  >= 0 ? ((cols[catIdx] || "").trim() || null) : null;
+      const sku       = skuIdx  >= 0 ? ((cols[skuIdx] || "").trim() || null) : null;
+
+      if (sku) {
+        // Update existing row with same userId + sku, or insert
+        const existing = await dbGet(
+          `SELECT "id" FROM "VendorInventory" WHERE "userId" = $1 AND "sku" = $2`,
+          [userId, sku]
+        );
+        if (existing) {
+          await dbRun(
+            `UPDATE "VendorInventory"
+             SET "itemName" = $1, "unitCost" = $2, "category" = $3, "updatedAt" = NOW()
+             WHERE "id" = $4`,
+            [itemName, unitCost, category, existing.id]
+          );
+        } else {
+          await dbRun(
+            `INSERT INTO "VendorInventory" ("userId","itemName","unitCost","category","sku")
+             VALUES ($1,$2,$3,$4,$5)`,
+            [userId, itemName, unitCost, category, sku]
+          );
+        }
+      } else {
+        await dbRun(
+          `INSERT INTO "VendorInventory" ("userId","itemName","unitCost","category","sku")
+           VALUES ($1,$2,$3,$4,$5)`,
+          [userId, itemName, unitCost, category, null]
+        );
+      }
+      count++;
+    }
+
+    res.json({ success: true, count });
+  } catch (err) {
+    console.error("❌ Inventory upload error:", err);
+    res.status(500).json({ error: "Failed to process CSV" });
+  }
+});
+
+// Update a single inventory item
+app.put("/api/inventory/:id", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const { itemName, unitCost, category, sku } = req.body;
+    if (!itemName || typeof itemName !== "string") {
+      return res.status(400).json({ error: "itemName is required" });
+    }
+    const cost = Number(unitCost);
+    if (!Number.isFinite(cost)) {
+      return res.status(400).json({ error: "Invalid unitCost" });
+    }
+
+    const result = await dbRun(
+      `UPDATE "VendorInventory"
+       SET "itemName" = $1, "unitCost" = $2, "category" = $3, "sku" = $4, "updatedAt" = NOW()
+       WHERE "id" = $5 AND "userId" = $6`,
+      [itemName.trim(), cost, category || null, sku || null, id, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    const updated = await dbGet(`SELECT * FROM "VendorInventory" WHERE "id" = $1`, [id]);
+    res.json(updated);
+  } catch (err) {
+    console.error("❌ Update inventory error:", err);
+    res.status(500).json({ error: "Failed to update item" });
+  }
+});
+
+// Delete a single inventory item
+app.delete("/api/inventory/:id", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const result = await dbRun(
+      `DELETE FROM "VendorInventory" WHERE "id" = $1 AND "userId" = $2`,
+      [id, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    res.json({ success: true, deletedId: id });
+  } catch (err) {
+    console.error("❌ Delete inventory error:", err);
+    res.status(500).json({ error: "Failed to delete item" });
+  }
+});
 
 // SuperTokens error handler (must be after all routes)
 app.use(stErrorHandler());
