@@ -913,8 +913,36 @@ function buildTableHTML(results, containerId = "searchResults") {
   container.appendChild(table);
 } // ⭐ FIXED: PROPER CLOSING BRACE
 
+function renderPaginationControls(containerId, currentPage, totalPages, loadFn) {
+  if (totalPages <= 1) return;
+  const container = document.getElementById(containerId);
+  if (!container) return;
 
+  const nav = document.createElement("div");
+  nav.className = "pagination-controls";
+  nav.style.cssText = "display:flex;justify-content:center;align-items:center;gap:12px;padding:12px 0;";
 
+  const prevBtn = document.createElement("button");
+  prevBtn.textContent = "← Previous";
+  prevBtn.className = "btn-secondary";
+  prevBtn.disabled = currentPage <= 1;
+  prevBtn.onclick = () => loadFn(currentPage - 1);
+
+  const pageInfo = document.createElement("span");
+  pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+  pageInfo.style.cssText = "font-weight:600;";
+
+  const nextBtn = document.createElement("button");
+  nextBtn.textContent = "Next →";
+  nextBtn.className = "btn-secondary";
+  nextBtn.disabled = currentPage >= totalPages;
+  nextBtn.onclick = () => loadFn(currentPage + 1);
+
+  nav.appendChild(prevBtn);
+  nav.appendChild(pageInfo);
+  nav.appendChild(nextBtn);
+  container.appendChild(nav);
+}
 
 async function filterEvents(mode) {
   const events = lastLoadedEvents;
@@ -948,13 +976,20 @@ function clearEventForm() {
   });
 }
 
-// List all
-async function loadAllEvents() {
+// List all (paginated)
+window.eventsCurrentPage = 1;
+window.eventsPageLimit = 10;
+
+async function loadAllEvents(page = 1) {
   try {
-    const res = await fetch(`${API_BASE}/api/events`);
+    const params = new URLSearchParams({ page, limit: window.eventsPageLimit });
+    const res = await fetch(`${API_BASE}/api/events?${params}`);
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     const data = await res.json();
     const events = data.Events || [];
+
+    window.eventsCurrentPage = data.page || 1;
+    const totalPages = data.totalPages || 1;
 
     const formatted = events.map(formatEvent);
     let displayEvents = formatted;
@@ -965,6 +1000,7 @@ async function loadAllEvents() {
 
     lastLoadedEvents = displayEvents;
     buildTableHTML(displayEvents, "manageResults");
+    renderPaginationControls("manageResults", window.eventsCurrentPage, totalPages, loadAllEvents);
 
   } catch (err) {
     console.error("loadAllEvents error:", err);
@@ -973,8 +1009,8 @@ async function loadAllEvents() {
 }
 
 
-// Search
-async function manageSearch() {
+// Search (paginated)
+async function manageSearch(page = 1) {
   const name = document.getElementById("manageSearchName").value.trim();
   const date = document.getElementById("manageSearchDate").value.trim();
   const id = document.getElementById("manageSearchID").value.trim();
@@ -984,7 +1020,7 @@ async function manageSearch() {
     return;
   }
 
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ page, limit: window.eventsPageLimit });
   if (name) params.set("name", name);
   if (date) params.set("date", date);
   if (id) params.set("id", id);
@@ -1000,6 +1036,7 @@ async function manageSearch() {
     const data = await res.json();
     const results = (data.Events || []).map(formatEvent);
     buildTableHTML(results, "manageResults");
+    renderPaginationControls("manageResults", data.page || 1, data.totalPages || 1, manageSearch);
   } catch (err) {
     console.error("Search network error:", err);
     showInlineError("manageResults", "Search failed. The server may be unavailable.", manageSearch);
@@ -3382,24 +3419,34 @@ function renderSupplyCostsCard(items = []) {
   );
 
   const rows = items.map(r => `
-    <div class="row supply-row" data-supply-id="${r.id}">
-      <input type="text" class="supply-name" value="${r.itemName}">
-      <input type="number" class="supply-unit-cost" step="0.01" value="${r.unitCost}">
-      <input type="number" class="supply-qty" step="1" value="${r.quantityUsed}">
-      <span class="supply-line-total">${fmt(r.totalCost)}</span>
+    <div class="supply-row" data-supply-id="${r.id}" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <input type="text" class="supply-name" value="${r.itemName}" style="flex:2;min-width:0;">
+      <input type="number" class="supply-unit-cost" step="0.01" value="${r.unitCost}" style="flex:1;min-width:0;">
+      <input type="number" class="supply-qty" step="1" value="${r.quantityUsed}" style="flex:1;min-width:0;">
+      <span class="supply-line-total" style="flex:1;text-align:right;white-space:nowrap;">${fmt(r.totalCost)}</span>
       <button onclick="deleteSupply(${r.id})">🗑</button>
     </div>
   `).join("");
 
   const html = `
+    <div style="display:flex;gap:8px;margin-bottom:6px;font-weight:600;font-size:0.85em;">
+      <span style="flex:2;">Item</span>
+      <span style="flex:1;">Unit Cost</span>
+      <span style="flex:1;">Qty Used</span>
+      <span style="flex:1;text-align:right;">Total</span>
+      <span style="width:32px;"></span>
+    </div>
     ${rows || '<div class="empty-state-inline"><span class="empty-state-icon">📦</span> No supply fees recorded — add items below.</div>'}
 
-    <div class="row">
-      <input id="newSupplyName" placeholder="Item">
-      <input id="newSupplyUnitCost" type="number" step="0.01" placeholder="Unit Cost">
-      <input id="newSupplyQty" type="number" step="1" placeholder="Qty Used">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <input id="newSupplyName" placeholder="Item" style="flex:2;min-width:0;">
+      <input id="newSupplyUnitCost" type="number" step="0.01" placeholder="Unit Cost" style="flex:1;min-width:0;">
+      <input id="newSupplyQty" type="number" step="1" placeholder="Qty Used" style="flex:1;min-width:0;">
       <button onclick="addSupply()">➕ Add</button>
     </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:0.85em;margin-bottom:8px;cursor:pointer;">
+      <input type="checkbox" id="addToInventoryCheck"> Also save to my Inventory
+    </label>
 
     <hr>
     <div><strong>Total Supply Fees:</strong> <span id="supplyTotal">${fmt(total)}</span></div>
@@ -3419,10 +3466,12 @@ async function addSupply() {
     return;
   }
 
+  const addToInventory = document.getElementById("addToInventoryCheck")?.checked || false;
   const payload = {
     itemName: document.getElementById("newSupplyName").value,
     unitCost: Number(document.getElementById("newSupplyUnitCost").value) || 0,
-    quantityUsed: Number(document.getElementById("newSupplyQty").value) || 0
+    quantityUsed: Number(document.getElementById("newSupplyQty").value) || 0,
+    addToInventory
   };
 
   const res = await fetch(
@@ -3442,6 +3491,7 @@ async function addSupply() {
   }
 
   showToast("Supply added!", "success");
+  if (addToInventory) _inventoryCache = [];
   await reloadEventDashboard();
 }
 

@@ -653,7 +653,34 @@ app.get("/api/events", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const { name, date, id } = req.query;
-    let sql = `SELECT e.*,
+
+    let where = `WHERE e."userId" = $1`;
+    const params = [userId];
+    let paramIndex = 2;
+
+    if (name) {
+      where += ` AND e."eventName" LIKE $${paramIndex++}`;
+      params.push(`%${name}%`);
+    }
+    if (date) {
+      where += ` AND e."eventDate" = $${paramIndex++}`;
+      params.push(date);
+    }
+    if (id) {
+      where += ` AND e."eventID" = $${paramIndex++}`;
+      params.push(id);
+    }
+
+    // Total count for pagination metadata
+    const [{ total }] = await dbAll(
+      `SELECT COUNT(*) AS "total" FROM "EventInfo" e ${where}`, params
+    );
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+    const offset = (page - 1) * limit;
+
+    const sql = `SELECT e.*,
       COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
       COALESCE(s."totalCollected", 0)
         - COALESCE(x."healthDeptFee", 0)
@@ -668,30 +695,14 @@ app.get("/api/events", async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
-      WHERE e."userId" = $1`;
-    const params = [userId];
-    let paramIndex = 2;
-
-    if (name) {
-      sql += ` AND e."eventName" LIKE $${paramIndex++}`;
-      params.push(`%${name}%`);
-    }
-
-    if (date) {
-      sql += ` AND e."eventDate" = $${paramIndex++}`;
-      params.push(date);
-    }
-
-    if (id) {
-      sql += ` AND e."eventID" = $${paramIndex++}`;
-      params.push(id);
-    }
-
-    sql += ` ORDER BY e."eventDate" DESC`;
+      ${where}
+      ORDER BY e."eventDate" DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    params.push(limit, offset);
 
     const rows = await dbAll(sql, params);
 
-    res.json({ Events: rows });
+    res.json({ Events: rows, page, limit, total: Number(total), totalPages: Math.ceil(total / limit) });
 
   } catch (err) {
     console.error("❌ Error reading events:", err);
@@ -2394,7 +2405,18 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
       [insertResult.rows[0].id]
     );
 
-    // 5️⃣ Auto-recalculate supplyFees in EventExpenses
+    // 5️⃣ Also save to VendorInventory if requested
+    if (req.body.addToInventory) {
+      const userId = req.session.getUserId();
+      await pool.query(
+        `INSERT INTO "VendorInventory" ("userId", "itemName", "unitCost")
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [userId, itemName.trim(), uCost]
+      );
+    }
+
+    // 6️⃣ Auto-recalculate supplyFees in EventExpenses
     await recalcSupplyFees(eventID);
 
     res.json(newSupply);
