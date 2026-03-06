@@ -5092,6 +5092,7 @@ async function openInventoryPicker() {
     return;
   }
 
+  
   // Refresh cache if empty
   if (!_inventoryCache.length) {
     try {
