@@ -428,6 +428,20 @@ async function initDb() {
            ALTER SEQUENCE "EventInfo_eventID_seq" OWNED BY "EventInfo"."eventID";
          END IF;
        END $$`,
+      // ── Part B: inventory stock tracking (Pro) ──
+      `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "quantityOnHand" REAL DEFAULT 0`,
+      `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "reorderThreshold" REAL DEFAULT 0`,
+      `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "reorderQty" REAL DEFAULT 0`,
+      `ALTER TABLE "EventSupplies" ADD COLUMN IF NOT EXISTS "vendorInventoryId" INTEGER`,
+      `CREATE TABLE IF NOT EXISTS "InventoryAlerts" (
+        "id"        SERIAL PRIMARY KEY,
+        "userId"    TEXT NOT NULL,
+        "itemId"    INTEGER,
+        "itemName"  TEXT,
+        "message"   TEXT,
+        "isRead"    BOOLEAN DEFAULT FALSE,
+        "createdAt" TIMESTAMP DEFAULT NOW()
+      )`,
     ];
 
     for (const sql of migrations) {
@@ -555,11 +569,22 @@ const activeOAuthStates = new Set();
 
 
 
+// -------------------------------
+// 🔐 Admin setup
+// -------------------------------
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+console.log("🔐 ADMIN_EMAILS loaded:", ADMIN_EMAILS.length ? ADMIN_EMAILS : "(none — set ADMIN_EMAILS env var)");
+
 // Get current user info + plan
 app.get("/api/me", async (req, res) => {
   try {
-    const plan = await getUserPlan(req);
-    res.json({ userId: req.session.getUserId(), plan });
+    const plan    = await getUserPlan(req);
+    const userId  = req.session.getUserId();
+    const userInfo = await supertokens.getUser(userId);
+    const email   = userInfo?.emails?.[0] || "";
+    const isAdmin = ADMIN_EMAILS.includes(email.toLowerCase());
+    console.log(`🔍 /api/me — email: "${email}", isAdmin: ${isAdmin}`);
+    res.json({ userId, plan, isAdmin });
   } catch (err) {
     console.error("❌ /api/me error:", err);
     res.status(500).json({ error: "Failed to load user info" });
@@ -569,7 +594,6 @@ app.get("/api/me", async (req, res) => {
 // -------------------------------
 // 🔐 Admin: Update user plan
 // -------------------------------
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
 
 app.put("/api/admin/plan", async (req, res) => {
   try {
@@ -2339,6 +2363,41 @@ app.delete("/api/additional-fees/:id", async (req, res) => {
 });
 
 
+// ── Part B: deduct stock and fire a reorder alert if needed ──
+async function deductStockAndAlert(userId, inventoryItemId, qtyUsed) {
+  // Deduct from on-hand quantity (floor at 0)
+  await dbRun(
+    `UPDATE "VendorInventory"
+     SET "quantityOnHand" = GREATEST(0, "quantityOnHand" - $1), "updatedAt" = NOW()
+     WHERE "id" = $2 AND "userId" = $3`,
+    [qtyUsed, inventoryItemId, userId]
+  );
+
+  // Fetch updated item to evaluate threshold
+  const item = await dbGet(
+    `SELECT * FROM "VendorInventory" WHERE "id" = $1`,
+    [inventoryItemId]
+  );
+  if (!item || Number(item.reorderThreshold) <= 0) return; // no threshold configured
+
+  if (Number(item.quantityOnHand) <= Number(item.reorderThreshold)) {
+    // Only create an alert if there isn't already an unread one for this item
+    const existing = await dbGet(
+      `SELECT "id" FROM "InventoryAlerts" WHERE "itemId" = $1 AND "isRead" = FALSE`,
+      [inventoryItemId]
+    );
+    if (!existing) {
+      const msg = `${item.itemName} is low — ${item.quantityOnHand} on hand ` +
+                  `(reorder at ${item.reorderThreshold}${item.reorderQty ? `, suggest ordering ${item.reorderQty}` : ""}).`;
+      await dbRun(
+        `INSERT INTO "InventoryAlerts" ("userId","itemId","itemName","message")
+         VALUES ($1,$2,$3,$4)`,
+        [userId, inventoryItemId, item.itemName, msg]
+      );
+    }
+  }
+}
+
 // Recalculate supplyFees in EventExpenses from EventSupplies
 async function recalcSupplyFees(eventID) {
   const row = await dbGet(
@@ -2367,53 +2426,41 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
     }
 
     // 2️⃣ Extract & validate payload
-    const { itemName, unitCost, quantityUsed } = req.body;
+    const { itemName, unitCost, quantityUsed, vendorInventoryId } = req.body;
 
     if (!itemName || typeof itemName !== "string") {
       return res.status(400).json({ error: "itemName is required" });
     }
 
-    const uCost = Number(unitCost);
-    const qty = Number(quantityUsed);
+    const uCost  = Number(unitCost);
+    const qty    = Number(quantityUsed);
+    const invId  = vendorInventoryId ? Number(vendorInventoryId) : null;
 
     if (!Number.isFinite(uCost) || !Number.isFinite(qty)) {
       return res.status(400).json({ error: "Invalid unitCost or quantityUsed" });
     }
 
-    // 3️⃣ Insert row (NO totalCost here)
+    // 3️⃣ Insert row
     const insertResult = await dbRun(
-      `
-      INSERT INTO "EventSupplies" (
-        "eventID",
-        "itemName",
-        "unitCost",
-        "quantityUsed"
-      )
-      VALUES ($1, $2, $3, $4)
-      RETURNING "id"
-      `,
-      [eventID, itemName.trim(), uCost, qty]
+      `INSERT INTO "EventSupplies" ("eventID","itemName","unitCost","quantityUsed","vendorInventoryId")
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING "id"`,
+      [eventID, itemName.trim(), uCost, qty, invId]
     );
 
     // 4️⃣ Return newly created row
     const newSupply = await dbGet(
-      `
-      SELECT *, ("unitCost" * "quantityUsed") AS "totalCost"
-      FROM "EventSupplies"
-      WHERE "id" = $1
-      `,
+      `SELECT *, ("unitCost" * "quantityUsed") AS "totalCost" FROM "EventSupplies" WHERE "id" = $1`,
       [insertResult.rows[0].id]
     );
 
-    // 5️⃣ Also save to VendorInventory if requested
-    if (req.body.addToInventory) {
-      const userId = req.session.getUserId();
-      await pool.query(
-        `INSERT INTO "VendorInventory" ("userId", "itemName", "unitCost")
-         VALUES ($1, $2, $3)
-         ON CONFLICT DO NOTHING`,
-        [userId, itemName.trim(), uCost]
-      );
+    // 5️⃣ Pro: deduct stock + alert if linked to an inventory item
+    if (invId && Number.isFinite(invId)) {
+      const plan = await getUserPlan(req);
+      if (plan === "pro") {
+        const userId = req.session.getUserId();
+        await deductStockAndAlert(userId, invId, qty);
+      }
     }
 
     // 6️⃣ Auto-recalculate supplyFees in EventExpenses
@@ -2775,6 +2822,46 @@ app.get("/api/inventory", async (req, res) => {
     res.status(500).json({ error: "Failed to load inventory" });
   }
 });
+// ===================================
+// 📦 Vendor Inventory Routes (Part B — Pro)
+// ===================================
+
+// GET unread alerts for the current user
+app.get("/api/inventory/alerts", requirePlan("pro"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const rows = await dbAll(
+      `SELECT * FROM "InventoryAlerts"
+       WHERE "userId" = $1 AND "isRead" = FALSE
+       ORDER BY "createdAt" DESC`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Get alerts error:", err);
+    res.status(500).json({ error: "Failed to load alerts" });
+  }
+});
+
+// GET items at or below reorder threshold
+app.get("/api/inventory/low-stock", requirePlan("pro"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const rows = await dbAll(
+      `SELECT * FROM "VendorInventory"
+       WHERE "userId" = $1
+         AND "reorderThreshold" > 0
+         AND "quantityOnHand" <= "reorderThreshold"
+       ORDER BY "itemName"`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Get low-stock error:", err);
+    res.status(500).json({ error: "Failed to load low-stock items" });
+  }
+});
+
 // ⚠️  ALL app.get("/api/...") routes must be registered ABOVE this line
 // Catch-all: serve frontend for browser routes
 app.get("*", (req, res) => {
@@ -3616,7 +3703,7 @@ app.put("/api/inventory/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid id" });
     }
 
-    const { itemName, unitCost, category, sku } = req.body;
+    const { itemName, unitCost, category, sku, quantityOnHand, reorderThreshold, reorderQty } = req.body;
     if (!itemName || typeof itemName !== "string") {
       return res.status(400).json({ error: "itemName is required" });
     }
@@ -3627,9 +3714,19 @@ app.put("/api/inventory/:id", async (req, res) => {
 
     const result = await dbRun(
       `UPDATE "VendorInventory"
-       SET "itemName" = $1, "unitCost" = $2, "category" = $3, "sku" = $4, "updatedAt" = NOW()
-       WHERE "id" = $5 AND "userId" = $6`,
-      [itemName.trim(), cost, category || null, sku || null, id, userId]
+       SET "itemName" = $1, "unitCost" = $2, "category" = $3, "sku" = $4,
+           "quantityOnHand" = COALESCE($5, "quantityOnHand"),
+           "reorderThreshold" = COALESCE($6, "reorderThreshold"),
+           "reorderQty" = COALESCE($7, "reorderQty"),
+           "updatedAt" = NOW()
+       WHERE "id" = $8 AND "userId" = $9`,
+      [
+        itemName.trim(), cost, category || null, sku || null,
+        quantityOnHand != null ? Number(quantityOnHand) : null,
+        reorderThreshold != null ? Number(reorderThreshold) : null,
+        reorderQty != null ? Number(reorderQty) : null,
+        id, userId
+      ]
     );
 
     if (result.rowCount === 0) {
@@ -3656,6 +3753,71 @@ app.delete("/api/inventory", async (req, res) => {
   } catch (err) {
     console.error("❌ Clear inventory error:", err);
     res.status(500).json({ error: "Failed to clear inventory" });
+  }
+});
+
+// Pro: mark a single alert as read
+app.put("/api/inventory/alerts/:id/read", requirePlan("pro"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    await dbRun(
+      `UPDATE "InventoryAlerts" SET "isRead" = TRUE WHERE "id" = $1 AND "userId" = $2`,
+      [id, userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Mark alert read error:", err);
+    res.status(500).json({ error: "Failed to update alert" });
+  }
+});
+
+// Pro: mark ALL alerts as read for this user
+app.put("/api/inventory/alerts/read-all", requirePlan("pro"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    await dbRun(
+      `UPDATE "InventoryAlerts" SET "isRead" = TRUE WHERE "userId" = $1`,
+      [userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Mark all alerts read error:", err);
+    res.status(500).json({ error: "Failed to update alerts" });
+  }
+});
+
+// Pro: restock — update quantityOnHand and clear open alerts for that item
+app.put("/api/inventory/:id/stock", requirePlan("pro"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const id  = Number(req.params.id);
+    const qty = Number(req.body.quantityOnHand);
+    if (!Number.isFinite(id))  return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(qty)) return res.status(400).json({ error: "Invalid quantityOnHand" });
+
+    const result = await dbRun(
+      `UPDATE "VendorInventory"
+       SET "quantityOnHand" = $1, "updatedAt" = NOW()
+       WHERE "id" = $2 AND "userId" = $3`,
+      [qty, id, userId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Item not found" });
+
+    // If restocked above threshold, clear open alerts for this item
+    const item = await dbGet(`SELECT * FROM "VendorInventory" WHERE "id" = $1`, [id]);
+    if (item && Number(item.quantityOnHand) > Number(item.reorderThreshold)) {
+      await dbRun(
+        `UPDATE "InventoryAlerts" SET "isRead" = TRUE WHERE "itemId" = $1 AND "userId" = $2`,
+        [id, userId]
+      );
+    }
+
+    res.json(item);
+  } catch (err) {
+    console.error("❌ Restock error:", err);
+    res.status(500).json({ error: "Failed to update stock" });
   }
 });
 

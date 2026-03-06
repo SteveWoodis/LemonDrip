@@ -35,11 +35,29 @@
 		      <button id="btnCompany" onclick="closeMobileNav(); navigateTo('companySection')">Register Company</button>
 		      <!--<button id="btnDesign" onclick="closeMobileNav(); navigateTo('designFormSection')">🧩 Design Event Form</button> --->
 		      <button id="btnManage" onclick="closeMobileNav(); navigateTo('manageSection')"> Manage Events </button>
-		      <button id="btnInventory" onclick="closeMobileNav(); navigateTo('inventorySection')">📦 My Inventory</button>
+		      <button id="btnInventory" style="display:none" onclick="closeMobileNav(); navigateTo('inventorySection')">📦 My Inventory</button>
+		      <button id="btnAdmin" class="hidden" onclick="closeMobileNav(); navigateTo('adminSection')">⚙ Admin</button>
 		      <button id="btnLogout" onclick="closeMobileNav(); handleLogout()">🚪 Logout</button>
 		     </div>
+        <!-- 🔔 Pro: Reorder Alerts Bell (hidden until Pro plan confirmed) -->
+        <button id="btnAlerts" class="alerts-bell hidden" onclick="toggleAlertsPanel()" aria-label="Reorder alerts">
+          🔔
+          <span id="alertsBadge" class="alerts-badge hidden">0</span>
+        </button>
 	    </div>
   </header>
+
+  <!-- 🔔 Alerts Panel (Pro) -->
+  <div id="alertsPanel" class="alerts-panel hidden">
+    <div class="alerts-panel-header">
+      <strong>Reorder Alerts</strong>
+      <button class="alerts-mark-all" onclick="markAllAlertsRead()">Mark all read</button>
+      <button class="alerts-close" onclick="toggleAlertsPanel()">✕</button>
+    </div>
+    <div id="alertsPanelList" class="alerts-panel-list">
+      <p class="alerts-empty">No reorder alerts.</p>
+    </div>
+  </div>
 
   <!-- 🔐 Auth Section -->
   <section id="authSection" class="card">
@@ -157,6 +175,32 @@
       </div>
     </section>
 
+
+    <!-- ⚙ Admin Section -->
+    <section id="adminSection" class="card hidden">
+      <div class="admin-header">
+        <h2>⚙ Admin Panel</h2>
+        <p class="admin-subtitle">Manage user plans and view account activity.</p>
+      </div>
+
+      <!-- Summary chips populated by JS -->
+      <div id="adminStats" class="admin-stats"></div>
+
+      <!-- Search bar -->
+      <div class="admin-toolbar">
+        <input type="text" id="adminSearch" placeholder="Search by email or user ID…" oninput="filterAdminUsers()">
+        <select id="adminPlanFilter" onchange="filterAdminUsers()">
+          <option value="">All Plans</option>
+          <option value="starter">Starter</option>
+          <option value="pro">Pro</option>
+        </select>
+        <button class="btn-secondary" onclick="withSpinner(this, loadAdminSection)">↺ Refresh</button>
+      </div>
+
+      <div id="adminTableContainer" class="admin-table-wrap">
+        <p class="admin-empty">Loading users…</p>
+      </div>
+    </section>
 
     <section id="manageSection" class="card">
       <h2>Manage Events</h2>

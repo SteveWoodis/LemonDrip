@@ -104,6 +104,11 @@ async function handleLogout() {
 }
 
 
+// ---------------------------
+// checkSession | Date: 2026-03-06
+// Purpose: On page load, checks whether a SuperTokens session already exists.
+//          Routes to authenticated or unauthenticated UI accordingly.
+// ---------------------------
 async function checkSession() {
   const exists = await supertokens.doesSessionExist();
   if (exists) {
@@ -113,9 +118,15 @@ async function checkSession() {
   }
 }
 
+// ---------------------------
+// showAuthenticatedUI | Date: 2026-03-06
+// Purpose: Reveals the main app nav and content after a successful login or session check.
+//          Fetches the user's plan and admin status, applies plan-based restrictions,
+//          and conditionally shows the alerts bell and Admin nav button.
+// ---------------------------
 async function showAuthenticatedUI() {
   document.getElementById("authSection").classList.add("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnLogout")
     .forEach(b => { if (b) b.style.display = ""; });
 
   // Fetch the user's plan from the server
@@ -124,8 +135,9 @@ async function showAuthenticatedUI() {
     if (res.ok) {
       const data = await res.json();
       window.USER_PLAN = data.plan || "starter";
-      window.USER_ID = data.userId || "";
-      console.log("📋 Plan loaded:", window.USER_PLAN);
+      window.USER_ID   = data.userId || "";
+      window.IS_ADMIN  = data.isAdmin === true;
+      console.log("📋 Plan loaded:", window.USER_PLAN, window.IS_ADMIN ? "(admin)" : "");
     }
   } catch (err) {
     console.warn("⚠️ Failed to fetch plan, defaulting to starter");
@@ -137,6 +149,17 @@ async function showAuthenticatedUI() {
     document.getElementById("btnCompany")?.remove();
   }
 
+  // Pro: show alerts bell and load initial alert count
+  if (window.USER_PLAN === "pro") {
+    document.getElementById("btnAlerts")?.classList.remove("hidden");
+    loadInventoryAlerts();
+  }
+
+  // Admin: show admin nav button if this user is an admin
+  if (window.IS_ADMIN) {
+    document.getElementById("btnAdmin")?.classList.remove("hidden");
+  }
+
   // Show welcome modal on first login
   if (window.USER_ID && !localStorage.getItem(`venview_welcome_seen_${window.USER_ID}`)) {
     showWelcomeModal();
@@ -145,15 +168,26 @@ async function showAuthenticatedUI() {
   loadAppState();
 }
 
+// ---------------------------
+// showUnauthenticatedUI | Date: 2026-03-06
+// Purpose: Hides all app content and nav buttons, then shows the login/signup form.
+//          Called on logout or when no active session is detected.
+// ---------------------------
 function showUnauthenticatedUI() {
   document.querySelectorAll(".app-shell > section")
     .forEach(sec => sec.classList.add("hidden"));
   document.getElementById("authSection").classList.remove("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnLogout")
     .forEach(b => { if (b) b.style.display = "none"; });
+  document.getElementById("btnAdmin")?.classList.add("hidden");
+  document.getElementById("btnAlerts")?.classList.add("hidden");
 }
 
-// Button spinner helper
+// ---------------------------
+// withSpinner | Date: 2026-03-06
+// Purpose: Wraps an async operation with button loading state — disables the button,
+//          shows a spinner, then restores the original label when the operation completes.
+// ---------------------------
 async function withSpinner(btn, asyncFn) {
   if (!btn || btn.disabled) return;
   const original = btn.innerHTML;
@@ -169,7 +203,12 @@ async function withSpinner(btn, asyncFn) {
   }
 }
 
-// Toast notification system
+// ---------------------------
+// showToast | Date: 2026-03-06
+// Purpose: Displays a temporary slide-in toast notification at the bottom of the screen.
+//          Supports info/success/warning/error types and an optional Retry button
+//          that re-invokes the failed operation when clicked.
+// ---------------------------
 function showToast(message, type = "info", duration = 3500, onRetry) {
   const container = document.getElementById("toast-container") || (() => {
     const div = document.createElement("div");
@@ -206,7 +245,12 @@ function showToast(message, type = "info", duration = 3500, onRetry) {
   }, duration);
 }
 
-// Inline error banner for content areas
+// ---------------------------
+// showInlineError | Date: 2026-03-06
+// Purpose: Renders an error banner inside a specific content container (e.g., a table area).
+//          Used when a data fetch fails — shows the error message in-place with
+//          an optional Retry button.
+// ---------------------------
 function showInlineError(containerId, message, onRetry) {
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -264,6 +308,12 @@ const CANONICAL_EVENT_FIELDS = {
 };
 
 
+// ---------------------------
+// safeLabelFromText | Date: 2026-03-06
+// Purpose: Converts a human-readable field label into a safe alphanumeric key
+//          by replacing spaces with underscores and stripping special characters.
+//          Used to generate consistent form field IDs from template labels.
+// ---------------------------
 function safeLabelFromText(label) {
   return String(label || "")
     .replace(/\s+/g, "_")
@@ -560,6 +610,11 @@ normalized.totals = normalized.totals ?? {
 }
 
 
+// ---------------------------
+// getFinalizedEventCount | Date: 2026-03-06
+// Purpose: Returns the number of finalized events in the current session's event cache.
+//          Used to enforce the Starter plan limit of one finalized event.
+// ---------------------------
 function getFinalizedEventCount() {
   return (window.events || []).filter(e => Number(e.isFinalized) === 1).length;
 }
@@ -585,11 +640,20 @@ function showUpgradeModal(context) {
   document.body.style.overflow = 'hidden';
 }
 
+// ---------------------------
+// closeUpgradeModal | Date: 2026-03-06
+// Purpose: Dismisses the plan upgrade modal and restores page scrolling.
+// ---------------------------
 function closeUpgradeModal() {
   document.getElementById('upgradeOverlay').classList.remove('open');
   document.body.style.overflow = '';
 }
 
+// ---------------------------
+// handleUpgradeClick | Date: 2026-03-06
+// Purpose: Handles the "Upgrade" button inside the upgrade modal — closes the modal
+//          and redirects the user to the upgrade/pricing page.
+// ---------------------------
 function handleUpgradeClick() {
   closeUpgradeModal();
   window.location.href = '/upgrade';
@@ -617,6 +681,11 @@ function showWelcomeModal() {
   }
 }
 
+// ---------------------------
+// closeWelcomeModal | Date: 2026-03-06
+// Purpose: Dismisses the first-login welcome modal and permanently records the
+//          dismissal in localStorage so it does not reappear for this user.
+// ---------------------------
 function closeWelcomeModal() {
   const overlay = document.getElementById('welcomeOverlay');
   if (overlay) {
@@ -630,7 +699,10 @@ document.addEventListener('click', (e) => {
   if (e.target === document.getElementById('welcomeOverlay')) closeWelcomeModal();
 });
 
-//
+// ---------------------------
+// saveAppState | Date: 2026-03-06
+// Purpose: Persists the current navigation state (active section, active event, edit mode)
+//          to localStorage so it can be restored on next page load.
 // ---------------------------
 function saveAppState() {
   const state = {
@@ -641,7 +713,11 @@ function saveAppState() {
   localStorage.setItem("lemon_app_state", JSON.stringify(state));
 }
 
-// Load the current App State
+// ---------------------------
+// loadAppState | Date: 2026-03-06
+// Purpose: Restores the app to its last known state from localStorage on login or page refresh.
+//          If no saved state exists, defaults to the Manage Events section.
+// ---------------------------
 async function loadAppState() {
   const saved = localStorage.getItem("lemon_app_state");
 
@@ -690,6 +766,11 @@ function toCamelCaseKeys(obj) {
   }
   return obj;
 }
+// ---------------------------
+// getSafeEventID | Date: 2026-03-06
+// Purpose: Extracts the event ID from an event object regardless of which key name
+//          the server returned (eventID, EventID, "Event ID", or nested in EventInfo).
+// ---------------------------
 function getSafeEventID(obj) {
   return (
     obj.eventID ||
@@ -726,6 +807,11 @@ function navigateTo(sectionId) {
 
 window.navigateTo = navigateTo; // <-- FIX
 
+// ---------------------------
+// formatEvent | Date: 2026-03-06
+// Purpose: Converts a raw API event object into the flat, minimal shape used
+//          by the event list table and search results display.
+// ---------------------------
 function formatEvent(e) {
   const n = normalizeEvent(e);
   return {
@@ -746,9 +832,12 @@ function formatEvent(e) {
 
 
 
-// -------------------------------------
-// END IF UTILITIES
-// -------------------------------------
+// ---------------------------
+// createStarRating | Date: 2026-03-06
+// Purpose: Builds an interactive 1–5 star rating widget as a DOM element.
+//          Clicking a star fills stars up to that value. Read-only mode is
+//          supported by passing editable = false.
+// ---------------------------
 function createStarRating(name, currentValue = 0, editable = true) {
   const container = document.createElement("div");
   container.classList.add("star-container");
@@ -913,6 +1002,11 @@ function buildTableHTML(results, containerId = "searchResults") {
   container.appendChild(table);
 } // ⭐ FIXED: PROPER CLOSING BRACE
 
+// ---------------------------
+// renderPaginationControls | Date: 2026-03-06
+// Purpose: Appends Previous/Next pagination buttons and a page counter to the bottom
+//          of a container element. Calls the provided loadFn with the target page number.
+// ---------------------------
 function renderPaginationControls(containerId, currentPage, totalPages, loadFn) {
   if (totalPages <= 1) return;
   const container = document.getElementById(containerId);
@@ -944,6 +1038,11 @@ function renderPaginationControls(containerId, currentPage, totalPages, loadFn) 
   container.appendChild(nav);
 }
 
+// ---------------------------
+// filterEvents | Date: 2026-03-06
+// Purpose: Filters the already-loaded events list by finalization status
+//          ("finalized", "notfinalized", or all) and re-renders the manage table.
+// ---------------------------
 async function filterEvents(mode) {
   const events = lastLoadedEvents;
 
@@ -958,6 +1057,11 @@ async function filterEvents(mode) {
   buildTableHTML(filtered, "manageResults");
 }
 
+// ---------------------------
+// clearEventForm | Date: 2026-03-06
+// Purpose: Resets all input, select, and textarea fields inside the Add/Edit Event form
+//          back to their default empty state.
+// ---------------------------
 function clearEventForm() {
   const formEl = document.getElementById("eventForm");
   if (!formEl) return;
@@ -976,7 +1080,11 @@ function clearEventForm() {
   });
 }
 
-// List all (paginated)
+// ---------------------------
+// loadAllEvents | Date: 2026-03-06
+// Purpose: Fetches the paginated list of events from the API and renders them
+//          in the Manage Events table. Starter users are limited to one non-finalized event.
+// ---------------------------
 window.eventsCurrentPage = 1;
 window.eventsPageLimit = 10;
 
@@ -1009,7 +1117,11 @@ async function loadAllEvents(page = 1) {
 }
 
 
-// Search (paginated)
+// ---------------------------
+// manageSearch | Date: 2026-03-06
+// Purpose: Searches events by name, date, or ID using query parameters and renders
+//          paginated results in the Manage Events table.
+// ---------------------------
 async function manageSearch(page = 1) {
   const name = document.getElementById("manageSearchName").value.trim();
   const date = document.getElementById("manageSearchDate").value.trim();
@@ -1043,6 +1155,10 @@ async function manageSearch(page = 1) {
   }
 }
 
+// ---------------------------
+// exportEventsCSV | Date: 2026-03-06
+// Purpose: Triggers a CSV download of all events by navigating to the export endpoint.
+// ---------------------------
 function exportEventsCSV() {
   window.location.href = `${API_BASE}/api/events/export/csv`;
 }
@@ -1097,7 +1213,13 @@ async function buildExpandedDetails(event) {
   // You can extend this if you want richer dashboard sections later.
 }
 
-// Initialize Number of Days field (injected into form after Application Date)
+// ---------------------------
+// initNumDaysField | Date: 2026-03-06
+// Purpose: Wires up the Number of Days input in the Add/Edit Event form.
+//          Calculates and displays the event end date as the user types.
+//          Enforces the Starter plan cap of 2 days by showing the upgrade modal
+//          if the user tries to enter 3 or more.
+// ---------------------------
 function initNumDaysField(existingNumDays) {
   const input = document.getElementById("form_Number_of_Days");
   const endDateSpan = document.getElementById("endDateDisplay");
@@ -1136,7 +1258,12 @@ function initNumDaysField(existingNumDays) {
   }
 }
 
-// Load Square locations into the Add Event form
+// ---------------------------
+// loadSquareLocationsIntoForm | Date: 2026-03-06
+// Purpose: Fetches the vendor's Square POS locations from the API and populates
+//          the Square Location dropdown in the Add/Edit Event form.
+//          Hidden entirely for Starter plan users.
+// ---------------------------
 async function loadSquareLocationsIntoForm() {
   const proFields = document.getElementById("proAddEventFields");
   if (window.USER_PLAN === "starter") {
@@ -1171,6 +1298,12 @@ async function loadSquareLocationsIntoForm() {
   }
 }
 
+// ---------------------------
+// editEvent | Date: 2026-03-06
+// Purpose: Opens the Add/Edit Event form pre-filled with data from an existing event.
+//          Fetches the full event from the API, rebuilds the form from the active
+//          template, and populates all fields including Square location and num days.
+// ---------------------------
 async function editEvent(eventData) {
   if (!eventData) {
     showToast("No Event Data to load.", "warning");
@@ -1328,6 +1461,11 @@ async function searchEvents() {
   );
 }
 
+// ---------------------------
+// loadEvents | Date: 2026-03-06
+// Purpose: Loads all events from the server into window.events (no pagination).
+//          Used as a prerequisite for client-side search filtering in searchEvents().
+// ---------------------------
 async function loadEvents() {
   try {
     const res = await fetch("/api/events");
@@ -1349,6 +1487,11 @@ async function loadEvents() {
 // ---------------------------
 // ✅ Cleaned renderTableArray()
 // ---------------------------
+// ---------------------------
+// renderTableArray | Date: 2026-03-06
+// Purpose: Renders an array of objects as an HTML table inside the element with the given ID.
+//          Shows "No data" if the array is empty.
+// ---------------------------
 function renderTableArray(elId, arr) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -1361,6 +1504,12 @@ function renderTableArray(elId, arr) {
   buildTableHTML(arr);
 }
 
+// ---------------------------
+// coerceForApi | Date: 2026-03-06
+// Purpose: Converts raw form string values into the correct types expected by the API
+//          (numeric fields to numbers, boolean fields to booleans, string fields to strings).
+//          Run on the event payload just before POST/PUT to the server.
+// ---------------------------
 function coerceForApi(obj) {
   if (typeof obj.eventName !== "string") {
   console.warn("⚠️ eventName is not string before coercion", obj.eventName);
@@ -1435,6 +1584,12 @@ function coerceForApi(obj) {
 }
 
 
+// ---------------------------
+// submitEvent | Date: 2026-03-06
+// Purpose: Handles the Add/Edit Event form submission. Enforces plan gating,
+//          reads all form values, maps them to canonical API fields via the
+//          active template, coerces types, then POSTs (new) or PUTs (edit) to the server.
+// ---------------------------
 async function submitEvent(e) {
   if (e) e.preventDefault();
 
@@ -1718,6 +1873,11 @@ function clearSearch() {
 //populateEmployeeDropdown
 //--------------------------------------------------------
 
+// ---------------------------
+// populateEmployeeDropdown | Date: 2026-03-06
+// Purpose: Fetches the employee list from the API and populates a given <select> element
+//          with employee options. Used in the labor shift entry form.
+// ---------------------------
 async function populateEmployeeDropdown(selectEl) {
   try {
     const res = await fetch("/api/employees");
@@ -1737,6 +1897,11 @@ async function populateEmployeeDropdown(selectEl) {
   }
 }
 
+// ---------------------------
+// addFieldToTemplate | Date: 2026-03-06
+// Purpose: Reads the field builder inputs (label, type, required, options) and appends
+//          a new field definition to the in-memory formTemplate object, then refreshes the preview.
+// ---------------------------
 function addFieldToTemplate() {
   const label = document
     .getElementById("builderLabel")
@@ -1773,6 +1938,11 @@ function addFieldToTemplate() {
   document.getElementById("builderOptions").value = "";
 }
 
+// ---------------------------
+// renderFormPreview | Date: 2026-03-06
+// Purpose: Renders a live preview of the custom event form template being built,
+//          showing each field as an actual HTML input element.
+// ---------------------------
 function renderFormPreview() {
   const preview = document.getElementById("formPreview");
   preview.innerHTML = "";
@@ -1809,6 +1979,11 @@ function renderFormPreview() {
   });
 }
 
+// ---------------------------
+// saveTemplate | Date: 2026-03-06
+// Purpose: Prompts for a template name, then POSTs the current formTemplate definition
+//          to the server so it can be reused when creating or editing events.
+// ---------------------------
 async function saveTemplate() {
   const templateName = prompt("Enter a name for this template:");
   if (!templateName) return;
@@ -1841,6 +2016,10 @@ async function saveTemplate() {
   }
 }
 
+// ---------------------------
+// clearManageSearch | Date: 2026-03-06
+// Purpose: Resets all search inputs and clears the Manage Events results table.
+// ---------------------------
 function clearManageSearch() {
   // Clear input fields
   document.getElementById('manageSearchName').value = '';
@@ -1859,6 +2038,12 @@ function clearManageSearch() {
   // Provide user feedback (optional)
   console.log("Manage search cleared.");
 }
+// ---------------------------
+// getDefaultStarterTemplate | Date: 2026-03-06
+// Purpose: Returns the "Default Template" from the available templates list,
+//          falling back to any template named "default" or the first available one.
+//          Used to auto-select a template for Starter users.
+// ---------------------------
 function getDefaultStarterTemplate() {
   if (!Array.isArray(window.availableTemplates)) return null;
 
@@ -1877,6 +2062,11 @@ function getDefaultStarterTemplate() {
 }
 
 
+// ---------------------------
+// waitForTemplates | Date: 2026-03-06
+// Purpose: Polls until window.availableTemplates is populated or a timeout is reached.
+//          Prevents race conditions when opening the Add Event form before templates load.
+// ---------------------------
 async function waitForTemplates(timeout = 3000) {
   const start = Date.now();
   while (!window.availableTemplates?.length) {
@@ -1887,6 +2077,12 @@ async function waitForTemplates(timeout = 3000) {
 }
 
 
+// ---------------------------
+// openAddEventForUser | Date: 2026-03-06
+// Purpose: Opens the Add Event section, loads available templates into the dropdown,
+//          and auto-selects the default template for Starter users.
+//          Also initializes Square location dropdown and the Number of Days field.
+// ---------------------------
 async function openAddEventForUser() {
   if (!window.availableTemplates) {
   await populateTemplateDropdown();
@@ -1941,7 +2137,12 @@ async function openAddEventForUser() {
   }
 }*/
 
-// 🧩 Load templates into Add Event dropdown
+// ---------------------------
+// populateTemplateDropdown | Date: 2026-03-06
+// Purpose: Fetches all saved event form templates from the API and populates
+//          the template selector dropdown. Stores the full template list in
+//          window.availableTemplates for use by the form builder.
+// ---------------------------
 async function populateTemplateDropdown() {
   try {
     const res = await fetch(`${API_BASE}/api/formTemplates`);
@@ -1990,8 +2191,11 @@ async function populateTemplateDropdown() {
 }
 
 
-// ⚡ When user picks a template
-// Helper to strip 'Event Color' field from templates defensively
+// ---------------------------
+// stripEventColorFromTemplate | Date: 2026-03-06
+// Purpose: Returns a copy of the template with the deprecated "Event Color" field removed.
+//          Prevents it from being rendered in the Add Event form.
+// ---------------------------
 function stripEventColorFromTemplate(tpl) {
   if (!tpl || !Array.isArray(tpl.fields)) return tpl;
 
@@ -2009,6 +2213,11 @@ function stripEventColorFromTemplate(tpl) {
 }
 
 
+// ---------------------------
+// useSelectedTemplate | Date: 2026-03-06
+// Purpose: Reads the currently selected template from the dropdown and rebuilds
+//          the Add Event form using that template's field definitions.
+// ---------------------------
 function useSelectedTemplate() {
   const templates = window.availableTemplates;
 
@@ -2050,6 +2259,11 @@ function useSelectedTemplate() {
 
 
 
+// ---------------------------
+// activateTemplate | Date: 2026-03-06
+// Purpose: Legacy version of useSelectedTemplate — activates a template by its TemplateName
+//          from the selector. Rebuilds the form and shows a success toast.
+// ---------------------------
 function activateTemplate() {
   const selector = document.getElementById("templateSelect");
   if (!selector) {
@@ -2077,6 +2291,12 @@ function activateTemplate() {
   showToast(`"${tpl.TemplateName}" activated!`, "success");
 }
 
+// ---------------------------
+// rebuildAddEventForm | Date: 2026-03-06
+// Purpose: Clears and completely re-renders the Add Event form based on a template's
+//          field definitions. Builds each field as a labeled HTML input, select,
+//          textarea, or star rating widget, with appropriate IDs and validation attributes.
+// ---------------------------
 function rebuildAddEventForm(template) {
   const formContainer = document.getElementById("eventForm");
   
@@ -2237,6 +2457,11 @@ console.log("✅ fields resolved:", fields);
 //------------------------
 // Helper: Format event date range
 //------------------------
+// ---------------------------
+// formatDateRange | Date: 2026-03-06
+// Purpose: Formats a single event date (or date range for multi-day events)
+//          into a human-readable string like "Mar 5–7, 2026".
+// ---------------------------
 function formatDateRange(eventDate, numDays) {
   const days = Number(numDays) || 1;
   if (!eventDate || days <= 1) return eventDate || "";
@@ -2261,12 +2486,12 @@ function fmt(x) {
     currency: "USD",
   });
 }
-// -----------------------------
-// Modern Sheet-Style Collapsible Card
-// -----------------------------
-// -----------------------------
-// Modern Sheet-Style Collapsible Card
-// -----------------------------
+// ---------------------------
+// createCollapsibleCard | Date: 2026-03-06
+// Purpose: Creates a collapsible "sheet card" DOM element with a toggle header button
+//          and a hidden/visible content area. Used throughout the event dashboard for
+//          fees, tips, discounts, supplies, and labor cards.
+// ---------------------------
 function createCollapsibleCard(title, contentHTML = "") {
   const wrapper = document.createElement("div");
   wrapper.className = "sheet-card";
@@ -2327,6 +2552,12 @@ function feeRowHTML(name = "", amount = "") {
   `;
 }
 
+// ---------------------------
+// reloadEventDashboard | Date: 2026-03-06
+// Purpose: Re-fetches the full event report from the server and re-renders the
+//          entire event dashboard in-place. Called after saving fees, tips, supplies,
+//          or any other sub-section to keep the dashboard in sync.
+// ---------------------------
 async function reloadEventDashboard() {
   if (!window.currentEventId) {
     console.warn("⚠️ reloadEventDashboard called with no active event");
@@ -2365,6 +2596,10 @@ async function reloadEventDashboard() {
 }
 
 
+// ---------------------------
+// addFeeRow | Date: 2026-03-06
+// Purpose: Appends a blank fee row to the additional fees editor table.
+// ---------------------------
 function addFeeRow() {
   const tbody = document.querySelector("#feesEditor tbody");
   if (!tbody) return;
@@ -2372,6 +2607,11 @@ function addFeeRow() {
   tbody.insertAdjacentHTML("beforeend", feeRowHTML());
 }
 
+// ---------------------------
+// collectFeesFromUI | Date: 2026-03-06
+// Purpose: Reads all rows in the fees editor table and returns them as an
+//          array of { feeName, feeAmount } objects, skipping any incomplete rows.
+// ---------------------------
 function collectFeesFromUI() {
   const rows = document.querySelectorAll(".fee-row");
   const fees = [];
@@ -2391,6 +2631,12 @@ function collectFeesFromUI() {
   return fees;
 }
 
+// ---------------------------
+// saveFees | Date: 2026-03-06
+// Purpose: Collects all rows from the fees editor and PUTs them to the server
+//          as the event's additional fees. Blocks saves on finalized events.
+//          Reloads the dashboard after a successful save.
+// ---------------------------
 async function saveFees() {
   if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -2430,9 +2676,11 @@ async function saveFees() {
 }
 
 
-// --------------------------------------------
-// 💰 Build Editable Fees Card
-// --------------------------------------------
+// ---------------------------
+// buildFeesEditor | Date: 2026-03-06
+// Purpose: Generates the HTML for the Additional Fees editable card, pre-populated
+//          with the event's existing fee rows. Includes Add Fee and Save Fees buttons.
+// ---------------------------
 function buildFeesEditor(event) {
   const rows = event.additionalFees || [];
 
@@ -2465,9 +2713,11 @@ function buildFeesEditor(event) {
   return html;
 }
 
-// --------------------------------------------
-// 💵 Build Editable Tips Card (Event-Level)
-// --------------------------------------------
+// ---------------------------
+// buildTipsEditor | Date: 2026-03-06
+// Purpose: Generates the HTML for the Tips editable card, showing the Square-imported
+//          tip total and a manual tips editor table. Includes Add Tip and Save Tips buttons.
+// ---------------------------
 function buildTipsEditor(event) {
   const rows = event.tips || [];
   const sales = event.sales || {};
@@ -2504,6 +2754,10 @@ function buildTipsEditor(event) {
   return html;
 }
 
+// ---------------------------
+// tipRowHTML | Date: 2026-03-06
+// Purpose: Returns the HTML string for a single editable tip row in the tips editor table.
+// ---------------------------
 function tipRowHTML(amount = "") {
   return `
     <tr class="tip-row">
@@ -2523,6 +2777,10 @@ function tipRowHTML(amount = "") {
   `;
 }
 
+// ---------------------------
+// addTipRow | Date: 2026-03-06
+// Purpose: Appends a blank tip row to the tips editor table.
+// ---------------------------
 function addTipRow() {
   const tbody = document.querySelector("#tipsEditor tbody");
   if (!tbody) return;
@@ -2530,6 +2788,11 @@ function addTipRow() {
   tbody.insertAdjacentHTML("beforeend", tipRowHTML());
 }
 
+// ---------------------------
+// collectTipsFromUI | Date: 2026-03-06
+// Purpose: Reads all rows in the tips editor table and returns them as an array
+//          of { tipAmount } objects, skipping rows with zero or invalid amounts.
+// ---------------------------
 function collectTipsFromUI() {
   const rows = document.querySelectorAll(".tip-row");
   const tips = [];
@@ -2545,11 +2808,16 @@ function collectTipsFromUI() {
 }
 
 
+// ---------------------------
+// saveTips | Date: 2026-03-06
+// Purpose: Collects tips from the editor table and PUTs them to the server.
+//          Blocks saves on finalized events. Reloads the dashboard on success.
+// ---------------------------
 async function saveTips() {
   if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
   return;
-  } 
+  }
   const eventID = window.currentEventId;
   if (!eventID) {
     showToast("No active event.", "warning");
@@ -2583,9 +2851,11 @@ async function saveTips() {
 }
 
 
-// --------------------------------------------
-// 🧾 Build Editable Discounts Card
-// --------------------------------------------
+// ---------------------------
+// buildDiscountsEditor | Date: 2026-03-06
+// Purpose: Generates the HTML for the Discounts editable card, pre-populated with
+//          the event's existing discount rows. Includes Add Discount and Save Discounts buttons.
+// ---------------------------
 function buildDiscountsEditor(event) {
   const rows = event.discounts || [];
   const sales = event.sales || {};
@@ -2623,6 +2893,10 @@ function buildDiscountsEditor(event) {
   return html;
 }
 
+// ---------------------------
+// discountRowHTML | Date: 2026-03-06
+// Purpose: Returns the HTML string for a single editable discount row in the discounts editor table.
+// ---------------------------
 function discountRowHTML(name = "", amount = "") {
   return `
     <tr class="discount-row">
@@ -2647,6 +2921,11 @@ function discountRowHTML(name = "", amount = "") {
   `;
 }
 
+// ---------------------------
+// collectDiscountsFromUI | Date: 2026-03-06
+// Purpose: Reads all rows from the discounts editor table and returns them as an
+//          array of { discountName, discountAmount } objects, skipping incomplete rows.
+// ---------------------------
 function collectDiscountsFromUI() {
   const rows = document.querySelectorAll(".discount-row");
   const discounts = [];
@@ -2666,6 +2945,11 @@ function collectDiscountsFromUI() {
   return discounts;
 }
 
+// ---------------------------
+// saveDiscounts | Date: 2026-03-06
+// Purpose: Collects discounts from the editor table and PUTs them to the server.
+//          Blocks saves on finalized events. Reloads the dashboard on success.
+// ---------------------------
 async function saveDiscounts() {
   if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -2705,6 +2989,11 @@ async function saveDiscounts() {
 }
 
 
+// ---------------------------
+// addDiscountRow | Date: 2026-03-06
+// Purpose: Appends a new editable discount row (optionally pre-filled) to the
+//          discounts editor table.
+// ---------------------------
 function addDiscountRow(name = "", amount = "") {
   const tbody = document.querySelector("#discountsEditor tbody");
   if (!tbody) return;
@@ -2726,6 +3015,12 @@ function addDiscountRow(name = "", amount = "") {
 }
 
 
+// ---------------------------
+// renderManualSalesEntryCard | Date: 2026-03-06
+// Purpose: Builds a collapsible card with editable inputs for manually entering
+//          gross sales, refunds, discounts, and total collected. Used when Square
+//          POS integration is not connected.
+// ---------------------------
 function renderManualSalesEntryCard(report) {
   const sales = report.sales || {};
   const eventID = report.event?.eventID || window.currentEventId;
@@ -2758,6 +3053,11 @@ function renderManualSalesEntryCard(report) {
   return createCollapsibleCard("Manual Sales Entry", html);
 }
 
+// ---------------------------
+// saveManualSales | Date: 2026-03-06
+// Purpose: Reads the manual sales entry inputs and PUTs the values to the server.
+//          Reloads the dashboard to update profit calculations after saving.
+// ---------------------------
 async function saveManualSales() {
   const eventID = window.currentEventId;
   if (!eventID) { showToast("No event selected.", "warning"); return; }
@@ -2789,6 +3089,12 @@ async function saveManualSales() {
   }
 }
 
+// ---------------------------
+// renderEventProfitSummary | Date: 2026-03-06
+// Purpose: Renders the full Profit Summary card for an event dashboard — showing
+//          gross sales, Square fees, taxes, all expense categories, and net profit.
+//          Handles both Square-connected (Pro) and manual sales entry (Starter) modes.
+// ---------------------------
 function renderEventProfitSummary(report) {
   const event = report.event || {};
 const sales = report.sales || {};
@@ -2885,6 +3191,11 @@ const discountTotal = discounts.reduce(
   );
 }
 
+// ---------------------------
+// updateManualPosFee | Date: 2026-03-06
+// Purpose: Saves a manually entered POS fee value for the current event.
+//          Used for non-Square users who want to record their POS processing cost.
+// ---------------------------
 async function updateManualPosFee(value) {
   const eventID = window.currentEventId;
   if (!eventID) return;
@@ -2905,6 +3216,11 @@ async function updateManualPosFee(value) {
   }
 }
 
+// ---------------------------
+// updateExpensesDOM | Date: 2026-03-06
+// Purpose: Patches the labor fees and total expenses values in the expenses card DOM
+//          without re-rendering the entire card. Called after a labor shift is saved.
+// ---------------------------
 function updateExpensesDOM(expenses) {
  const el = document.getElementById("expensesCard");
  
@@ -3086,6 +3402,11 @@ function renderExpensesEditMode(expenses) {
 
 
 
+// ---------------------------
+// updateProfitSummaryDOM | Date: 2026-03-06
+// Purpose: Updates the gross profit value in the profit summary card DOM in-place
+//          without a full re-render. Called after labor or expense changes.
+// ---------------------------
 function updateProfitSummaryDOM(totals) {
   const el = document.querySelector(".profit-summary");
   if (!el) return;
@@ -3097,6 +3418,12 @@ function updateProfitSummaryDOM(totals) {
 }
 
 
+// ---------------------------
+// renderLaborCard | Date: 2026-03-06
+// Purpose: Renders the Labor card for an event dashboard, showing all labor shifts
+//          in an editable table (employee, hours, rate, flat rate, subtotal) and
+//          a form to add new shifts. Calculates shift subtotals inline.
+// ---------------------------
 function renderLaborCard(event) {
   const rows = event.labor || [];
 
@@ -3166,6 +3493,12 @@ function renderLaborCard(event) {
 
 
 
+// ---------------------------
+// wireLaborCard | Date: 2026-03-06
+// Purpose: Attaches all event listeners to the Labor card — row removal, live subtotal
+//          recalculation on input, Add Row button, and Save button with server PUT.
+//          Updates the Expenses and Profit Summary cards after saving.
+// ---------------------------
 function wireLaborCard(eventID) {
 
   const body = document.getElementById("laborTableBody");
@@ -3264,6 +3597,10 @@ function wireLaborCard(eventID) {
 
 
 
+// ---------------------------
+// enterExpensesEditMode | Date: 2026-03-06
+// Purpose: Switches the Expenses card from read-only view to an editable form.
+// ---------------------------
 function enterExpensesEditMode() {
   expensesEditMode = true;
   const card = document.getElementById("expensesCard");
@@ -3275,6 +3612,11 @@ function enterExpensesEditMode() {
   }
 }
 
+// ---------------------------
+// cancelExpensesEdit | Date: 2026-03-06
+// Purpose: Discards any unsaved changes in the Expenses edit form and reverts
+//          the card back to read-only view mode.
+// ---------------------------
 function cancelExpensesEdit() {
   expensesEditMode = false;
   const card = document.getElementById("expensesCard");
@@ -3287,6 +3629,12 @@ function cancelExpensesEdit() {
 }
 
 
+// ---------------------------
+// saveExpenses | Date: 2026-03-06
+// Purpose: Reads the expenses edit form fields, builds a partial-update payload
+//          (only changed fields), and PUTs it to the server. Reloads the dashboard on success.
+//          Blocks saves on finalized events.
+// ---------------------------
 async function saveExpenses() {
  if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -3340,9 +3688,10 @@ async function saveExpenses() {
 
 
 // ---------------------------
-// 📊 Clean Event Dashboard Loader (Sheet-Style Cards, no IDs)
+// renderAdditionalFeesCard | Date: 2026-03-06
+// Purpose: Renders the legacy Additional Fees card with inline-editable fields and
+//          an Add fee row. Each fee is saved independently via API on change.
 // ---------------------------
-
 function renderAdditionalFeesCard(fees = []) {
   const total = fees.reduce(
     (sum, f) => sum + (Number(f.feeAmount) || 0),
@@ -3377,6 +3726,11 @@ function renderAdditionalFeesCard(fees = []) {
   return createCollapsibleCard("Additional Fees", html);
 }
 
+// ---------------------------
+// addAdditionalFee | Date: 2026-03-06
+// Purpose: POSTs a new additional fee (from the inline name/amount inputs) for the
+//          current event and reloads the dashboard.
+// ---------------------------
 async function addAdditionalFee() {
   const name = document.getElementById("newFeeName").value;
   const amt  = document.getElementById("newFeeAmount").value;
@@ -3390,6 +3744,11 @@ async function addAdditionalFee() {
   reloadEventDashboard();
 }
 
+// ---------------------------
+// updateAdditionalFee | Date: 2026-03-06
+// Purpose: PUTs updated name or amount for an individual additional fee row.
+//          Called inline when the user changes a fee name or amount input.
+// ---------------------------
 async function updateAdditionalFee(id, name, amt) {
   const payload = {};
   if (name !== null) payload.feeName = name;
@@ -3404,6 +3763,10 @@ async function updateAdditionalFee(id, name, amt) {
   reloadEventDashboard();
 }
 
+// ---------------------------
+// deleteAdditionalFee | Date: 2026-03-06
+// Purpose: DELETEs an additional fee by ID and reloads the dashboard.
+// ---------------------------
 async function deleteAdditionalFee(id) {
   await fetch(`${API_BASE}/api/additional-fees/${id}`, {
     method: "DELETE"
@@ -3412,6 +3775,12 @@ async function deleteAdditionalFee(id) {
   reloadEventDashboard();
 }
 
+// ---------------------------
+// renderSupplyCostsCard | Date: 2026-03-06
+// Purpose: Renders the Supply Fees card on the event dashboard — shows all supply
+//          rows with inline editable name, unit cost, and quantity fields.
+//          Includes the "Pick from Inventory" button and "Calculate Supply Fees" action.
+// ---------------------------
 function renderSupplyCostsCard(items = []) {
   const total = items.reduce(
     (sum, r) => sum + (Number(r.totalCost) || 0),
@@ -3460,6 +3829,12 @@ function renderSupplyCostsCard(items = []) {
   return createCollapsibleCard("Supply Fees", html);
 }
 
+// ---------------------------
+// addSupply | Date: 2026-03-06
+// Purpose: POSTs a new supply item for the current event. Optionally also saves
+//          the item to the vendor's inventory if the "Also save to my Inventory"
+//          checkbox is checked. Reloads the dashboard after save.
+// ---------------------------
 async function addSupply() {
   if (window.activeEvent?.isFinalized === 1) {
     showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -3496,6 +3871,12 @@ async function addSupply() {
 }
 
 
+// ---------------------------
+// calculateSupplyCosts | Date: 2026-03-06
+// Purpose: Reads all supply rows from the DOM, saves each one's name/unit cost/quantity
+//          to the server via PUT, then triggers a server-side supply fee recalculation.
+//          Reloads the dashboard to show the updated total.
+// ---------------------------
 async function calculateSupplyCosts() {
   if (window.activeEvent?.isFinalized === 1) {
     showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -3548,6 +3929,11 @@ async function calculateSupplyCosts() {
   await reloadEventDashboard();
 }
 
+// ---------------------------
+// deleteSupply | Date: 2026-03-06
+// Purpose: DELETEs a supply item by ID for the current event and reloads the dashboard.
+//          Blocked on finalized events.
+// ---------------------------
 async function deleteSupply(id) {
   if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -3560,12 +3946,23 @@ async function deleteSupply(id) {
   reloadEventDashboard();
 }
 
+// ---------------------------
+// safeAppend | Date: 2026-03-06
+// Purpose: Safely appends a DOM node to a container, guarding against null values.
+// ---------------------------
 function safeAppend(container, node) {
   if (!container || !node) return;
   container.appendChild(node);
 }
 
 
+// ---------------------------
+// loadEventIntoDashboard | Date: 2026-03-06
+// Purpose: The main event dashboard loader. Normalizes the event, fetches the full
+//          financial report, then builds and mounts the entire dashboard — header, action
+//          buttons (Square pull, edit, delete, finalize), profit summary, manual sales entry,
+//          expenses, fees, tips, discounts, supplies, and labor cards.
+// ---------------------------
 async function loadEventIntoDashboard(evt) {
   if (!evt) {
     console.warn("⚠️ loadEventIntoDashboard called with no event");
@@ -3950,6 +4347,11 @@ wireLaborCard(eventID);
 
 
 
+// ---------------------------
+// deleteEvent | Date: 2026-03-06
+// Purpose: Confirms with the user, then DELETEs an event and all its associated data.
+//          Returns to the Manage Events section and refreshes the list on success.
+// ---------------------------
 async function deleteEvent(eventID, eventName) {
   if (!confirm(`Are you sure you want to delete "${eventName}"?\n\nThis will permanently remove the event and all associated data (sales, labor, expenses, etc.).`)) {
     return;
@@ -3974,6 +4376,11 @@ async function deleteEvent(eventID, eventName) {
   }
 }
 
+// ---------------------------
+// pullSquareSales | Date: 2026-03-06
+// Purpose: Calls the server-side Square Sales sync endpoint for a given event,
+//          which pulls sales data from the Square API and stores it in the database.
+// ---------------------------
 async function pullSquareSales(eventID) {
   try {
     const res = await fetch(`${API_BASE}/api/square/sales/${eventID}`, {
@@ -4004,6 +4411,11 @@ async function pullSquareSales(eventID) {
     throw err;
   }
 }
+// ---------------------------
+// loadEventLabor | Date: 2026-03-06
+// Purpose: Calls the Square Labor sync endpoint to pull timeclock data for an event
+//          into the database, then reloads the dashboard.
+// ---------------------------
 async function loadEventLabor(eventID) {
   if (!eventID) return;
 
@@ -4028,6 +4440,11 @@ async function loadEventLabor(eventID) {
   }
 }
 
+// ---------------------------
+// pullSquareLabor | Date: 2026-03-06
+// Purpose: Pulls Square timeclock labor data for the currently active event
+//          and saves it to the database. Shows a toast on success or failure.
+// ---------------------------
 async function pullSquareLabor() {
   const eventID = window.activeEventID;
   console.log("🧠 Square Labor Pull → eventID:", eventID);
@@ -4061,6 +4478,11 @@ async function pullSquareLabor() {
    (Duplicate definitions removed)
    ============================================================ */
 
+// ---------------------------
+// normalizeReportPayload | Date: 2026-03-06
+// Purpose: Normalizes a raw post-event report API response into a consistent shape,
+//          handling both camelCase and PascalCase key variations from the server.
+// ---------------------------
 function normalizeReportPayload(raw) {
   const eventInfo = raw.eventInfo || raw.EventInfo || raw.event || raw.Event || {};
 
@@ -4077,6 +4499,12 @@ function normalizeReportPayload(raw) {
   };
 }
 
+// ---------------------------
+// openPostEventReport | Date: 2026-03-06
+// Purpose: Opens the Post-Event Report section for a given event (Pro plan only).
+//          Fetches the full financial report from the server and renders it.
+//          Shows the upgrade modal for Starter plan users.
+// ---------------------------
 async function openPostEventReport(eventData) {
   if (window.USER_PLAN === "starter") {
     showUpgradeModal("report");
@@ -4122,6 +4550,12 @@ async function openPostEventReport(eventData) {
   }
 }
 
+// ---------------------------
+// renderPostEventReport | Date: 2026-03-06
+// Purpose: Renders the full Post-Event Report into the report section — event info,
+//          sales summary, expenses, labor, supplies, discounts, tips, custom fields,
+//          and totals. Each section is rendered as a labeled table.
+// ---------------------------
 function renderPostEventReport(report) {
   const container = document.getElementById("postEventReportContent");
   if (!container) {
@@ -4293,7 +4727,11 @@ function renderPostEventReport(report) {
 //---------------------------------------------------
 // Helper Functions
 //-----------------------------------------------------
-// Pure HTML table builder for dashboard cards (DOES NOT touch the DOM)
+// ---------------------------
+// buildTableHTMLString | Date: 2026-03-06
+// Purpose: Builds an HTML table string from an array of objects.
+//          Returns "No data available" if the array is empty. Does NOT touch the DOM.
+// ---------------------------
 function buildTableHTMLString(rows) {
   if (!rows || rows.length === 0) {
     return "<p>No data available.</p>";
@@ -4315,6 +4753,11 @@ function buildTableHTMLString(rows) {
   return html;
 }
 
+// ---------------------------
+// buildCustomFieldsTable | Date: 2026-03-06
+// Purpose: Returns a pdfmake table definition for custom event fields.
+//          Used when generating the Post-Event PDF report.
+// ---------------------------
 function buildCustomFieldsTable(custom) {
   if (!custom || typeof custom !== "object" || !Object.keys(custom).length) {
     return { text: "No custom fields", italics: true, margin: [0, 5, 0, 10] };
@@ -4331,6 +4774,11 @@ function buildCustomFieldsTable(custom) {
     margin: [0, 5, 0, 15]
   };
 }
+// ---------------------------
+// renderKeyValueTable | Date: 2026-03-06
+// Purpose: Renders a two-column key/value HTML table from an object.
+//          Used in the Post-Event Report for displaying structured data.
+// ---------------------------
 function renderKeyValueTable(obj) {
   return `
     <table class="lemondrip-table">
@@ -4346,6 +4794,11 @@ function renderKeyValueTable(obj) {
   `;
 }
 
+// ---------------------------
+// renderTable | Date: 2026-03-06
+// Purpose: Renders a generic HTML table from an array of objects, auto-detecting
+//          column headers from the first row's keys.
+// ---------------------------
 function renderTable(rows) {
   if (!rows.length) return "<p>No data</p>";
 
@@ -4369,6 +4822,12 @@ function renderTable(rows) {
   `;
 }
 
+// ---------------------------
+// downloadPostEventPDF | Date: 2026-03-06
+// Purpose: Generates and downloads a formatted PDF of the Post-Event Report using jsPDF.
+//          Includes event header, sales, expenses, labor, and supplies sections with
+//          auto page breaks. Pro plan only — shows upgrade modal for Starter users.
+// ---------------------------
 async function downloadPostEventPDF() {
   if (window.USER_PLAN === "starter") {
   showUpgradeModal("pdf");
@@ -4551,21 +5010,39 @@ async function downloadPostEventPDF() {
 
 
 
-// ---------- HELPERS ----------
+// ---------------------------
+// formatLabel | Date: 2026-03-06
+// Purpose: Converts a camelCase field name into a human-readable label
+//          by inserting spaces before capital letters (e.g. "eventName" → "Event Name").
+// ---------------------------
 function formatLabel(str) {
   return str
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (c) => c.toUpperCase());
 }
 
+// ---------------------------
+// money | Date: 2026-03-06
+// Purpose: Formats a numeric value as a dollar string with two decimal places (e.g. "$12.50").
+// ---------------------------
 function money(v) {
   return `$${Number(v ?? 0).toFixed(2)}`;
 }
 
+// ---------------------------
+// sectionHeader | Date: 2026-03-06
+// Purpose: Returns a pdfmake section header object with the "sectionHeader" style.
+//          Used when building the Post-Event PDF layout.
+// ---------------------------
 function sectionHeader(text) {
   return { text, style: "sectionHeader" };
 }
 
+// ---------------------------
+// uploadEventPermits | Date: 2026-03-06
+// Purpose: Uploads one or more permit files for a given event using multipart form data.
+//          Attached to the permit file input in the Post-Event Report section.
+// ---------------------------
 async function uploadEventPermits(eventID) {
   const files = document.getElementById("permitFilesReport").files;
   if (!files.length) return; // nothing to upload
@@ -4617,6 +5094,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 
+// ---------------------------
+// clearTemplate | Date: 2026-03-06
+// Purpose: Resets the in-memory form template to an empty field list and clears the preview.
+// ---------------------------
 function clearTemplate() {
   formTemplate.fields = [];
   renderFormPreview();
@@ -4630,10 +5111,12 @@ document
         ? "block"
         : "none";
   });
-// -----------------------------
-// 👷 Labor / Employee Hours Module
-// -----------------------------
-
+// ---------------------------
+// loadEmployeesForDropdown | Date: 2026-03-06
+// Purpose: Fetches the employee list from the API and populates the labor shift
+//          employee dropdown. Stores the employee's default wage as a data attribute
+//          so it can be auto-filled when the employee is selected.
+// ---------------------------
 async function loadEmployeesForDropdown() {
   const select = document.getElementById("laborEmployeeSelect");
   if (!select) return;
@@ -4660,6 +5143,11 @@ async function loadEmployeesForDropdown() {
   }
 }
 
+// ---------------------------
+// loadLaborForEvent | Date: 2026-03-06
+// Purpose: Fetches all labor shift records for an event and renders them in the
+//          labor table container. Renders both the card view and the raw hours table.
+// ---------------------------
 async function loadLaborForEvent(
   eventID,
   hostEl = document.getElementById("laborTableContainer")
@@ -4728,6 +5216,11 @@ async function loadLaborForEvent(
 }
 
 
+// ---------------------------
+// updateLaborTotal | Date: 2026-03-06
+// Purpose: Recalculates the labor shift total (hours × wage) and updates the
+//          read-only total field in the Add Labor Shift form.
+// ---------------------------
 function updateLaborTotal() {
   const hoursEl = document.getElementById("laborHours");
   const wageEl = document.getElementById("laborWage");
@@ -4739,6 +5232,12 @@ function updateLaborTotal() {
   totalEl.value = (hrs * wage).toFixed(2);
 }
 
+// ---------------------------
+// saveLaborShift | Date: 2026-03-06
+// Purpose: Reads the Add Labor Shift form and POSTs a new labor shift record for the
+//          current event. Reloads the labor table and updates the expenses/profit cards.
+//          Blocked on finalized events.
+// ---------------------------
 async function saveLaborShift() {
   if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -4789,6 +5288,11 @@ async function saveLaborShift() {
   }
 }
 
+// ---------------------------
+// saveAdjustmentsForCurrentEvent | Date: 2026-03-06
+// Purpose: Collects fees, tips, and discounts from the UI and PUTs all adjustments
+//          for the current event in a single request. Reloads the dashboard on success.
+// ---------------------------
 async function saveAdjustmentsForCurrentEvent() {
   const eventID = window.currentEventId;
   if (!eventID) {
@@ -4835,6 +5339,11 @@ async function saveAdjustmentsForCurrentEvent() {
   loadEventIntoDashboard(refreshed);
 }
 
+// ---------------------------
+// deleteLaborShift | Date: 2026-03-06
+// Purpose: Confirms and DELETEs a labor shift record by ID. Reloads the dashboard.
+//          Blocked on finalized events.
+// ---------------------------
 async function deleteLaborShift(shiftID) {
   if (window.activeEvent?.isFinalized === 1) {
   showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -4873,6 +5382,11 @@ async function deleteLaborShift(shiftID) {
   `;
 }*/
 
+// ---------------------------
+// showStarterUpgrade | Date: 2026-03-06
+// Purpose: Convenience wrapper that opens the upgrade modal with a given context key.
+//          Called from inline HTML onclick handlers in plan-gated sections.
+// ---------------------------
 function showStarterUpgrade(context = "report") {
   showUpgradeModal(context);
 }
@@ -4893,6 +5407,7 @@ const _origNavigateTo = navigateTo;
 window.navigateTo = function(sectionId) {
   _origNavigateTo(sectionId);
   if (sectionId === "inventorySection") loadInventorySection();
+  if (sectionId === "adminSection")     loadAdminSection();
 };
 
 // Wire up the CSV file input label
@@ -4906,7 +5421,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ---- Load & render inventory table ----
+// ---------------------------
+// loadInventorySection | Date: 2026-03-06
+// Purpose: Fetches the user's vendor inventory from the API, caches it in _inventoryCache,
+//          and renders the inventory table with category filter options.
+// ---------------------------
 async function loadInventorySection() {
   const container = document.getElementById("inventoryTableContainer");
   if (!container) return;
@@ -4925,6 +5444,13 @@ async function loadInventorySection() {
   }
 }
 
+// ---------------------------
+// renderInventoryTable | Date: 2026-03-06
+// Purpose: Renders the full inventory table from an array of items. Each row has inline
+//          editable fields for name, cost, category, and SKU. Pro users also see stock
+//          tracking columns (on hand, threshold, reorder qty) and a Restock button.
+//          Low-stock rows are highlighted with inv-row-low class.
+// ---------------------------
 function renderInventoryTable(items) {
   const container = document.getElementById("inventoryTableContainer");
   if (!container) return;
@@ -4934,18 +5460,32 @@ function renderInventoryTable(items) {
     return;
   }
 
-  const rows = items.map(item => `
-    <tr class="inv-row" data-id="${item.id}">
+  const isPro = window.USER_PLAN === "pro";
+
+  const rows = items.map(item => {
+    const isLow = isPro && Number(item.reorderThreshold) > 0 &&
+                  Number(item.quantityOnHand) <= Number(item.reorderThreshold);
+    return `
+    <tr class="inv-row${isLow ? " inv-row-low" : ""}" data-id="${item.id}">
       <td><input class="inv-cell-input inv-name"     value="${escInv(item.itemName)}"  data-field="itemName"></td>
       <td><input class="inv-cell-input inv-cost"     value="${Number(item.unitCost).toFixed(2)}" type="number" step="0.01" data-field="unitCost"></td>
       <td><input class="inv-cell-input inv-category" value="${escInv(item.category || "")}" data-field="category"></td>
       <td><input class="inv-cell-input inv-sku"      value="${escInv(item.sku || "")}" data-field="sku"></td>
+      ${isPro ? `
+      <td><input class="inv-cell-input inv-stock" type="number" step="1" value="${Number(item.quantityOnHand ?? 0)}" data-field="quantityOnHand" title="Quantity on hand">${isLow ? '<span class="inv-low-flag" title="Below reorder threshold">⚠</span>' : ""}</td>
+      <td><input class="inv-cell-input inv-stock" type="number" step="1" value="${Number(item.reorderThreshold ?? 0)}" data-field="reorderThreshold" title="Reorder when on-hand falls to this level"></td>
+      <td><input class="inv-cell-input inv-stock" type="number" step="1" value="${Number(item.reorderQty ?? 0)}" data-field="reorderQty" title="Suggested reorder quantity"></td>
+      <td>
+        <button class="inv-restock-btn" onclick="quickRestock(${item.id})" title="Set restocked amount">📦 Restock</button>
+      </td>` : ""}
       <td>
         <button class="inv-save-btn"   onclick="saveInventoryItem(${item.id}, this)">💾</button>
         <button class="inv-delete-btn" onclick="deleteInventoryItem(${item.id}, this)">🗑</button>
       </td>
-    </tr>
-  `).join("");
+    </tr>`;
+  }).join("");
+
+  const proHeaders = isPro ? `<th title="Qty on hand">On Hand</th><th title="Alert when on-hand reaches this">Threshold</th><th title="How many to order">Reorder Qty</th><th></th>` : "";
 
   container.innerHTML = `
     <table class="inv-table">
@@ -4955,6 +5495,7 @@ function renderInventoryTable(items) {
           <th>Unit Cost</th>
           <th>Category</th>
           <th>SKU</th>
+          ${proHeaders}
           <th></th>
         </tr>
       </thead>
@@ -4963,10 +5504,19 @@ function renderInventoryTable(items) {
   `;
 }
 
+// ---------------------------
+// escInv | Date: 2026-03-06
+// Purpose: Escapes a string for safe use inside HTML attribute values in the inventory table.
+// ---------------------------
 function escInv(str) {
   return String(str || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+// ---------------------------
+// populateInventoryCategoryFilter | Date: 2026-03-06
+// Purpose: Populates a category filter dropdown from the unique categories in the
+//          inventory item list. Preserves the currently selected value.
+// ---------------------------
 function populateInventoryCategoryFilter(items, selectId) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
@@ -4976,6 +5526,11 @@ function populateInventoryCategoryFilter(items, selectId) {
     categories.map(c => `<option value="${escInv(c)}" ${c === current ? "selected" : ""}>${escInv(c)}</option>`).join("");
 }
 
+// ---------------------------
+// filterInventoryTable | Date: 2026-03-06
+// Purpose: Filters the cached inventory by the search text and category dropdown,
+//          then re-renders the table with the matching subset.
+// ---------------------------
 function filterInventoryTable() {
   const q   = (document.getElementById("inventorySearch")?.value || "").toLowerCase();
   const cat = document.getElementById("inventoryCategoryFilter")?.value || "";
@@ -4986,7 +5541,12 @@ function filterInventoryTable() {
   renderInventoryTable(filtered);
 }
 
-// ---- CSV upload ----
+// ---------------------------
+// uploadInventoryCSV | Date: 2026-03-06
+// Purpose: Uploads the selected CSV file to the server's inventory import endpoint.
+//          The server deduplicates by SKU (or item name) and returns the count imported.
+//          Reloads the inventory table on success.
+// ---------------------------
 async function uploadInventoryCSV() {
   const fileInput = document.getElementById("inventoryCsvFile");
   if (!fileInput?.files?.length) {
@@ -5011,12 +5571,20 @@ async function uploadInventoryCSV() {
   await loadInventorySection();
 }
 
-// ---- Template download ----
+// ---------------------------
+// downloadInventoryTemplate | Date: 2026-03-06
+// Purpose: Triggers a download of the CSV template file with the correct column headers
+//          (itemName, unitCost, category, sku) for importing inventory.
+// ---------------------------
 function downloadInventoryTemplate() {
   window.location.href = `${API_BASE}/api/inventory/template`;
 }
 
-// ---- Clear all inventory for this user ----
+// ---------------------------
+// clearAllInventory | Date: 2026-03-06
+// Purpose: Permanently deletes all inventory items for the current user after confirmation.
+//          Clears the local cache and replaces the table with an empty state message.
+// ---------------------------
 async function clearAllInventory() {
   if (!confirm("This will permanently delete all inventory items for your account. Continue?")) return;
 
@@ -5031,22 +5599,33 @@ async function clearAllInventory() {
     '<p class="inv-empty">No inventory items yet — upload a CSV to get started.</p>';
 }
 
-// ---- Inline save / delete ----
+// ---------------------------
+// saveInventoryItem | Date: 2026-03-06
+// Purpose: Reads the inline-edited fields from an inventory table row and PUTs the
+//          updated item to the server. Pro users also save stock tracking fields.
+//          Reloads the full inventory section on success.
+// ---------------------------
 async function saveInventoryItem(id, btn) {
   const row = btn.closest("tr.inv-row");
   if (!row) return;
 
-  const itemName = row.querySelector('[data-field="itemName"]')?.value?.trim();
-  const unitCost = Number(row.querySelector('[data-field="unitCost"]')?.value) || 0;
-  const category = row.querySelector('[data-field="category"]')?.value?.trim() || null;
-  const sku      = row.querySelector('[data-field="sku"]')?.value?.trim() || null;
+  const itemName        = row.querySelector('[data-field="itemName"]')?.value?.trim();
+  const unitCost        = Number(row.querySelector('[data-field="unitCost"]')?.value) || 0;
+  const category        = row.querySelector('[data-field="category"]')?.value?.trim() || null;
+  const sku             = row.querySelector('[data-field="sku"]')?.value?.trim() || null;
+  const qohEl           = row.querySelector('[data-field="quantityOnHand"]');
+  const rthEl           = row.querySelector('[data-field="reorderThreshold"]');
+  const rqEl            = row.querySelector('[data-field="reorderQty"]');
+  const quantityOnHand   = qohEl ? Number(qohEl.value) : undefined;
+  const reorderThreshold = rthEl ? Number(rthEl.value) : undefined;
+  const reorderQty       = rqEl  ? Number(rqEl.value)  : undefined;
 
   if (!itemName) { showToast("Item name is required.", "warning"); return; }
 
   const res  = await fetch(`${API_BASE}/api/inventory/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ itemName, unitCost, category, sku })
+    body: JSON.stringify({ itemName, unitCost, category, sku, quantityOnHand, reorderThreshold, reorderQty })
   });
   const json = await res.json();
 
@@ -5059,6 +5638,11 @@ async function saveInventoryItem(id, btn) {
   showToast("Item saved.", "success");
 }
 
+// ---------------------------
+// deleteInventoryItem | Date: 2026-03-06
+// Purpose: Confirms and DELETEs a single inventory item by ID. Removes the row from the DOM
+//          and the local cache. Shows an empty state message if no items remain.
+// ---------------------------
 async function deleteInventoryItem(id, btn) {
   if (!confirm("Delete this item from your inventory?")) return;
 
@@ -5082,6 +5666,12 @@ async function deleteInventoryItem(id, btn) {
 // 🛒 Inventory Picker (used from Supply Fees card)
 // ============================================================
 
+// ---------------------------
+// openInventoryPicker | Date: 2026-03-06
+// Purpose: Opens the inventory picker modal for the current event's Supply Fees card.
+//          Refreshes the inventory cache if empty, resets search/filter state,
+//          and renders the checkable item list. Blocked on finalized events.
+// ---------------------------
 async function openInventoryPicker() {
   if (window.activeEvent?.isFinalized === 1) {
     showToast("This event has been finalized and can no longer be edited.", "warning");
@@ -5110,6 +5700,10 @@ async function openInventoryPicker() {
   document.body.style.overflow = "hidden";
 }
 
+// ---------------------------
+// closeInventoryPicker | Date: 2026-03-06
+// Purpose: Closes the inventory picker modal and restores page scrolling.
+// ---------------------------
 function closeInventoryPicker() {
   document.getElementById("inventoryPickerOverlay").classList.remove("open");
   document.body.style.overflow = "";
@@ -5120,6 +5714,11 @@ document.addEventListener("click", e => {
   if (e.target === document.getElementById("inventoryPickerOverlay")) closeInventoryPicker();
 });
 
+// ---------------------------
+// renderPickerList | Date: 2026-03-06
+// Purpose: Renders the list of checkable inventory items inside the picker modal.
+//          Each row shows item name, category badge, unit cost, and a quantity input.
+// ---------------------------
 function renderPickerList(items) {
   const container = document.getElementById("pickerListContainer");
   if (!container) return;
@@ -5141,6 +5740,11 @@ function renderPickerList(items) {
   `).join("");
 }
 
+// ---------------------------
+// filterPickerList | Date: 2026-03-06
+// Purpose: Filters the inventory picker list by the search text and category dropdown,
+//          then re-renders the picker rows with the matching subset.
+// ---------------------------
 function filterPickerList() {
   const q   = (document.getElementById("pickerSearch")?.value || "").toLowerCase();
   const cat = document.getElementById("pickerCategoryFilter")?.value || "";
@@ -5151,12 +5755,24 @@ function filterPickerList() {
   renderPickerList(filtered);
 }
 
+// ---------------------------
+// updatePickerCount | Date: 2026-03-06
+// Purpose: Updates the "N items selected" counter in the picker modal footer
+//          each time a checkbox is toggled.
+// ---------------------------
 function updatePickerCount() {
   const count = document.querySelectorAll(".picker-check:checked").length;
   const el = document.getElementById("pickerSelectedCount");
   if (el) el.textContent = `${count} item${count !== 1 ? "s" : ""} selected`;
 }
 
+// ---------------------------
+// addPickedItemsToEvent | Date: 2026-03-06
+// Purpose: Posts each checked picker item as a supply entry for the current event,
+//          using the inventory item's unit cost and the user-entered quantity.
+//          Passes vendorInventoryId so Pro plan stock deduction fires server-side.
+//          Reloads the dashboard and refreshes the alert badge on completion.
+// ---------------------------
 async function addPickedItemsToEvent() {
   const eventID = window.currentEventId;
   if (!eventID) return;
@@ -5179,9 +5795,10 @@ async function addPickedItemsToEvent() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        itemName:     invItem.itemName,
-        unitCost:     invItem.unitCost,
-        quantityUsed: qty
+        itemName:          invItem.itemName,
+        unitCost:          invItem.unitCost,
+        quantityUsed:      qty,
+        vendorInventoryId: invItem.id   // enables Pro stock deduction
       })
     });
 
@@ -5194,8 +5811,360 @@ async function addPickedItemsToEvent() {
   if (added) {
     showToast(`Added ${added} item${added !== 1 ? "s" : ""} to supply costs.`, "success");
     await reloadEventDashboard();
+    // Pro: refresh alert badge after stock deduction
+    if (window.USER_PLAN === "pro") loadInventoryAlerts();
   } else {
     showToast("No items were added.", "error");
+  }
+}
+
+// ============================================================
+// 🔔 Inventory Alerts Module (Part B — Pro)
+// ============================================================
+
+let _alertsOpen = false;
+
+// ---------------------------
+// loadInventoryAlerts | Date: 2026-03-06
+// Purpose: Fetches all unread low-stock alerts from the server and updates the
+//          alerts bell badge and drop-down panel. Silently skips if the user is not Pro.
+// ---------------------------
+async function loadInventoryAlerts() {
+  try {
+    const res = await fetch(`${API_BASE}/api/inventory/alerts`);
+    if (!res.ok) return; // silently skip if not pro or error
+    const alerts = await res.json();
+    updateAlertBadge(alerts.length);
+    renderAlertsPanel(alerts);
+  } catch (_) { /* non-fatal */ }
+}
+
+// ---------------------------
+// updateAlertBadge | Date: 2026-03-06
+// Purpose: Updates the numeric badge on the alerts bell and toggles the bell's
+//          active animation class based on whether there are unread alerts.
+// ---------------------------
+function updateAlertBadge(count) {
+  const badge = document.getElementById("alertsBadge");
+  const bell  = document.getElementById("btnAlerts");
+  if (!badge || !bell) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? "99+" : count;
+    badge.classList.remove("hidden");
+    bell.classList.add("alerts-bell-active");
+  } else {
+    badge.classList.add("hidden");
+    bell.classList.remove("alerts-bell-active");
+  }
+}
+
+// ---------------------------
+// renderAlertsPanel | Date: 2026-03-06
+// Purpose: Renders the list of low-stock alert rows in the alerts drop-down panel.
+//          Each row shows item name, message, a Restock button, and a Dismiss button.
+// ---------------------------
+function renderAlertsPanel(alerts) {
+  const list = document.getElementById("alertsPanelList");
+  if (!list) return;
+
+  if (!alerts.length) {
+    list.innerHTML = '<p class="alerts-empty">No reorder alerts — stock levels are good.</p>';
+    return;
+  }
+
+  list.innerHTML = alerts.map(a => `
+    <div class="alert-row" data-alert-id="${a.id}">
+      <div class="alert-icon">⚠</div>
+      <div class="alert-body">
+        <strong>${escInv(a.itemName)}</strong>
+        <span class="alert-msg">${escInv(a.message)}</span>
+      </div>
+      <div class="alert-actions">
+        <button class="inv-restock-btn" onclick="quickRestockFromAlert(${a.itemId}, ${a.id}, this)">📦 Restock</button>
+        <button class="alert-dismiss" onclick="markAlertRead(${a.id}, this)" title="Dismiss">✕</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+// ---------------------------
+// toggleAlertsPanel | Date: 2026-03-06
+// Purpose: Toggles the alerts drop-down panel open/closed. Refreshes alert data
+//          from the server each time the panel is opened.
+// ---------------------------
+function toggleAlertsPanel() {
+  const panel = document.getElementById("alertsPanel");
+  if (!panel) return;
+  _alertsOpen = !_alertsOpen;
+  panel.classList.toggle("hidden", !_alertsOpen);
+  if (_alertsOpen) loadInventoryAlerts(); // refresh on open
+}
+
+// ---------------------------
+// markAlertRead | Date: 2026-03-06
+// Purpose: Marks a single alert as read on the server, removes its row from the panel,
+//          and updates the badge count.
+// ---------------------------
+async function markAlertRead(alertId, btn) {
+  await fetch(`${API_BASE}/api/inventory/alerts/${alertId}/read`, { method: "PUT" });
+  btn?.closest(".alert-row")?.remove();
+  const remaining = document.querySelectorAll(".alert-row").length;
+  updateAlertBadge(remaining);
+  if (!remaining) {
+    document.getElementById("alertsPanelList").innerHTML =
+      '<p class="alerts-empty">No reorder alerts — stock levels are good.</p>';
+  }
+}
+
+// ---------------------------
+// markAllAlertsRead | Date: 2026-03-06
+// Purpose: Marks all unread alerts as read in a single server call, clears the
+//          badge, and shows the empty state in the alerts panel.
+// ---------------------------
+async function markAllAlertsRead() {
+  await fetch(`${API_BASE}/api/inventory/alerts/read-all`, { method: "PUT" });
+  updateAlertBadge(0);
+  document.getElementById("alertsPanelList").innerHTML =
+    '<p class="alerts-empty">No reorder alerts — stock levels are good.</p>';
+}
+
+// ---------------------------
+// quickRestockFromAlert | Date: 2026-03-06
+// Purpose: Prompts for a new quantity on hand from the alerts panel Restock button,
+//          PUTs it to the server, dismisses the alert, and refreshes the inventory table
+//          if it is currently visible.
+// ---------------------------
+async function quickRestockFromAlert(itemId, alertId, btn) {
+  const qtyStr = prompt("Enter new quantity on hand:");
+  if (qtyStr === null) return;
+  const qty = Number(qtyStr);
+  if (!Number.isFinite(qty) || qty < 0) { showToast("Invalid quantity.", "warning"); return; }
+
+  const res  = await fetch(`${API_BASE}/api/inventory/${itemId}/stock`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantityOnHand: qty })
+  });
+  if (!res.ok) { showToast("Restock failed.", "error"); return; }
+
+  showToast("Stock updated!", "success");
+  // Remove this alert row and refresh badge
+  await markAlertRead(alertId, btn.closest(".alert-row")?.querySelector(".alert-dismiss"));
+  // Refresh inventory table if open
+  if (!document.getElementById("inventorySection")?.classList.contains("hidden")) {
+    await loadInventorySection();
+  }
+}
+
+// ---------------------------
+// quickRestock | Date: 2026-03-06
+// Purpose: Prompts for a new quantity on hand from the inventory table Restock button,
+//          PUTs it to the server, then reloads the inventory section to reflect the
+//          updated stock level and any cleared alerts.
+// ---------------------------
+async function quickRestock(itemId) {
+  const qtyStr = prompt("Enter new quantity on hand:");
+  if (qtyStr === null) return;
+  const qty = Number(qtyStr);
+  if (!Number.isFinite(qty) || qty < 0) { showToast("Invalid quantity.", "warning"); return; }
+
+  const res  = await fetch(`${API_BASE}/api/inventory/${itemId}/stock`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantityOnHand: qty })
+  });
+  const json = await res.json();
+  if (!res.ok) { showToast(json.error || "Restock failed.", "error"); return; }
+
+  showToast("Stock updated!", "success");
+  // Update cache and refresh
+  const idx = _inventoryCache.findIndex(i => i.id === itemId);
+  if (idx !== -1) _inventoryCache[idx] = json;
+  await loadInventorySection();
+  await loadInventoryAlerts();
+}
+
+// Close alerts panel when clicking outside it
+document.addEventListener("click", e => {
+  if (_alertsOpen &&
+      !e.target.closest("#alertsPanel") &&
+      !e.target.closest("#btnAlerts")) {
+    _alertsOpen = false;
+    document.getElementById("alertsPanel")?.classList.add("hidden");
+  }
+});
+
+// ============================================================
+// ⚙ Admin Module
+// ============================================================
+
+let _adminUsers = []; // full user list cache
+
+// ---------------------------
+// loadAdminSection | Date: 2026-03-06
+// Purpose: Fetches all users and their plan data from the admin API endpoint and
+//          renders the stats chips and user table. Returns an "unauthorized" message
+//          if the current user is not an admin.
+// ---------------------------
+async function loadAdminSection() {
+  const container = document.getElementById("adminTableContainer");
+  if (!container) return;
+  container.innerHTML = '<p class="admin-empty">Loading…</p>';
+  document.getElementById("adminStats").innerHTML = "";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/users`);
+    if (res.status === 403) {
+      container.innerHTML = '<p class="admin-empty">⛔ Not authorized.</p>';
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    _adminUsers = data.users || [];
+    renderAdminStats(_adminUsers);
+    renderAdminTable(_adminUsers);
+  } catch (err) {
+    console.error("❌ loadAdminSection:", err);
+    container.innerHTML = '<p class="admin-empty">Failed to load users.</p>';
+  }
+}
+
+// ---------------------------
+// renderAdminStats | Date: 2026-03-06
+// Purpose: Renders the summary stat chips (Total users, Pro count, Starter count)
+//          at the top of the Admin section.
+// ---------------------------
+function renderAdminStats(users) {
+  const total   = users.length;
+  const pro     = users.filter(u => u.plan === "pro").length;
+  const starter = total - pro;
+  document.getElementById("adminStats").innerHTML = `
+    <div class="admin-stat-chip">👥 <strong>${total}</strong> Total</div>
+    <div class="admin-stat-chip admin-chip-pro">⚡ <strong>${pro}</strong> Pro</div>
+    <div class="admin-stat-chip">📋 <strong>${starter}</strong> Starter</div>
+  `;
+}
+
+// ---------------------------
+// renderAdminTable | Date: 2026-03-06
+// Purpose: Renders the admin user management table — showing email, truncated user ID,
+//          plan badge, join date, and an Upgrade/Downgrade action button per row.
+// ---------------------------
+function renderAdminTable(users) {
+  const container = document.getElementById("adminTableContainer");
+  if (!container) return;
+
+  if (!users.length) {
+    container.innerHTML = '<p class="admin-empty">No users found.</p>';
+    return;
+  }
+
+  const rows = users.map(u => {
+    const isPro   = u.plan === "pro";
+    const joined  = u.timeJoined ? new Date(u.timeJoined).toLocaleDateString() : "—";
+    const shortId = u.userId.slice(0, 8) + "…";
+    return `
+      <tr class="admin-row" data-user-id="${u.userId}">
+        <td class="admin-email">${escInv(u.email)}</td>
+        <td class="admin-id" title="${u.userId}">${shortId}</td>
+        <td>
+          <span class="admin-plan-badge ${isPro ? "badge-pro" : "badge-starter"}">
+            ${isPro ? "⚡ Pro" : "📋 Starter"}
+          </span>
+        </td>
+        <td class="admin-joined">${joined}</td>
+        <td class="admin-actions">
+          ${isPro
+            ? `<button class="admin-btn admin-btn-downgrade" onclick="setUserPlan('${u.userId}','starter',this)">Downgrade to Starter</button>`
+            : `<button class="admin-btn admin-btn-upgrade"   onclick="setUserPlan('${u.userId}','pro',this)">Upgrade to Pro ⚡</button>`
+          }
+        </td>
+      </tr>`;
+  }).join("");
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>User ID</th>
+          <th>Plan</th>
+          <th>Joined</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+// ---------------------------
+// filterAdminUsers | Date: 2026-03-06
+// Purpose: Filters the cached admin user list by search text (email or user ID)
+//          and plan dropdown, then re-renders the admin table.
+// ---------------------------
+function filterAdminUsers() {
+  const q    = (document.getElementById("adminSearch")?.value || "").toLowerCase();
+  const plan = document.getElementById("adminPlanFilter")?.value || "";
+  const filtered = _adminUsers.filter(u =>
+    (!q    || u.email.toLowerCase().includes(q) || u.userId.toLowerCase().includes(q)) &&
+    (!plan || u.plan === plan)
+  );
+  renderAdminTable(filtered);
+}
+
+// ---------------------------
+// setUserPlan | Date: 2026-03-06
+// Purpose: Confirms, then PUTs the new plan (pro/starter) for a given user ID via the
+//          admin API. Updates the row badge and action button in-place without a full
+//          reload. Revokes the user's sessions server-side so the change takes effect
+//          on their next login.
+// ---------------------------
+async function setUserPlan(userId, newPlan, btn) {
+  const label = newPlan === "pro" ? "Upgrade to Pro" : "Downgrade to Starter";
+  if (!confirm(`${label} for this user?`)) return;
+
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  try {
+    const res  = await fetch(`${API_BASE}/api/admin/plan`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, plan: newPlan })
+    });
+    const json = await res.json();
+
+    if (!res.ok) {
+      showToast(json.error || "Failed to update plan.", "error");
+      btn.disabled = false;
+      btn.textContent = orig;
+      return;
+    }
+
+    // Update cache and re-render in-place
+    const user = _adminUsers.find(u => u.userId === userId);
+    if (user) user.plan = newPlan;
+    renderAdminStats(_adminUsers);
+
+    // Swap the row visually without full reload
+    const row    = btn.closest("tr.admin-row");
+    const isPro  = newPlan === "pro";
+    row.querySelector(".admin-plan-badge").className = `admin-plan-badge ${isPro ? "badge-pro" : "badge-starter"}`;
+    row.querySelector(".admin-plan-badge").textContent = isPro ? "⚡ Pro" : "📋 Starter";
+    btn.className   = `admin-btn ${isPro ? "admin-btn-downgrade" : "admin-btn-upgrade"}`;
+    btn.textContent = isPro ? "Downgrade to Starter" : "Upgrade to Pro ⚡";
+    btn.onclick     = () => setUserPlan(userId, isPro ? "starter" : "pro", btn);
+    btn.disabled    = false;
+
+    showToast(`Plan updated to ${newPlan}.`, "success");
+  } catch (err) {
+    console.error("❌ setUserPlan:", err);
+    showToast("Network error.", "error");
+    btn.disabled    = false;
+    btn.textContent = orig;
   }
 }
 
