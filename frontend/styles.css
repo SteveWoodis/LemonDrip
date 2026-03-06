@@ -1473,7 +1473,7 @@ select:focus {
   background: #ffffff;
   padding: 18px 20px;
   border-radius: 12px;
-  border: 1px solid var(--border)#cfd6e4 !important;
+  border: 1px solid var(--border, #cfd6e4);
   margin-bottom: 25px;
 }
 
@@ -2940,6 +2940,64 @@ select:focus {
   transition: background 0.15s;
 }
 #btnAdmin:hover { background: var(--vv-lemon-2); }
+
+/* -----------------------------------------------
+   📊 Manage Events KPI Cards
+----------------------------------------------- */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+@media (max-width: 700px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 400px) {
+  .kpi-row { grid-template-columns: 1fr; }
+}
+.kpi-card {
+  background: #fff;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+.kpi-value {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-sub {
+  font-size: 0.76rem;
+  color: #9ca3af;
+}
+.kpi-positive .kpi-value { color: #16a34a; }
+.kpi-negative .kpi-value { color: #dc2626; }
+.kpi-best {
+  border-color: var(--vv-green, #4caf50);
+  background: #f0fdf4;
+}
+.kpi-best-name {
+  font-size: 1rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .admin-header h2 { margin: 0 0 4px; }
 .admin-subtitle   { margin: 0 0 20px; color: var(--muted); font-size: 0.9rem; }

@@ -233,6 +233,7 @@ async function initDb() {
         "posFee" REAL DEFAULT 0,
         "supplyFees" REAL DEFAULT 0,
         "laborFees" REAL DEFAULT 0,
+        "additionalFees" REAL DEFAULT 0,
         "updatedAt" TIMESTAMP DEFAULT NOW()
       );
 
@@ -273,6 +274,7 @@ async function initDb() {
     // Run migrations (safe — skips if column already exists)
     const migrations = [
       `ALTER TABLE "EventLabor" ADD COLUMN IF NOT EXISTS "flatRate" REAL DEFAULT 0`,
+      `ALTER TABLE "EventExpenses" ADD COLUMN IF NOT EXISTS "additionalFees" REAL DEFAULT 0`,
       `DO $$
        BEGIN
          IF NOT EXISTS (
@@ -731,6 +733,59 @@ app.get("/api/events", async (req, res) => {
   } catch (err) {
     console.error("❌ Error reading events:", err);
     res.status(500).json({ error: "Error reading events." });
+  }
+});
+
+// -------------------------------
+// 📊 GET /api/events/kpi  (Pro — aggregate stats across all events)
+// -------------------------------
+app.get("/api/events/kpi", requirePlan("pro"), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const netExpr = `
+      COALESCE(s."totalCollected", 0)
+      - COALESCE(x."healthDeptFee", 0)
+      - COALESCE(x."eventFee", 0)
+      - COALESCE(x."mileageReimbursement", 0)
+      - COALESCE(x."eventRunnerFees", 0)
+      - COALESCE(x."employeeBonus", 0)
+      - COALESCE(x."coordinatorFee", 0)
+      - COALESCE(x."posFee", 0)
+      - COALESCE(x."supplyFees", 0)
+      - COALESCE(x."laborFees", 0)`;
+
+    const [stats] = await dbAll(`
+      SELECT
+        COUNT(*)                                                             AS "totalEvents",
+        COUNT(*) FILTER (WHERE e."isFinalized" = 1)                         AS "finalizedEvents",
+        COALESCE(SUM(COALESCE(s."grossSales", e."grossSales", 0)), 0)       AS "totalGrossSales",
+        COALESCE(SUM(${netExpr}), 0)                                        AS "totalNetProfit"
+      FROM "EventInfo" e
+      LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
+      LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
+      WHERE e."userId" = $1
+    `, [userId]);
+
+    const [bestEvent] = await dbAll(`
+      SELECT e."eventName", e."eventDate", (${netExpr}) AS "netProfit"
+      FROM "EventInfo" e
+      LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
+      LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
+      WHERE e."userId" = $1 AND e."isFinalized" = 1
+      ORDER BY "netProfit" DESC
+      LIMIT 1
+    `, [userId]);
+
+    res.json({
+      totalEvents:     Number(stats.totalEvents),
+      finalizedEvents: Number(stats.finalizedEvents),
+      totalGrossSales: Number(stats.totalGrossSales),
+      totalNetProfit:  Number(stats.totalNetProfit),
+      bestEvent:       bestEvent || null
+    });
+  } catch (err) {
+    console.error("❌ /api/events/kpi error:", err);
+    res.status(500).json({ error: "Failed to load KPIs." });
   }
 });
 
@@ -2291,6 +2346,8 @@ app.post("/api/events/:eventID/additional-fees", async (req, res) => {
       [eventID, feeName, amount]
     );
 
+    await recalcAdditionalFees(eventID);
+
     res.json({
       id: result.rows[0].id
     });
@@ -2316,6 +2373,11 @@ app.put("/api/additional-fees/:id", async (req, res) => {
 
     const amount = Number(feeAmount) || 0;
 
+    const existing = await dbGet(`SELECT "eventID" FROM "AdditionalFees" WHERE "id" = $1`, [id]);
+    if (!existing) {
+      return res.status(404).json({ error: "Fee not found" });
+    }
+
     const result = await dbRun(
       `
       UPDATE "AdditionalFees"
@@ -2328,6 +2390,8 @@ app.put("/api/additional-fees/:id", async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Fee not found" });
     }
+
+    await recalcAdditionalFees(existing.eventID);
 
     res.json({ success: true });
 
@@ -2345,6 +2409,11 @@ app.delete("/api/additional-fees/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid fee id" });
     }
 
+    const existing = await dbGet(`SELECT "eventID" FROM "AdditionalFees" WHERE "id" = $1`, [id]);
+    if (!existing) {
+      return res.status(404).json({ error: "Fee not found" });
+    }
+
     const result = await dbRun(
       `DELETE FROM "AdditionalFees" WHERE "id" = $1`,
       [id]
@@ -2353,6 +2422,8 @@ app.delete("/api/additional-fees/:id", async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Fee not found" });
     }
+
+    await recalcAdditionalFees(existing.eventID);
 
     res.json({ success: true });
 
@@ -2396,6 +2467,22 @@ async function deductStockAndAlert(userId, inventoryItemId, qtyUsed) {
       );
     }
   }
+}
+
+// Recalculate additionalFees in EventExpenses from AdditionalFees table
+async function recalcAdditionalFees(eventID) {
+  const row = await dbGet(
+    `SELECT COALESCE(SUM("feeAmount"), 0) AS "total"
+     FROM "AdditionalFees" WHERE "eventID" = $1`,
+    [eventID]
+  );
+  const additionalFees = Number(row?.total) || 0;
+  await dbRun(
+    `INSERT INTO "EventExpenses" ("eventID", "additionalFees")
+     VALUES ($1, $2)
+     ON CONFLICT ("eventID") DO UPDATE SET "additionalFees" = $2`,
+    [eventID, additionalFees]
+  );
 }
 
 // Recalculate supplyFees in EventExpenses from EventSupplies
@@ -3315,6 +3402,7 @@ async function fetchSquareTimecardsForEvent(eventID) {
 		  { name: "feeAmount", prop: "feeAmount" }
 		]
 	  });
+	  await recalcAdditionalFees(eventID);
 
 	  // Discounts: { discountName, discountAmount }
 	  await saveSubTableRows(eventID, discounts, {

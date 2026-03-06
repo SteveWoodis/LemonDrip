@@ -1108,6 +1108,7 @@ async function loadAllEvents(page = 1) {
 
     lastLoadedEvents = displayEvents;
     buildTableHTML(displayEvents, "manageResults");
+    loadManageKpis();
     renderPaginationControls("manageResults", window.eventsCurrentPage, totalPages, loadAllEvents);
 
   } catch (err) {
@@ -3175,7 +3176,7 @@ const discountTotal = discounts.reduce(
       <div class="ledger-row"><span class="ledger-label">Labor Fees</span><span class="ledger-amount">-${fmt(expenses.laborFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Coordinator Fee</span><span class="ledger-amount">-${fmt(coordinatorFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Food Tax (${(Number(taxes.stateRate || 0) * 100).toFixed(2)}%)</span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Food Tax </span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
       <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Total Expenses</span><span class="ledger-amount">-${fmt(totalExpenses)}</span></div>
 
@@ -5395,6 +5396,61 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ============================================================
+// 📊 Manage Events KPI Cards (Pro only)
+// ============================================================
+
+// ---------------------------
+// loadManageKpis | Date: 2026-03-06
+// Purpose: Fetches aggregate KPI data from the server and renders 4 stat cards
+//          above the Manage Events table. Only shown for Pro plan users.
+//          Cards: Total Events, Gross Revenue, Net Profit, Best Event.
+// ---------------------------
+async function loadManageKpis() {
+  const row = document.getElementById("manageKpiRow");
+  if (!row) return;
+
+  if (window.USER_PLAN !== "pro") {
+    row.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/kpi`);
+    if (!res.ok) return; // silently skip on error
+    const kpi = await res.json();
+
+    const fmt = (v) => Number(v || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    const isProfit = Number(kpi.totalNetProfit) >= 0;
+    const bestName = kpi.bestEvent ? kpi.bestEvent.eventName : "—";
+    const bestAmt  = kpi.bestEvent ? fmt(kpi.bestEvent.netProfit) : "—";
+
+    row.innerHTML = `
+      <div class="kpi-card">
+        <div class="kpi-label">Total Events</div>
+        <div class="kpi-value">${Number(kpi.totalEvents)}</div>
+        <div class="kpi-sub">${Number(kpi.finalizedEvents)} finalized</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Gross Revenue</div>
+        <div class="kpi-value">${fmt(kpi.totalGrossSales)}</div>
+        <div class="kpi-sub">across all events</div>
+      </div>
+      <div class="kpi-card ${isProfit ? "kpi-positive" : "kpi-negative"}">
+        <div class="kpi-label">Net Profit</div>
+        <div class="kpi-value">${fmt(kpi.totalNetProfit)}</div>
+        <div class="kpi-sub">after all expenses</div>
+      </div>
+      <div class="kpi-card kpi-best">
+        <div class="kpi-label">Best Event</div>
+        <div class="kpi-value kpi-best-name">${bestName}</div>
+        <div class="kpi-sub">${bestAmt} net profit</div>
+      </div>
+    `;
+    row.classList.remove("hidden");
+  } catch (_) { /* non-fatal */ }
+}
+
+// ============================================================
 // 📦 Vendor Inventory Module (Part A)
 // ============================================================
 
@@ -5408,6 +5464,7 @@ window.navigateTo = function(sectionId) {
   _origNavigateTo(sectionId);
   if (sectionId === "inventorySection") loadInventorySection();
   if (sectionId === "adminSection")     loadAdminSection();
+  if (sectionId === "manageSection")    loadManageKpis();
 };
 
 // Wire up the CSV file input label
