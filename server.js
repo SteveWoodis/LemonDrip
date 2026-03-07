@@ -1918,26 +1918,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 2️⃣ Enforce finalize limit (Starter only)
-    // --------------------------------------------------
-    const plan = await getUserPlan(req);
-    if (plan === "starter") {
-      const countRow = await dbGet(
-        `SELECT COUNT(*) as "count" FROM "EventInfo" WHERE "isFinalized" = 1 AND "userId" = $1`,
-        [userId]
-      );
-      const count = countRow?.count ?? 0;
-
-      if (count >= 1 && event.isFinalized !== 1) {
-        return res.status(403).json({
-          code: "FINALIZE_LIMIT_REACHED",
-          message: "Finalize limit reached"
-        });
-      }
-    }
-
-    // --------------------------------------------------
-    // 3️⃣ Square data required
+    // 2️⃣ Square data required
     // --------------------------------------------------
     const square = await dbGet(`SELECT * FROM "SalesSummary" WHERE "eventID" = $1`, [eventID]);
     if (!square) {

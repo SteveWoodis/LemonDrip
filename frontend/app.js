@@ -143,17 +143,9 @@ async function showAuthenticatedUI() {
     console.warn("⚠️ Failed to fetch plan, defaulting to starter");
   }
 
-  // Apply starter restrictions
-  if (window.USER_PLAN === "starter") {
-    document.getElementById("btnDesign")?.remove();
-    document.getElementById("btnCompany")?.remove();
-  }
-
-  // Pro: show alerts bell and load initial alert count
-  if (window.USER_PLAN === "pro") {
-    document.getElementById("btnAlerts")?.classList.remove("hidden");
-    loadInventoryAlerts();
-  }
+  // Show alerts bell for all users
+  document.getElementById("btnAlerts")?.classList.remove("hidden");
+  loadInventoryAlerts();
 
   // Admin: show admin nav button if this user is an admin
   if (window.IS_ADMIN) {
@@ -966,11 +958,6 @@ function buildTableHTML(results, containerId = "searchResults") {
           showToast("eventID missing — cannot load details.", "error");
           return;
         }
-        if (window.USER_PLAN === "starter" && event.isFinalized === 1) {
-          showUpgradeModal("history");
-          return;
-        }
-
         const res = await fetch(`${API_BASE}/api/events/${eventID}/report`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
 
@@ -1100,11 +1087,7 @@ async function loadAllEvents(page = 1) {
     const totalPages = data.totalPages || 1;
 
     const formatted = events.map(formatEvent);
-    let displayEvents = formatted;
-
-    if (window.USER_PLAN === "starter") {
-      displayEvents = formatted.filter(e => e.isFinalized == 0).slice(0, 1);
-    }
+    const displayEvents = formatted;
 
     lastLoadedEvents = displayEvents;
     buildTableHTML(displayEvents, "manageResults");
@@ -1247,16 +1230,6 @@ function initNumDaysField(existingNumDays) {
     updateEndDate();
   }, 0);
 
-  // Starter users: show upgrade prompt if they try to set > 1
-  if (window.USER_PLAN !== "pro") {
-    input.addEventListener("change", () => {
-      if (Number(input.value) > 2) {
-        showUpgradeModal("multiday");
-        input.value = 2;
-        if (endDateSpan) endDateSpan.textContent = "";
-      }
-    });
-  }
 }
 
 // ---------------------------
@@ -1267,10 +1240,6 @@ function initNumDaysField(existingNumDays) {
 // ---------------------------
 async function loadSquareLocationsIntoForm() {
   const proFields = document.getElementById("proAddEventFields");
-  if (window.USER_PLAN === "starter") {
-    if (proFields) proFields.style.display = "none";
-    return;
-  }
   if (proFields) proFields.style.display = "";
 
   try {
@@ -1599,16 +1568,6 @@ async function submitEvent(e) {
 
   const runSubmit = async () => {
   // --------------------------------------------------
-  // 0️⃣ Plan gating (unchanged logic)
-  // --------------------------------------------------
-  if (window.USER_PLAN === "starter") {
-    const finalizedCount = getFinalizedEventCount();
-    if (!window.isEditing && finalizedCount >= 1) {
-      showUpgradeModal("finalize");
-      return;
-    }
-  }
-
   const formEl = document.getElementById("eventForm");
   if (!formEl) {
     showToast("Form not found.", "error");
@@ -1751,11 +1710,6 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
       canonical[k] = Number(canonical[k]);
     }
   });
-
-  // Starter users: clamp numDays to 1
-  if (window.USER_PLAN !== "pro" && Number(canonical.numDays) > 2) {
-    canonical.numDays = 2;
-  }
 
   // --------------------------------------------------
   // 7️⃣ Final payload (immutable boundary)
@@ -2098,15 +2052,6 @@ async function openAddEventForUser() {
 
 
   await populateTemplateDropdown();
-
-  if (window.USER_PLAN === "starter") {
-    const tpl = getDefaultStarterTemplate();
-    if (tpl) {
-      rebuildAddEventForm(stripEventColorFromTemplate(tpl));
-      const dropdown = document.getElementById("templateSelect");
-      if (dropdown) dropdown.value = tpl.templateName;
-    }
-  }
 
   loadSquareLocationsIntoForm();
   initNumDaysField();
@@ -3110,7 +3055,7 @@ const discountTotal = discounts.reduce(
   0
 );
 
-  const isSquare = window.USER_PLAN === "pro" && !!event.squareLocationId;
+  const isSquare = !!event.squareLocationId;
 
   const posFees = isSquare
     ? Number(sales.squareFees || 0)
@@ -3309,7 +3254,7 @@ function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
     v == null ? "$0.00" : `$${Number(v).toFixed(2)}`;
 
   const event = window.activeEvent?.event || window.activeEvent || {};
-  const isSquare = window.USER_PLAN === "pro" && !!event.squareLocationId;
+  const isSquare = !!event.squareLocationId;
   const posFees = isSquare
     ? Number(sales.squareFees || 0)
     : Number(expenses.posFee || 0);
@@ -4104,14 +4049,6 @@ try {
     finalizeBtn.textContent = "✅ Finalize Event";
     finalizeBtn.classList.add("btn-primary");
     finalizeBtn.addEventListener("click", () => {
-      if (window.USER_PLAN === "starter" && event.isFinalized === 0) {
-        const finalizedCount = getFinalizedEventCount();
-        if (finalizedCount >= 1) {
-          showUpgradeModal("finalize");
-          return;
-        }
-      }
-
       withSpinner(finalizeBtn, async () => {
         try {
           const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
@@ -4139,15 +4076,10 @@ try {
       });
     }); 
 
-    // Report (Pro only)
     const reportBtn = document.createElement("button");
     reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
     reportBtn.addEventListener("click", () => {
-      if (window.USER_PLAN !== "pro") {
-        showStarterUpgrade("report");
-        return;
-      }
       openPostEventReport(event);
     });
 
@@ -4165,10 +4097,8 @@ try {
       withSpinner(deleteBtn, () => deleteEvent(eventID, eventName));
     });
 
-    if (window.USER_PLAN === "pro") {
-      safeAppend(buttonContainer, squareSalesBtn);
-      safeAppend(buttonContainer, squareLaborBtn);
-    }
+    safeAppend(buttonContainer, squareSalesBtn);
+    safeAppend(buttonContainer, squareLaborBtn);
     safeAppend(buttonContainer, finalizeBtn);
     safeAppend(buttonContainer, reportBtn);
     safeAppend(buttonContainer, editBtn);
@@ -4300,14 +4230,12 @@ if (report.inventorySales && report.inventorySales.length) {
   );
 
   // ======================
-  // 6) TIPS CARD (Pro only — Square-driven)
+  // 6) TIPS CARD
   // ======================
-  if (window.USER_PLAN === "pro") {
-    safeAppend(
-      container,
-      createCollapsibleCard("Tips", buildTipsEditor(report))
-    );
-  }
+  safeAppend(
+    container,
+    createCollapsibleCard("Tips", buildTipsEditor(report))
+  );
 
   // ======================
   // 7) SUPPLIES CARD
@@ -4502,15 +4430,10 @@ function normalizeReportPayload(raw) {
 
 // ---------------------------
 // openPostEventReport | Date: 2026-03-06
-// Purpose: Opens the Post-Event Report section for a given event (Pro plan only).
+// Purpose: Opens the Post-Event Report section for a given event.
 //          Fetches the full financial report from the server and renders it.
-//          Shows the upgrade modal for Starter plan users.
 // ---------------------------
 async function openPostEventReport(eventData) {
-  if (window.USER_PLAN === "starter") {
-    showUpgradeModal("report");
-    return;
-  }
   try {
     const eventID =
       eventData.eventID ||
@@ -4827,13 +4750,9 @@ function renderTable(rows) {
 // downloadPostEventPDF | Date: 2026-03-06
 // Purpose: Generates and downloads a formatted PDF of the Post-Event Report using jsPDF.
 //          Includes event header, sales, expenses, labor, and supplies sections with
-//          auto page breaks. Pro plan only — shows upgrade modal for Starter users.
+//          auto page breaks.
 // ---------------------------
 async function downloadPostEventPDF() {
-  if (window.USER_PLAN === "starter") {
-  showUpgradeModal("pdf");
-  return;
-  }
 
 
   if (!window.currentPostEventReport) {
@@ -5083,14 +5002,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     console.warn("⚠️ Failed to fetch plan, defaulting to starter");
   }
 
-  if (window.USER_PLAN === "starter") {
-    const eventDashboard = document.getElementById("eventDashboardSection");
-    if (eventDashboard) {
-      eventDashboard.classList.add("hidden");
-    }
-    document.getElementById("btnDesign")?.remove();
-    document.getElementById("btnCompany")?.remove();
-  }
 }
 });
 
@@ -5402,17 +5313,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 // ---------------------------
 // loadManageKpis | Date: 2026-03-06
 // Purpose: Fetches aggregate KPI data from the server and renders 4 stat cards
-//          above the Manage Events table. Only shown for Pro plan users.
+//          above the Manage Events table.
 //          Cards: Total Events, Gross Revenue, Net Profit, Best Event.
 // ---------------------------
 async function loadManageKpis() {
   const row = document.getElementById("manageKpiRow");
   if (!row) return;
-
-  if (window.USER_PLAN !== "pro") {
-    row.classList.add("hidden");
-    return;
-  }
 
   try {
     const res = await fetch(`${API_BASE}/api/events/kpi`);
@@ -5517,7 +5423,7 @@ function renderInventoryTable(items) {
     return;
   }
 
-  const isPro = window.USER_PLAN === "pro";
+  const isPro = true;
 
   const rows = items.map(item => {
     const isLow = isPro && Number(item.reorderThreshold) > 0 &&
@@ -5868,8 +5774,7 @@ async function addPickedItemsToEvent() {
   if (added) {
     showToast(`Added ${added} item${added !== 1 ? "s" : ""} to supply costs.`, "success");
     await reloadEventDashboard();
-    // Pro: refresh alert badge after stock deduction
-    if (window.USER_PLAN === "pro") loadInventoryAlerts();
+    loadInventoryAlerts();
   } else {
     showToast("No items were added.", "error");
   }
