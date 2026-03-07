@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /app.html
+Disallow: /api/
+
+Sitemap: https://venview.fly.dev/sitemap.xml
