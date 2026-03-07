@@ -3610,36 +3610,27 @@ async function buildPostEventReport(eventID) {
    const taxData = await fetchSalesTaxRate(zipCode);
    console.log("🏛️ Tax result:", { rate: taxData.rate, state: taxData.detail?.state });
 
-   const totalCollected = Number(report.sales?.totalCollected || 0);
-   const tips           = Number(report.sales?.tips || 0);
-   // Sales tax collected on behalf of the state — NOT a business expense.
-   // Stored for informational display only; never deducted from profit.
-   const stateFoodTax = totalCollected * (taxData.rate || 0);
+   const netSales = Number(report.sales?.netSales || 0);
+   const stateFoodTax = netSales * (taxData.rate || 0);
 
-   // Attach rates + computed sales tax (informational only)
+   // Attach rates + computed food tax
    report.taxes = {
     zipCode,
     stateRate: taxData.rate,
-    stateFoodTax,          // informational — remit to state, do not deduct from profit
+    federalTaxRate: 0.153,
+    stateFoodTax,
     taxDetail: taxData.detail,
    };
 
    // -------------------------------------------
    // 💰 PROFIT SUMMARY CALCULATIONS
    // -------------------------------------------
-   // Revenue base: Net Sales (earned revenue), not totalCollected (cash received).
-   // totalCollected includes tips, which are a pass-through to employees — not revenue.
-   const netSales = Number(report.sales?.netSales || 0);
-
    const isSquare = !!event.squareLocationId;
    const posFees = isSquare
      ? Number(report.sales?.squareFees || 0)
      : Number(expenses?.posFee || 0);
 
    const exp = expenses || {};
-   // totalExpenses = legitimate business costs only.
-   // Sales tax (stateFoodTax) is excluded — it is collected from customers and remitted
-   // to the state; it is never the business's expense.
    const totalExpenses =
      Number(exp.healthDeptFee || 0) +
      Number(exp.eventFee || 0) +
@@ -3650,21 +3641,23 @@ async function buildPostEventReport(eventID) {
      Number(exp.supplyFees || 0) +
      Number(exp.laborFees || 0) +
      Number(exp.coordinatorFee || 0) +
-     posFees;
+     posFees +
+     stateFoodTax;
 
-   // Net Profit = Net Sales (earned revenue) minus all business expenses.
-   // Income taxes (state/federal) are annual obligations calculated at tax time
-   // on total annual income — they cannot be accurately computed per-event.
    const netProfit = netSales - totalExpenses;
+   const stateRate = taxData.rate || 0;
+   const federalTaxRate = 0.153;
+   const stateTax = netProfit > 0 ? netProfit * stateRate : 0;
+   const federalTax = netProfit > 0 ? netProfit * federalTaxRate : 0;
+   const finalProfit = netProfit - stateTax - federalTax;
 
    report.summary = {
      posFees,
      totalExpenses,
      netProfit,
-     // finalProfit equals netProfit — taxes are not deducted here (annual, not per-event)
-     finalProfit: netProfit,
-     tips,           // informational only — pass-through to employees
-     stateFoodTax,   // informational only — remit to state
+     stateTax,
+     federalTax,
+     finalProfit,
    };
 
     return report;

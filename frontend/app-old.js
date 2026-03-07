@@ -3042,29 +3042,31 @@ async function saveManualSales() {
 //          Handles both Square-connected (Pro) and manual sales entry (Starter) modes.
 // ---------------------------
 function renderEventProfitSummary(report) {
-  const sales    = report.sales    || {};
+  const sales = report.sales || {};
   const expenses = report.expenses || {};
-  const taxes    = report.taxes    || {};
-  const summary  = report.summary  || {};
+  const taxes = report.taxes || {};
+  const summary = report.summary || {};
+
+  // Display-only reads
+  const stateFoodTax = Number(taxes.stateFoodTax || 0);
+  const coordinatorFee = Number(expenses.coordinatorFee || 0);
+
+  // Calculated values from backend
+  const posFees      = Number(summary.posFees      || 0);
+  const totalExpenses = Number(summary.totalExpenses || 0);
+  const netProfit    = Number(summary.netProfit    || 0);
+  const stateTax     = Number(summary.stateTax     || 0);
+  const federalTax   = Number(summary.federalTax   || 0);
+  const finalProfit  = Number(summary.finalProfit  || 0);
+
+  // Label formatting only
+  const stateRate = Number(taxes.stateRate || 0);
+  const stateRatePct = (stateRate * 100).toFixed(2);
+  const stateTaxLabel = taxes.taxDetail?.state
+    ? `${taxes.taxDetail.state} State Tax (${stateRatePct}%)`
+    : `State Tax (${stateRatePct}%)`;
 
   const fmt = (v) => `$${Number(v || 0).toFixed(2)}`;
-
-  // Core profit figures — all from server-computed summary
-  const posFees       = Number(summary.posFees       || 0);
-  const totalExpenses = Number(summary.totalExpenses || 0);
-  const netProfit     = Number(summary.netProfit     || 0);
-
-  // Informational lines — do NOT affect profit
-  const tips         = Number(summary.tips         || sales.tips || 0);
-  const stateFoodTax = Number(summary.stateFoodTax || taxes.stateFoodTax || 0);
-  const stateRate    = Number(taxes.stateRate || 0);
-  const stateRatePct = (stateRate * 100).toFixed(2);
-  const stateName    = taxes.taxDetail?.state || "";
-  const salesTaxLabel = stateName
-    ? `Sales Tax Collected — Remit to ${stateName} (${stateRatePct}%)`
-    : `Sales Tax Collected — Remit to State (${stateRatePct}%)`;
-
-  const profitClass  = netProfit >= 0 ? "profit-positive" : "profit-negative";
 
   return createCollapsibleCard(
     "Event Profit Summary",
@@ -3077,7 +3079,9 @@ function renderEventProfitSummary(report) {
       <div class="ledger-row"><span class="ledger-label">Discounts</span><span class="ledger-amount">-${fmt(sales.discounts)}</span></div>
       <div class="ledger-row total-row"><span class="ledger-label">Net Sales</span><span class="ledger-amount">${fmt(sales.netSales)}</span></div>
       <div class="section-divider"></div>
-
+      <div class="ledger-row total-row"><span class="ledger-label">Total Collected</span><span class="ledger-amount">${fmt(sales.totalCollected)}</span></div>
+      <div class="section-divider"></div>
+      
       <div class="section-title">Expenses</div>
       <div class="ledger-row"><span class="ledger-label">Health Dept Fee</span><span class="ledger-amount">-${fmt(expenses.healthDeptFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Event Fee</span><span class="ledger-amount">-${fmt(expenses.eventFee)}</span></div>
@@ -3087,19 +3091,18 @@ function renderEventProfitSummary(report) {
       <div class="ledger-row"><span class="ledger-label">Event Runner Fees</span><span class="ledger-amount">-${fmt(expenses.eventRunnerFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Supply Fees</span><span class="ledger-amount">-${fmt(expenses.supplyFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Labor Fees</span><span class="ledger-amount">-${fmt(expenses.laborFees)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Coordinator Fee</span><span class="ledger-amount">-${fmt(expenses.coordinatorFee)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Coordinator Fee</span><span class="ledger-amount">-${fmt(coordinatorFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Food Tax </span><span class="ledger-amount">-${fmt(stateFoodTax)}</span></div>
       <div class="section-divider"></div>
       <div class="ledger-row total-row"><span class="ledger-label">Total Expenses</span><span class="ledger-amount">-${fmt(totalExpenses)}</span></div>
 
-      <div class="section-divider"></div>
-      <div class="ledger-row final-row ${profitClass}"><span class="ledger-label">Net Profit</span><span class="ledger-amount gross-profit">${fmt(netProfit)}</span></div>
+        <div class="section-divider"></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Net Profit</span><span class="ledger-amount">${fmt(netProfit)}</span></div>
 
-      <div class="section-divider"></div>
-      <div class="section-title">For Your Records</div>
-      <div class="ledger-row ledger-row-info"><span class="ledger-label">Tips (pass-through to staff)</span><span class="ledger-amount">${fmt(tips)}</span></div>
-      <div class="ledger-row ledger-row-info"><span class="ledger-label">${salesTaxLabel}</span><span class="ledger-amount">${fmt(stateFoodTax)}</span></div>
-      <div class="ledger-note">ⓘ Income taxes are calculated annually — consult your accountant.</div>
+      <div class="ledger-row"><span class="ledger-label">${stateTaxLabel}</span><span class="ledger-amount">-${fmt(stateTax)}</span></div>
+      <div class="ledger-row"><span class="ledger-label">Federal Tax (15.3%)</span><span class="ledger-amount">-${fmt(federalTax)}</span></div>
+      <div class="ledger-row final-row"><span class="ledger-label">Final Profit</span><span class="ledger-amount">${fmt(finalProfit)}</span></div>
 
     </div>
     `
@@ -3162,8 +3165,9 @@ function updateExpensesLaborRow(laborFees) {
 
   expenses.laborFees = n(laborFees);
 
-  // Sales tax (stateFoodTax) is NOT a business expense — it is collected from customers
-  // and remitted to the state. Excluded here to match server-side calculation.
+  const taxes = window.activeEvent?.taxes || {};
+  const stateFoodTax = Number(taxes.stateFoodTax || 0);
+
   expenses.totalExpenses =
     (expenses.healthDeptFee || 0) +
     (expenses.eventFee || 0) +
@@ -3174,7 +3178,8 @@ function updateExpensesLaborRow(laborFees) {
     (expenses.additionalFees || 0) +
     (expenses.supplyFees || 0) +
     (expenses.laborFees || 0) +
-    (expenses.posFee || 0);
+    (expenses.posFee || 0) +
+    stateFoodTax;
 
   window.activeEvent.expenses = expenses;
 
@@ -3187,22 +3192,16 @@ function updateExpensesLaborRow(laborFees) {
 function updateProfitSummary() {
   if (!window.activeEvent) return;
 
-  const { sales, expenses } = window.activeEvent;
+  const { sales, expenses, totals } = window.activeEvent;
 
-  // Use Net Sales (earned revenue) as the profit base — not totalCollected,
-  // which includes tips (a pass-through to staff, not business revenue).
-  const netSales      = Number(sales?.netSales      || 0);
-  const totalExpenses = Number(expenses?.totalExpenses || 0);
-  const netProfit     = netSales - totalExpenses;
+  const totalNetRevenue = Number(totals.totalNetRevenue || 0);
+  const totalExpenses = Number(expenses.totalExpenses || 0);
 
-  // Keep totals in sync for any other consumers
-  if (window.activeEvent.totals) {
-    window.activeEvent.totals.grossProfit = netProfit;
-  }
+  totals.grossProfit = totalNetRevenue - totalExpenses;
 
-  // Update the profit figure in the DOM
-  const el = document.querySelector(".profit-summary .gross-profit");
-  if (el) el.textContent = `$${netProfit.toFixed(2)}`;
+  window.activeEvent.totals = totals;
+
+  updateProfitSummaryDOM(totals);
 }
 
 
