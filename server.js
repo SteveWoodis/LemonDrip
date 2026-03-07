@@ -57,8 +57,6 @@ const pool = new Pool({
 
 // ---------------------------
 // 🔐 Plan Enforcement
-// ---------------------------
-const PLAN_RANK = { starter: 0, pro: 1 };
 
 async function getUserPlan(req) {
   const payload = req.session.getAccessTokenPayload();
@@ -94,24 +92,6 @@ async function assertOwnsEvent(req, eventID) {
   );
   if (!row) return false;
   return true;
-}
-
-function requirePlan(minPlan) {
-  return async (req, res, next) => {
-    try {
-      const plan = await getUserPlan(req);
-      if (PLAN_RANK[plan] >= PLAN_RANK[minPlan]) return next();
-      return res.status(403).json({
-        error: "Upgrade required",
-        code: "PLAN_UPGRADE_REQUIRED",
-        requiredPlan: minPlan,
-        currentPlan: plan,
-      });
-    } catch (err) {
-      console.error("requirePlan error:", err);
-      return res.status(500).json({ error: "Unable to verify plan" });
-    }
-  };
 }
 
 // Middleware / utils
@@ -476,6 +456,21 @@ app.use(cors({
   allowedHeaders: ["content-type", ...supertokens.getAllCORSHeaders()],
   credentials: true,
 }));
+
+// Explicit session refresh route — must be before stMiddleware
+app.post("/auth/session/refresh", async (req, res, next) => {
+  try {
+    await Session.refreshSession(req, res);
+    res.status(200).json({ status: "OK" });
+  } catch (err) {
+    if (err.type === Session.Error.UNAUTHORISED) {
+      res.status(401).json({ status: "UNAUTHORISED" });
+    } else {
+      next(err);
+    }
+  }
+});
+
 app.use(stMiddleware());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -739,7 +734,7 @@ app.get("/api/events", async (req, res) => {
 // -------------------------------
 // 📊 GET /api/events/kpi  (Pro — aggregate stats across all events)
 // -------------------------------
-app.get("/api/events/kpi", requirePlan("pro"), async (req, res) => {
+app.get("/api/events/kpi", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const netExpr = `
@@ -1166,7 +1161,7 @@ app.post("/api/formTemplates", async (req, res) => {
 // -------------------------------
 // GET Square Location Cache
 // -------------------------------
-app.get("/api/square/locations", requirePlan("pro"), async (req, res) => {
+app.get("/api/square/locations", async (req, res) => {
   try {
     const url = "https://connect.squareup.com/v2/locations";
     const response = await fetch(url, {
@@ -1505,7 +1500,7 @@ app.put("/api/events/:id",
  * Canonical discount formula (matches Square dashboard):
  *   discounts = grossSales - netSales - refunds
  */
-app.put("/api/square/sales/:eventID", requirePlan("pro"), async (req, res) => {
+app.put("/api/square/sales/:eventID", async (req, res) => {
  
   let refunds = 0;
   let totalCollected = 0;
@@ -2744,7 +2739,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.put("/api/square/labor/:eventID", requirePlan("pro"), async (req, res) => {
+app.put("/api/square/labor/:eventID", async (req, res) => {
   try {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
@@ -2895,7 +2890,7 @@ app.get("/api/inventory", async (req, res) => {
 // ===================================
 
 // GET unread alerts for the current user
-app.get("/api/inventory/alerts", requirePlan("pro"), async (req, res) => {
+app.get("/api/inventory/alerts", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const rows = await dbAll(
@@ -2912,7 +2907,7 @@ app.get("/api/inventory/alerts", requirePlan("pro"), async (req, res) => {
 });
 
 // GET items at or below reorder threshold
-app.get("/api/inventory/low-stock", requirePlan("pro"), async (req, res) => {
+app.get("/api/inventory/low-stock", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const rows = await dbAll(
@@ -3826,7 +3821,7 @@ app.delete("/api/inventory", async (req, res) => {
 });
 
 // Pro: mark a single alert as read
-app.put("/api/inventory/alerts/:id/read", requirePlan("pro"), async (req, res) => {
+app.put("/api/inventory/alerts/:id/read", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const id = Number(req.params.id);
@@ -3843,7 +3838,7 @@ app.put("/api/inventory/alerts/:id/read", requirePlan("pro"), async (req, res) =
 });
 
 // Pro: mark ALL alerts as read for this user
-app.put("/api/inventory/alerts/read-all", requirePlan("pro"), async (req, res) => {
+app.put("/api/inventory/alerts/read-all", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     await dbRun(
@@ -3858,7 +3853,7 @@ app.put("/api/inventory/alerts/read-all", requirePlan("pro"), async (req, res) =
 });
 
 // Pro: restock — update quantityOnHand and clear open alerts for that item
-app.put("/api/inventory/:id/stock", requirePlan("pro"), async (req, res) => {
+app.put("/api/inventory/:id/stock", async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const id  = Number(req.params.id);

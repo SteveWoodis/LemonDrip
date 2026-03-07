@@ -5302,9 +5302,6 @@ async function deleteLaborShift(shiftID) {
 function showStarterUpgrade(context = "report") {
   showUpgradeModal(context);
 }
-window.addEventListener("DOMContentLoaded", async () => {
-  await populateTemplateDropdown();
-});
 
 // ============================================================
 // 📊 Manage Events KPI Cards (Pro only)
