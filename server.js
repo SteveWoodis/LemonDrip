@@ -6,7 +6,7 @@
 const cors = require("cors");
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
-
+const recipes = require('./recipes.js');
  
 // -------------------------------
 // 🔐 SuperTokens Auth
@@ -121,6 +121,9 @@ async function initDb() {
     const client = await pool.connect();
     console.log("✅ PostgreSQL connected");
     client.release();
+
+    recipes.init(app, pool);
+    await recipes.runMigration();
 
     // Initialize dependent modules with pool
     square.init(pool);
@@ -1968,7 +1971,14 @@ app.put("/api/events/:id/finalize", async (req, res) => {
       `,
       [internalScore, externalScore, eventScore, eventID, userId]
     );
-
+  try {
+    await pool.query(
+      `UPDATE "EventInfo" SET "salesFeesLocked"=TRUE WHERE "eventID"=$1`,
+      [eventID]
+    );
+  } catch (lockErr) {
+  console.warn('⚠️ Could not lock sales fees:', lockErr.message);
+}
     if (upd.rowCount === 0) {
       return res.status(404).json({ error: "Event not found." });
     }
@@ -2925,9 +2935,10 @@ app.get("/api/inventory/low-stock", async (req, res) => {
   }
 });
 
-// ⚠️  ALL app.get("/api/...") routes must be registered ABOVE this line
-// Catch-all: serve frontend for browser routes
-app.get("*", (req, res) => {
+// Catch-all: serve frontend for browser routes.
+// API paths pass through to routes registered after this point (e.g. recipe routes).
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(frontendPath, "index.html"));
 });
 
@@ -3571,7 +3582,8 @@ async function buildPostEventReport(eventID) {
       salesSummary,
       inventorySales,
       tipRows,
-      additionalFeeRows
+      additionalFeeRows,
+      salesFeeRows
     ] = await Promise.all([
       dbGet(`SELECT * FROM "EventExpenses" WHERE "eventID" = $1`, [eventID]),
       dbAll(`SELECT * FROM "EventEmployees" WHERE "eventID" = $1`, [eventID]),
@@ -3581,8 +3593,10 @@ async function buildPostEventReport(eventID) {
       dbGet(`SELECT * FROM "SalesSummary" WHERE "eventID" = $1`, [eventID]),
       dbAll(`SELECT * FROM "InventorySales" WHERE "eventID" = $1`, [eventID]),
       dbAll(`SELECT * FROM "TipTracker" WHERE "eventID" = $1`, [eventID]),
-      dbAll(`SELECT * FROM "AdditionalFees" WHERE "eventID" = $1`, [eventID])
+      dbAll(`SELECT * FROM "AdditionalFees" WHERE "eventID" = $1`, [eventID]),
+      dbAll(`SELECT * FROM "EventSalesFees" WHERE "eventID" = $1`, [eventID])
     ]);
+
 
     const laborRows = [
       ...(manualLaborRows || []),
@@ -3599,7 +3613,9 @@ async function buildPostEventReport(eventID) {
       sales: salesSummary || {},
       inventorySales: inventorySales || [],
       tips: tipRows || [],
-      additionalFees: additionalFeeRows || []
+      additionalFees: additionalFeeRows || [],
+      salesFees: salesFeeRows || [],
+      totalSalesFees: (salesFeeRows || []).reduce((s, r) => s + Number(r.totalCost), 0)
     };
    
    // -------------------------------------------
@@ -3652,16 +3668,21 @@ async function buildPostEventReport(eventID) {
      Number(exp.coordinatorFee || 0) +
      posFees;
 
-   // Net Profit = Net Sales (earned revenue) minus all business expenses.
-   // Income taxes (state/federal) are annual obligations calculated at tax time
-   // on total annual income — they cannot be accurately computed per-event.
-   const netProfit = netSales - totalExpenses;
+   // COGS = ingredient costs from recipe matching (snapshot at calculation time)
+   const cogs = report.totalSalesFees || 0;
+
+   // Gross Profit = Net Sales minus Cost of Goods Sold
+   const grossProfit = netSales - cogs;
+
+   // Net Profit = Gross Profit minus all operating expenses
+   const netProfit = grossProfit - totalExpenses;
 
    report.summary = {
      posFees,
+     cogs,
+     grossProfit,
      totalExpenses,
      netProfit,
-     // finalProfit equals netProfit — taxes are not deducted here (annual, not per-event)
      finalProfit: netProfit,
      tips,           // informational only — pass-through to employees
      stateFoodTax,   // informational only — remit to state
@@ -3706,6 +3727,12 @@ async function saveInventorySales(eventID, rows) {
     throw err;
   } finally {
     client.release();
+  }
+  try {
+    await recipes.calculateEventSalesFees(eventID);
+  } catch (err) {
+    console.warn('⚠️ Sales fees auto-calc skipped:', err.message);
+    // Non-fatal — sales data still saved correctly
   }
 }
 
@@ -3952,7 +3979,7 @@ app.delete("/api/inventory/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete item" });
   }
 });
-
+ 
 // SuperTokens error handler (must be after all routes)
 app.use(stErrorHandler());
 

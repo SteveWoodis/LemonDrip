@@ -36,7 +36,8 @@
 		      <!--<button id="btnDesign" onclick="closeMobileNav(); navigateTo('designFormSection')">🧩 Design Event Form</button> --->
 		      <button id="btnManage" onclick="closeMobileNav(); navigateTo('manageSection')"> Manage Events </button>
 		      <button id="btnInventory" style="display:none" onclick="closeMobileNav(); navigateTo('inventorySection')">📦 My Inventory</button>
-		      <button id="btnAdmin" class="hidden" onclick="closeMobileNav(); navigateTo('adminSection')">⚙ Admin</button>
+		      <button id="btnRecipes" onclick="closeMobileNav(); navigateTo('recipesSection')">Recipes</button>
+          <button id="btnAdmin" class="hidden" onclick="closeMobileNav(); navigateTo('adminSection')">⚙ Admin</button>
 		      <button id="btnLogout" onclick="closeMobileNav(); handleLogout()">🚪 Logout</button>
 		     </div>
         <!-- 🔔 Pro: Reorder Alerts Bell (hidden until Pro plan confirmed) -->
@@ -280,6 +281,11 @@
       </div>
     </div>
 
+    <!-- 🍋 Recipes Section -->
+    <section id="recipesSection" class="card hidden">
+      <!-- content rendered by loadRecipesSection() -->
+    </section>
+
     <section id="eventDashboardSection" class="card hidden dashboard-page">
 
       <!-- Dashboard Header (STATIC) -->
@@ -468,7 +474,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> 
  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-
+ <script src="/recipes_frontend.js"></script>
 </div>
 </body>
 </html>

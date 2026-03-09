@@ -126,7 +126,7 @@ async function checkSession() {
 // ---------------------------
 async function showAuthenticatedUI() {
   document.getElementById("authSection").classList.add("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnLogout")
     .forEach(b => { if (b) b.style.display = ""; });
 
   // Fetch the user's plan from the server
@@ -169,7 +169,7 @@ function showUnauthenticatedUI() {
   document.querySelectorAll(".app-shell > section")
     .forEach(sec => sec.classList.add("hidden"));
   document.getElementById("authSection").classList.remove("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnLogout")
     .forEach(b => { if (b) b.style.display = "none"; });
   document.getElementById("btnAdmin")?.classList.add("hidden");
   document.getElementById("btnAlerts")?.classList.add("hidden");
@@ -3051,6 +3051,8 @@ function renderEventProfitSummary(report) {
 
   // Core profit figures — all from server-computed summary
   const posFees       = Number(summary.posFees       || 0);
+  const cogs          = Number(summary.cogs          || 0);
+  const grossProfit   = Number(summary.grossProfit   ?? (Number(sales.netSales || 0) - cogs));
   const totalExpenses = Number(summary.totalExpenses || 0);
   const netProfit     = Number(summary.netProfit     || 0);
 
@@ -3064,13 +3066,15 @@ function renderEventProfitSummary(report) {
     ? `Sales Tax Collected — Remit to ${stateName} (${stateRatePct}%)`
     : `Sales Tax Collected — Remit to State (${stateRatePct}%)`;
 
-  const profitClass  = netProfit >= 0 ? "profit-positive" : "profit-negative";
+  const grossProfitClass = grossProfit >= 0 ? "profit-positive" : "profit-negative";
+  const netProfitClass   = netProfit   >= 0 ? "profit-positive" : "profit-negative";
 
   return createCollapsibleCard(
     "Event Profit Summary",
     `
     <div class="profit-summary">
 
+      <!-- TIER 1: Revenue → Net Sales -->
       <div class="section-title">Revenue</div>
       <div class="ledger-row"><span class="ledger-label">Gross Sales</span><span class="ledger-amount">${fmt(sales.grossSales)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Returns</span><span class="ledger-amount">-${fmt(sales.refunds)}</span></div>
@@ -3078,22 +3082,30 @@ function renderEventProfitSummary(report) {
       <div class="ledger-row total-row"><span class="ledger-label">Net Sales</span><span class="ledger-amount">${fmt(sales.netSales)}</span></div>
       <div class="section-divider"></div>
 
-      <div class="section-title">Expenses</div>
+      <!-- TIER 2: COGS → Gross Profit -->
+      <div class="section-title">Cost of Goods Sold (COGS)</div>
+      <div class="ledger-row"><span class="ledger-label">Ingredient Costs</span><span class="ledger-amount">-${fmt(cogs)}</span></div>
+      <div class="section-divider"></div>
+      <div class="ledger-row total-row ${grossProfitClass}"><span class="ledger-label">Gross Profit</span><span class="ledger-amount">${fmt(grossProfit)}</span></div>
+      <div class="section-divider"></div>
+
+      <!-- TIER 3: Operating Expenses → Net Profit -->
+      <div class="section-title">Operating Expenses</div>
       <div class="ledger-row"><span class="ledger-label">Health Dept Fee</span><span class="ledger-amount">-${fmt(expenses.healthDeptFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Event Fee</span><span class="ledger-amount">-${fmt(expenses.eventFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Additional Fees</span><span class="ledger-amount">-${fmt(expenses.additionalFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Mileage Reimbursement</span><span class="ledger-amount">-${fmt(expenses.mileageReimbursement)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Employee Bonus</span><span class="ledger-amount">-${fmt(expenses.employeeBonus)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Event Runner Fees</span><span class="ledger-amount">-${fmt(expenses.eventRunnerFees)}</span></div>
-      <div class="ledger-row"><span class="ledger-label">Supply Fees</span><span class="ledger-amount">-${fmt(expenses.supplyFees)}</span></div>
+      
       <div class="ledger-row"><span class="ledger-label">Labor Fees</span><span class="ledger-amount">-${fmt(expenses.laborFees)}</span></div>
       <div class="ledger-row"><span class="ledger-label">Coordinator Fee</span><span class="ledger-amount">-${fmt(expenses.coordinatorFee)}</span></div>
       <div class="ledger-row"><span class="ledger-label">POS Fees</span><span class="ledger-amount">-${fmt(posFees)}</span></div>
       <div class="section-divider"></div>
-      <div class="ledger-row total-row"><span class="ledger-label">Total Expenses</span><span class="ledger-amount">-${fmt(totalExpenses)}</span></div>
+      <div class="ledger-row total-row"><span class="ledger-label">Total Operating Expenses</span><span class="ledger-amount">-${fmt(totalExpenses)}</span></div>
 
       <div class="section-divider"></div>
-      <div class="ledger-row final-row ${profitClass}"><span class="ledger-label">Net Profit</span><span class="ledger-amount gross-profit">${fmt(netProfit)}</span></div>
+      <div class="ledger-row final-row ${netProfitClass}"><span class="ledger-label">Net Profit</span><span class="ledger-amount gross-profit">${fmt(netProfit)}</span></div>
 
       <div class="section-divider"></div>
       <div class="section-title">For Your Records</div>
@@ -4098,7 +4110,7 @@ try {
     "Event Fee": ev.eventFee ? `$${Number(ev.eventFee).toFixed(2)}` : "",
     "Event Rating": ev.eventRating || "",
     "Application Date": ev.applicationDate || "",
-    "Square Location": ev.squareLocationId || "",
+    //"Square Location": ev.squareLocationId || "",
     Notes: ev.notes || "",
   };
 
@@ -4243,6 +4255,12 @@ wireLaborCard(eventID);
  if (report && report.sales && report.expenses) {
   safeAppend(container, renderEventProfitSummary(report));
 }
+
+  // ======================
+  // 11) INGREDIENT COSTS CARD
+  // ======================
+  safeAppend(container, createCollapsibleCard("🍋 Ingredient Costs (Recipe Matching)", '<div id="salesFeesTab"></div>'));
+  loadSalesFeesTab(eventID);
 
   }
 
@@ -5341,6 +5359,7 @@ window.navigateTo = function(sectionId) {
   if (sectionId === "inventorySection") loadInventorySection();
   if (sectionId === "adminSection")     loadAdminSection();
   if (sectionId === "manageSection")    loadManageKpis();
+  if (sectionId === "recipesSection")   loadRecipesSection();
 };
 
 // Wire up the CSV file input label
