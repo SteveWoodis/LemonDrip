@@ -738,6 +738,45 @@ window.addEventListener("popstate", (event) => {
   if (action) navigateTo(action + "Section"); // ✅ replaced showSection
 });
 
+// ── Unsaved-changes guard ─────────────────────────────────────────
+window._isDirty = false;
+window._pendingNavTarget = null;
+
+function markDirty() { window._isDirty = true; }
+function clearDirty() { window._isDirty = false; }
+
+// Set dirty on any keystroke / value change inside the Add/Edit form
+document.addEventListener("input", e => {
+  if (e.target.closest("#eventForm")) markDirty();
+});
+
+// Warn on browser close / refresh / tab navigate
+window.addEventListener("beforeunload", e => {
+  if (window._isDirty) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+function _showUnsavedModal() {
+  createModal("Unsaved Changes", `
+    <p style="margin:0 0 20px">You have unsaved changes.<br>If you leave now your inputs will be lost.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal()" style="padding:8px 18px">Stay</button>
+      <button onclick="_confirmLeave()" style="padding:8px 18px;background:#e53e3e;color:#fff;border:none;border-radius:6px;cursor:pointer">Leave anyway</button>
+    </div>
+  `);
+}
+
+function _confirmLeave() {
+  closeModal();
+  const target = window._pendingNavTarget;
+  window._pendingNavTarget = null;
+  clearDirty();
+  window.navigateTo(target);
+}
+// ─────────────────────────────────────────────────────────────────
+
 // On initial page load
 window.addEventListener("DOMContentLoaded", () => {
   checkSession();
@@ -869,6 +908,20 @@ function createStarRating(name, currentValue = 0, editable = true) {
 // 🟡 LemonDrip Expandable Table Builder
 // modified 10-17-25 8:30 am.
 // ---------------------------
+// Sort state for the manage-events table
+let _manageTableData = [];
+let _manageSort = { key: null, dir: 1 }; // dir: 1 = asc, -1 = desc
+
+function _sortManageTable(key) {
+  if (_manageSort.key === key) {
+    _manageSort.dir *= -1;
+  } else {
+    _manageSort.key = key;
+    _manageSort.dir = 1;
+  }
+  buildTableHTML(_manageTableData, "manageResults");
+}
+
 function buildTableHTML(results, containerId = "searchResults") {
   results = results.map(ev => {
     const copy = { ...ev };
@@ -886,6 +939,26 @@ function buildTableHTML(results, containerId = "searchResults") {
     return copy;
   });
 
+  // Store data for re-sorting; reset sort state when fresh data arrives
+  if (containerId === "manageResults") {
+    _manageTableData = results;
+    // Apply current sort if one is active
+    if (_manageSort.key) {
+      const key = _manageSort.key;
+      const dir = _manageSort.dir;
+      results = [...results].sort((a, b) => {
+        let av = a[key] ?? "", bv = b[key] ?? "";
+        if (key === "grossSales" || key === "netProfit") {
+          return (Number(av) - Number(bv)) * dir;
+        }
+        if (key === "eventDate") {
+          return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
+        }
+        return String(av).localeCompare(String(bv)) * dir;
+      });
+    }
+  }
+
   const container = document.getElementById(containerId) || document.body;
   container.innerHTML = "";
 
@@ -901,12 +974,14 @@ function buildTableHTML(results, containerId = "searchResults") {
   }
 
   const displayColumns = [
-    { key: "eventID", label: "Event ID" },
-    { key: "eventName", label: "Event Name" },
-    { key: "eventDate", label: "Event Date" },
-    { key: "grossSales", label: "Gross Sales" },
-    { key: "netProfit", label: "Net Profit" },
+    { key: "eventID",   label: "Event ID",   sortable: false },
+    { key: "eventName", label: "Event Name",  sortable: true  },
+    { key: "eventDate", label: "Event Date",  sortable: true  },
+    { key: "grossSales",label: "Gross Sales", sortable: true  },
+    { key: "netProfit", label: "Net Profit",  sortable: true  },
   ];
+
+  const isManage = containerId === "manageResults";
 
   const table = document.createElement("table");
   table.classList.add("results-table", "lemondrip-table");
@@ -916,7 +991,17 @@ function buildTableHTML(results, containerId = "searchResults") {
 
   displayColumns.forEach((col) => {
     const th = document.createElement("th");
-    th.textContent = col.label;
+    if (isManage && col.sortable) {
+      th.style.cursor = "pointer";
+      th.style.userSelect = "none";
+      const icon = _manageSort.key === col.key
+        ? (_manageSort.dir === 1 ? " ↑" : " ↓")
+        : " ↕";
+      th.textContent = col.label + icon;
+      th.addEventListener("click", () => _sortManageTable(col.key));
+    } else {
+      th.textContent = col.label;
+    }
     headerRow.appendChild(th);
   });
 
@@ -1354,6 +1439,58 @@ async function editEvent(eventData) {
       input.value = val;
     }
   });
+
+  markDirty(); // editing an existing event — warn if navigating away
+}
+
+// ---------------------------
+// duplicateEvent | Opens the Add Event form pre-filled with an existing event's
+// metadata only (no financial history). Saves as a brand-new event.
+// ---------------------------
+async function duplicateEvent(eventData) {
+  // Reuse editEvent to pre-fill the form, then immediately switch to "create new" mode
+  await editEvent(eventData);
+
+  window.isEditing = false;
+  window.activeeventID = null;
+  window.activeEvent = null;
+
+  // Update form title and submit button label
+  const formTitle = document.getElementById("formTitle");
+  if (formTitle) formTitle.textContent = "📋 Duplicate Event";
+
+  const submitBtn = document.querySelector('#eventForm button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "💾 Save as New Event";
+
+  // Remove the "Duplicate as New Event" button — not needed in this context
+  const dupBtn = document.querySelector('#eventForm button[onclick="duplicateAsNew()"]');
+  if (dupBtn) dupBtn.remove();
+}
+
+// ---------------------------
+// duplicateAsNew | Called from the "Duplicate as New Event" button inside the
+// Edit Event form. Submits current form values as a brand-new event without
+// touching the original.
+// ---------------------------
+async function duplicateAsNew() {
+  const confirmed = await new Promise(resolve => {
+    createModal("Duplicate as New Event", `
+      <p style="margin:0 0 20px">This will create a new event with the current form values.<br>The original event will not be changed.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-secondary" onclick="closeModal(); window._dupResolve(false)" style="padding:8px 18px">Cancel</button>
+        <button onclick="closeModal(); window._dupResolve(true)" style="padding:8px 18px;background:#2d7d46;color:#fff;border:none;border-radius:6px;cursor:pointer">Create Duplicate</button>
+      </div>
+    `);
+    window._dupResolve = resolve;
+  });
+  if (!confirmed) return;
+
+  // Switch to create-new mode
+  window.isEditing = false;
+  window.activeeventID = null;
+  window.activeEvent = null;
+
+  await submitEvent(null);
 }
 
 // ---------------------------
@@ -1769,6 +1906,7 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
   window.isEditing = false;
   window.activeeventID = null;
   window.activeEvent = null;
+  clearDirty();
 
   const eventFormEl = document.getElementById("eventForm");
   if (eventFormEl) eventFormEl.innerHTML = "";
@@ -2385,11 +2523,13 @@ console.log("✅ fields resolved:", fields);
     }
   );
 
-  // Add buttons
+  // Add buttons — labels depend on context (new vs edit vs duplicate)
   const btnContainer = document.createElement("div");
   btnContainer.classList.add("form-buttons");
+  const isEditMode = window.isEditing === true;
   btnContainer.innerHTML = `
-    <button type="submit">💾 Save New Event</button>
+    <button type="submit">${isEditMode ? "💾 Update Event" : "💾 Save New Event"}</button>
+    ${isEditMode ? `<button type="button" onclick="duplicateAsNew()">📋 Duplicate as New Event</button>` : ""}
     <button type="button" onclick="clearEventForm()">⬅️ Cancel</button>
   `;
 
@@ -4068,6 +4208,12 @@ try {
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
+    // Duplicate
+    const dupBtn = document.createElement("button");
+    dupBtn.textContent = "📋 Duplicate Event";
+    dupBtn.classList.add("btn-secondary");
+    dupBtn.addEventListener("click", () => duplicateEvent(event));
+
     // Delete
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "🗑️ Delete Event";
@@ -4081,6 +4227,7 @@ try {
     safeAppend(buttonContainer, finalizeBtn);
     safeAppend(buttonContainer, reportBtn);
     safeAppend(buttonContainer, editBtn);
+    safeAppend(buttonContainer, dupBtn);
     safeAppend(buttonContainer, deleteBtn);
   }
 
@@ -5292,9 +5439,83 @@ function showStarterUpgrade(context = "report") {
 //          above the Manage Events table.
 //          Cards: Total Events, Gross Revenue, Net Profit, Best Event.
 // ---------------------------
+let _profitChart = null;
+
+async function loadProfitChart() {
+  const wrap   = document.getElementById("profitChartWrap");
+  const canvas = document.getElementById("profitChart");
+  if (!wrap || !canvas || typeof Chart === "undefined") return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/trend`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.length) return;
+
+    const labels  = data.map(d => {
+      if (!d.eventDate) return d.eventName || "?";
+      const dt = new Date(d.eventDate + "T00:00:00");
+      return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+    });
+    const profits = data.map(d => Number(d.netProfit));
+    const colors  = profits.map(p => p >= 0 ? "rgba(45,125,70,0.82)" : "rgba(220,53,69,0.82)");
+    const hover   = profits.map(p => p >= 0 ? "rgba(30,100,55,1)"   : "rgba(180,30,40,1)");
+
+    if (_profitChart) { _profitChart.destroy(); _profitChart = null; }
+
+    _profitChart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: "Net Profit",
+          data: profits,
+          backgroundColor: colors,
+          hoverBackgroundColor: hover,
+          borderRadius: 4,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => data[items[0].dataIndex]?.eventName || items[0].label,
+              label: (ctx)  => {
+                const v = ctx.parsed.y;
+                return " " + v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { maxRotation: 45, font: { size: 11 } }
+          },
+          y: {
+            grid: { color: "#f0f0f0" },
+            ticks: {
+              callback: v => "$" + Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 })
+            }
+          }
+        }
+      }
+    });
+
+    wrap.classList.remove("hidden");
+  } catch (err) {
+    console.error("❌ Profit chart error:", err);
+  }
+}
+
 async function loadManageKpis() {
   const row = document.getElementById("manageKpiRow");
   if (!row) return;
+
+  loadProfitChart(); // fire-and-forget alongside KPI cards
 
   try {
     const res = await fetch(`${API_BASE}/api/events/kpi`);
@@ -5343,6 +5564,11 @@ let _inventoryCache = [];
 // Extend navigateTo so that visiting inventorySection auto-loads items
 const _origNavigateTo = navigateTo;
 window.navigateTo = function(sectionId) {
+  if (window._isDirty) {
+    window._pendingNavTarget = sectionId;
+    _showUnsavedModal();
+    return;
+  }
   _origNavigateTo(sectionId);
   if (sectionId === "inventorySection") loadInventorySection();
   if (sectionId === "adminSection")     loadAdminSection();

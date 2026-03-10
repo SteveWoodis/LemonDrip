@@ -788,6 +788,44 @@ app.get("/api/events/kpi", async (req, res) => {
 });
 
 // -------------------------------
+// 📈 GET /api/events/trend — per-event netProfit sorted by date, for charting
+// -------------------------------
+app.get("/api/events/trend", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const netExpr = `
+      COALESCE(s."totalCollected", 0)
+      - COALESCE(x."healthDeptFee", 0)
+      - COALESCE(x."eventFee", 0)
+      - COALESCE(x."mileageReimbursement", 0)
+      - COALESCE(x."eventRunnerFees", 0)
+      - COALESCE(x."employeeBonus", 0)
+      - COALESCE(x."coordinatorFee", 0)
+      - COALESCE(x."posFee", 0)
+      - COALESCE(x."supplyFees", 0)
+      - COALESCE(x."laborFees", 0)`;
+
+    const rows = await dbAll(`
+      SELECT e."eventName", e."eventDate", (${netExpr}) AS "netProfit"
+      FROM "EventInfo" e
+      LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
+      LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
+      WHERE e."userId" = $1
+      ORDER BY e."eventDate" ASC
+    `, [userId]);
+
+    res.json(rows.map(r => ({
+      eventName: r.eventName,
+      eventDate: r.eventDate,
+      netProfit:  Number(r.netProfit)
+    })));
+  } catch (err) {
+    console.error("❌ /api/events/trend error:", err);
+    res.status(500).json({ error: "Failed to load trend data." });
+  }
+});
+
+// -------------------------------
 // 📥 GET /api/events/export/csv
 // -------------------------------
 app.get("/api/events/export/csv", async (req, res) => {
