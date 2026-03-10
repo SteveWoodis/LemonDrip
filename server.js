@@ -3663,7 +3663,6 @@ async function buildPostEventReport(eventID) {
      Number(exp.mileageReimbursement || 0) +
      Number(exp.employeeBonus || 0) +
      Number(exp.eventRunnerFees || 0) +
-     Number(exp.supplyFees || 0) +
      Number(exp.laborFees || 0) +
      Number(exp.coordinatorFee || 0) +
      posFees;

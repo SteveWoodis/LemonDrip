@@ -3184,7 +3184,6 @@ function updateExpensesLaborRow(laborFees) {
     (expenses.coordinatorFee || 0) +
     (expenses.eventRunnerFees || 0) +
     (expenses.additionalFees || 0) +
-    (expenses.supplyFees || 0) +
     (expenses.laborFees || 0) +
     (expenses.posFee || 0);
 
@@ -3255,7 +3254,6 @@ function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
     Number(expenses.coordinatorFee || 0) +
     Number(expenses.additionalFees || 0) +
     Number(expenses.laborFees || 0) +
-    Number(expenses.supplyFees || 0) +
     posFees +
     stateFoodTax;
 
@@ -3274,7 +3272,6 @@ function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
       Labor Fees (auto):
       <span class="auto-labor-fees">${fmtMoney(expenses.laborFees)}</span>
     </div>
-    <div>Supply Fees (auto): ${fmtMoney(expenses.supplyFees)}</div>
     <div>State Food Tax (auto): ${fmtMoney(stateFoodTax)}</div>
     <hr>
     <strong>
@@ -4222,13 +4219,7 @@ if (report.inventorySales && report.inventorySales.length) {
     createCollapsibleCard("Tips", buildTipsEditor(report))
   );
 
-  // ======================
-  // 7) SUPPLIES CARD
-  // ======================
-  safeAppend(
-    container,
-    renderSupplyCostsCard(report.supplies || [])
-  );
+  // Supply Fees card removed — ingredient costs tracked via Ingredient Costs (Recipe Matching)
 
   // ======================
   // 8) EMPLOYEES / LABOR CARD
