@@ -7,6 +7,39 @@ const cors = require("cors");
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
 const recipes = require('./recipes.js');
+const rateLimit = require("express-rate-limit");
+
+// ── Rate limiters ────────────────────────────────────────────────
+// Tier 1 — Square API routes: Square charges per-call and has hard quotas.
+//   10 sync requests per 15 min per IP prevents runaway loops from burning quota.
+const squareLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many Square sync requests. Please wait a few minutes." }
+});
+
+// Tier 2 — Heavy read routes: search, KPI, trend, and CSV export all do full-table
+//   scans. 60 req/min is generous for normal use but stops scripted hammering.
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please slow down." }
+});
+
+// Tier 3 — General API: catches everything else. 200 req/15 min ≈ ~13/min —
+//   invisible to real users, but stops bots and runaway client-side loops.
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again shortly." }
+});
+// ────────────────────────────────────────────────────────────────
  
 // -------------------------------
 // 🔐 SuperTokens Auth
@@ -569,6 +602,11 @@ const activeOAuthStates = new Set();
 
 
 
+// Apply general API limiter to every /api/* route (200 req / 15 min).
+// The stricter squareLimiter and searchLimiter layer on top of this for
+// their specific routes — both limits must pass for those requests.
+app.use("/api", apiLimiter);
+
 // -------------------------------
 // 🔐 Admin setup
 // -------------------------------
@@ -737,7 +775,7 @@ app.get("/api/events", async (req, res) => {
 // -------------------------------
 // 📊 GET /api/events/kpi  (Pro — aggregate stats across all events)
 // -------------------------------
-app.get("/api/events/kpi", async (req, res) => {
+app.get("/api/events/kpi", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const netExpr = `
@@ -790,7 +828,7 @@ app.get("/api/events/kpi", async (req, res) => {
 // -------------------------------
 // 📈 GET /api/events/trend — per-event netProfit sorted by date, for charting
 // -------------------------------
-app.get("/api/events/trend", async (req, res) => {
+app.get("/api/events/trend", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const netExpr = `
@@ -828,7 +866,7 @@ app.get("/api/events/trend", async (req, res) => {
 // -------------------------------
 // 📥 GET /api/events/export/csv
 // -------------------------------
-app.get("/api/events/export/csv", async (req, res) => {
+app.get("/api/events/export/csv", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const rows = await dbAll(`
@@ -882,7 +920,7 @@ app.get("/api/events/export/csv", async (req, res) => {
 // -------------------------------
 // 🔐 OAuth routes for Labor (Shifts)
 // -------------------------------
-app.get("/api/square/oauth/callback", async (req, res) => {
+app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
   if (error) {
@@ -953,7 +991,7 @@ activeOAuthStates.delete(state);
 
 
 // Start OAuth flow
-app.get("/api/square/oauth/start", (req, res) => {
+app.get("/api/square/oauth/start", squareLimiter, (req, res) => {
   const state = crypto.randomBytes(24).toString("hex");
 
   activeOAuthStates.add(state);
@@ -983,7 +1021,7 @@ app.get("/api/square/oauth/start", (req, res) => {
 
 
 // 🔍 SEARCH EVENTS by free text (includes customFields)
-app.get("/api/events/search", async (req, res) => {
+app.get("/api/events/search", searchLimiter, async (req, res) => {
   const q = req.query.q?.trim();
   if (!q) return res.json([]);
 
@@ -1202,7 +1240,7 @@ app.post("/api/formTemplates", async (req, res) => {
 // -------------------------------
 // GET Square Location Cache
 // -------------------------------
-app.get("/api/square/locations", async (req, res) => {
+app.get("/api/square/locations", squareLimiter, async (req, res) => {
   try {
     const url = "https://connect.squareup.com/v2/locations";
     const response = await fetch(url, {
@@ -1541,7 +1579,7 @@ app.put("/api/events/:id",
  * Canonical discount formula (matches Square dashboard):
  *   discounts = grossSales - netSales - refunds
  */
-app.put("/api/square/sales/:eventID", async (req, res) => {
+app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
  
   let refunds = 0;
   let totalCollected = 0;
@@ -2787,7 +2825,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.put("/api/square/labor/:eventID", async (req, res) => {
+app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
   try {
     const eventID = Number(req.params.eventID);
     if (!Number.isFinite(eventID)) {
