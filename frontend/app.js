@@ -1304,24 +1304,17 @@ async function editEvent(eventData) {
   window.activeeventID = eventID;
   window.isEditing = true;
 
-  // Show Add/Edit form
-  openAddEventForUser();
+  // Show Add/Edit form (awaited so templates are loaded before we use them)
+  await openAddEventForUser();
 
-  // Determine active template
-  const activeTemplateName =
-    document.getElementById("templateSelect")?.value ||
-    "Default Template";
-
-  const template = window.availableTemplates?.find(
-    (t) => t.templateName === activeTemplateName
-  );
+  // openAddEventForUser already rebuilt the form with Default Template;
+  // re-find it to pre-fill values below
+  const template = window.availableTemplates?.find(t => t.templateName === "Default Template")
+    || window.availableTemplates?.[0];
   if (!template) {
-    showToast("Template not found. Please load a template first.", "warning");
+    showToast("Template not found.", "warning");
     return;
   }
-
-  // Rebuild form from template
-  rebuildAddEventForm(stripEventColorFromTemplate(template));
 
   // Load Square locations, then select this event's location
   await loadSquareLocationsIntoForm();
@@ -1577,8 +1570,7 @@ async function submitEvent(e) {
   // --------------------------------------------------
   // 1️⃣ Resolve active template
   // --------------------------------------------------
-  const templateName = document.getElementById("templateSelect")?.value;
-  
+  const templateName = "Default Template";
   const template = window.availableTemplates?.find(
     (t) => (t.templateName || t.TemplateName) === templateName
   );
@@ -2039,19 +2031,24 @@ async function waitForTemplates(timeout = 3000) {
 //          Also initializes Square location dropdown and the Number of Days field.
 // ---------------------------
 async function openAddEventForUser() {
-  if (!window.availableTemplates) {
+  navigateTo("addSection");
+
+  // Always refresh templates to ensure Default Template fields load
   await populateTemplateDropdown();
-}
 
-   navigateTo("addSection");
-
-   if (!window.availableTemplates) {
-    console.error("Templates not loaded");
+  const templates = window.availableTemplates;
+  if (!Array.isArray(templates) || templates.length === 0) {
+    document.getElementById("eventForm").innerHTML =
+      '<p style="color:red">No form templates found. Go to 🧩 Design Event Form to create a Default Template.</p>';
+    loadSquareLocationsIntoForm();
     return;
   }
 
+  const defaultTpl = templates.find(t => t.templateName === "Default Template")
+    || templates[0];
 
-  await populateTemplateDropdown();
+  console.log("🟡 Loading template:", defaultTpl?.templateName, "fields:", defaultTpl?.fields?.length);
+  rebuildAddEventForm(stripEventColorFromTemplate(defaultTpl));
 
   loadSquareLocationsIntoForm();
   initNumDaysField();
@@ -3083,7 +3080,7 @@ function renderEventProfitSummary(report) {
       <div class="section-divider"></div>
 
       <!-- TIER 2: COGS → Gross Profit -->
-      <div class="section-title">Cost of Goods Sold (COGS)</div>
+      <div class="section-title">Cost of Goods Sold (COGS) - Supply Fees</div>
       <div class="ledger-row"><span class="ledger-label">Ingredient Costs</span><span class="ledger-amount">-${fmt(cogs)}</span></div>
       <div class="section-divider"></div>
       <div class="ledger-row total-row ${grossProfitClass}"><span class="ledger-label">Gross Profit</span><span class="ledger-amount">${fmt(grossProfit)}</span></div>
