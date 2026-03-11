@@ -692,8 +692,8 @@ header .brand-subtitle {
 
 header .nav-buttons {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 /* Hamburger – hidden on desktop */
@@ -731,27 +731,54 @@ header .nav-buttons {
   transform: translateY(-7px) rotate(-45deg);
 }
 
-.header-buttons button {
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: #f8fafc;
-  padding: 0.45rem 0.95rem;
-  font-size: 0.9rem;
+/* Plain text nav links */
+.header-buttons .nav-link {
+  background: none;
+  border: none;
+  color: #4b5563;
+  font-size: 0.875rem;
   font-weight: 500;
+  padding: 0.4rem 0.6rem;
   cursor: pointer;
-  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
-.header-buttons button:hover {
-  background: #eef2ff;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+.header-buttons .nav-link:hover {
+  color: var(--vv-green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.header-buttons .nav-link.active {
+  color: var(--vv-green);
+  font-weight: 600;
+}
+
+/* Primary CTA — Add Event */
+.header-buttons .nav-cta {
+  background: var(--vv-green);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  transition: background 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.header-buttons .nav-cta:hover {
+  background: #1d6936;
   transform: translateY(-1px);
 }
 
-.header-buttons button.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+.header-buttons .nav-cta:active {
+  transform: translateY(0);
 }
 
 /* Mobile nav drawer */
@@ -782,12 +809,19 @@ header .nav-buttons {
     display: flex;
   }
 
-  .header-buttons button {
+  .header-buttons .nav-link,
+  .header-buttons .nav-cta {
     width: 100%;
     text-align: left;
     border-radius: 8px;
     padding: 0.65rem 1rem;
     font-size: 0.95rem;
+    margin-left: 0;
+  }
+
+  .header-buttons .nav-cta {
+    margin-top: 0.25rem;
+    text-align: center;
   }
 }
 
@@ -2772,14 +2806,15 @@ select:focus {
   position: relative;
   background: none;
   border: none;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-left: 0.25rem;
   transition: background 0.15s;
   line-height: 1;
 }
-.alerts-bell:hover       { background: rgba(255,255,255,0.15); }
+.alerts-bell:hover       { background: #f3f4f6; }
 .alerts-bell-active      { animation: bell-ring 0.4s ease; }
 
 @keyframes bell-ring {

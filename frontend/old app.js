@@ -3253,10 +3253,7 @@ function renderEventProfitSummary(report) {
       <div class="ledger-row final-row ${netProfitClass}"><span class="ledger-label">Net Profit</span><span class="ledger-amount gross-profit">${fmt(netProfit)}</span></div>
 
       <div class="section-divider"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div class="section-title" style="margin:0">For Your Records</div>
-        <button id="finalizeEventBtnInline" class="btn-primary" style="font-size:0.78rem;padding:3px 10px;white-space:nowrap" ${window.activeEvent?.isFinalized === 1 ? 'disabled title="This event has already been finalized"' : ''}>✅ Finalize Event</button>
-      </div>
+      <div class="section-title">For Your Records</div>
       <div class="ledger-row ledger-row-info"><span class="ledger-label">Tips (pass-through to staff)</span><span class="ledger-amount">${fmt(tips)}</span></div>
       <div class="ledger-row ledger-row-info"><span class="ledger-label">${salesTaxLabel}</span><span class="ledger-amount">${fmt(stateFoodTax)}</span></div>
       <div class="ledger-note">ⓘ Income taxes are calculated annually — consult your accountant.</div>
@@ -3560,7 +3557,6 @@ function renderLaborCard(event) {
     <div class="labor-actions">
       <button id="addLaborRow">➕ Add Worker</button>
       <button id="saveLabor">💾 Save Labor</button>
-      <button id="pullSquareLaborBtn" class="btn-secondary labor-square-btn" title="Import labor shifts from Square">🔄 Pull Square Labor</button>
     </div>
   `;
 
@@ -3669,26 +3665,6 @@ function wireLaborCard(eventID) {
   };
 
   recalc();
-
-  // Wire Pull Square Labor button (lives in the Labor card, not the top bar)
-  const pullLaborBtn = document.getElementById("pullSquareLaborBtn");
-  if (pullLaborBtn) {
-    pullLaborBtn.onclick = () => {
-      if (!window._activeSquareLocationId) {
-        showToast("No Square Location linked. Edit the event and select a Square Location first.", "warning");
-        return;
-      }
-      withSpinner(pullLaborBtn, async () => {
-        try {
-          await pullSquareLabor(eventID);
-          await reloadEventDashboard();
-        } catch (err) {
-          console.error("Square Labor pull error:", err);
-          showToast("Failed to pull Square Labor.", "error", 3500, () => pullSquareLabor(eventID).then(reloadEventDashboard));
-        }
-      });
-    };
-  }
 }
 
 
@@ -4152,18 +4128,12 @@ try {
   window.activeEvent   = event;
   // ======================
   // DASHBOARD BUTTONS
-  // Three tiers: primary actions | secondary actions | danger (isolated)
-  // Pull Square Labor lives inside the Labor card, not here.
   // ======================
   const buttonContainer = document.querySelector(".dashboard-buttons");
   if (buttonContainer) {
     buttonContainer.innerHTML = "";
 
-    // ── Primary row ──────────────────────────────────────────
-    const primaryRow = document.createElement("div");
-    primaryRow.className = "dash-btn-row dash-btn-row--primary";
-
-    // Pull Square Sales — step 1, always the main CTA
+    // Pull Square Sales
     const squareSalesBtn = document.createElement("button");
     squareSalesBtn.textContent = "🔄 Pull Square Sales";
     squareSalesBtn.classList.add("btn-primary");
@@ -4182,53 +4152,92 @@ try {
         }
       });
     });
+    // Pull Square Labor
+    const squareLaborBtn = document.createElement("button");
+    squareLaborBtn.textContent = "🔄 Pull Square Labor";
+    squareLaborBtn.classList.add("btn-primary");
+    squareLaborBtn.addEventListener("click", () => {
+      if (!event.squareLocationId) {
+        showToast("No Square Location linked. Edit the event and select a Square Location first.", "warning");
+        return;
+      }
+      withSpinner(squareLaborBtn, async () => {
+        try {
+          await pullSquareLabor(eventID);
+          await reloadEventDashboard();
+        } catch (err) {
+          console.error("Square Labor pull error:", err);
+          showToast("Failed to pull Square Labor.", "error", 3500, () => pullSquareLabor(eventID).then(reloadEventDashboard));
+        }
+      });
+    });
+    // Finalize
+    const finalizeBtn = document.createElement("button");
+    finalizeBtn.textContent = "✅ Finalize Event";
+    finalizeBtn.classList.add("btn-primary");
+    finalizeBtn.addEventListener("click", () => {
+      withSpinner(finalizeBtn, async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          });
 
-    // Post-Event Report
+          const out = await res.json();
+          console.log("Finalize Limit", out);
+
+          if (res.status === 403 && out.code === "FINALIZE_LIMIT_REACHED") {
+            showUpgradeModal("finalize");
+            return;
+          }
+
+          showToast("Event finalized!", "success");
+          showPostFinalizeFeedbackBanner();
+          await reloadEventDashboard();
+
+        } catch (err) {
+          console.error("Finalize error:", err);
+          showToast("Unexpected error finalizing event.", "error", 3500, () => finalizeBtn.click());
+        }
+      });
+    }); 
+
     const reportBtn = document.createElement("button");
-    reportBtn.textContent = "📊 Post-Event Report";
+    reportBtn.textContent = "📊 Open Post-Event Report";
     reportBtn.classList.add("btn-primary");
-    reportBtn.addEventListener("click", () => openPostEventReport(event));
+    reportBtn.addEventListener("click", () => {
+      openPostEventReport(event);
+    });
 
-    safeAppend(primaryRow, squareSalesBtn);
-    safeAppend(primaryRow, reportBtn);
-
-    // ── Secondary row ────────────────────────────────────────
-    const secondaryRow = document.createElement("div");
-    secondaryRow.className = "dash-btn-row dash-btn-row--secondary";
-
+    // Edit
     const editBtn = document.createElement("button");
     editBtn.textContent = "✏️ Edit Event";
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
+    // Duplicate
     const dupBtn = document.createElement("button");
     dupBtn.textContent = "📋 Duplicate Event";
     dupBtn.classList.add("btn-secondary");
     dupBtn.addEventListener("click", () => duplicateEvent(event));
 
-    safeAppend(secondaryRow, editBtn);
-    safeAppend(secondaryRow, dupBtn);
-
-    // ── Danger row — isolated, subdued until hovered ─────────
-    const dangerRow = document.createElement("div");
-    dangerRow.className = "dash-btn-row dash-btn-row--danger";
-
+    // Delete
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "🗑️ Delete Event";
-    deleteBtn.classList.add("btn-danger-subtle");
+    deleteBtn.classList.add("btn-danger");
     deleteBtn.addEventListener("click", () => {
       withSpinner(deleteBtn, () => deleteEvent(eventID, eventName));
     });
 
-    safeAppend(dangerRow, deleteBtn);
-
-    buttonContainer.appendChild(primaryRow);
-    buttonContainer.appendChild(secondaryRow);
-    buttonContainer.appendChild(dangerRow);
+    safeAppend(buttonContainer, squareSalesBtn);
+    safeAppend(buttonContainer, squareLaborBtn);
+    safeAppend(buttonContainer, finalizeBtn);
+    safeAppend(buttonContainer, reportBtn);
+    safeAppend(buttonContainer, editBtn);
+    safeAppend(buttonContainer, dupBtn);
+    safeAppend(buttonContainer, deleteBtn);
   }
-
-  // Store squareLocationId on window for use inside Labor card's Pull Square Labor button
-  window._activeSquareLocationId = event.squareLocationId || null;
 
   // ======================
   // 1) EVENT SUMMARY CARD
@@ -4264,8 +4273,11 @@ try {
   safeAppend(container, renderManualSalesEntryCard(report));
 
   // ======================
-  // 2) CUSTOM FIELDS — parsed here, rendered later in workflow order
+  // 2) CUSTOM FIELDS CARD
   // ======================
+  // ======================
+// 2) CUSTOM FIELDS CARD
+// ======================
 let customFieldsObj = {};
 
 if (report.event?.customFields) {
@@ -4278,6 +4290,18 @@ if (report.event?.customFields) {
     console.warn("Custom fields JSON parse failed:", err);
   }
 }
+
+if (Object.keys(customFieldsObj).length) {
+  const customHTML = Object.entries(customFieldsObj)
+    .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
+    .join("");
+
+  safeAppend(
+    container,
+    createCollapsibleCard("Custom Fields", customHTML)
+  );
+}
+
 
   // ======================
   // 3) INVENTORY SALES CARD
@@ -4321,89 +4345,67 @@ if (report.inventorySales && report.inventorySales.length) {
 }
 
 
-  // ======================
-  // WORKFLOW ORDER:
-  // 1. Event Summary (context)
-  // 2. Manual Sales Entry / Inventory Sales (data entry after Square pull)
-  // 3. Labor (with Pull Square Labor inside)
-  // 4. Expenses
-  // 5. Additional Fees / Discounts / Tips (adjustments)
-  // 6. Ingredient Costs (advanced)
-  // 7. Custom Fields (reference)
-  // 8. Event Profit Summary — OPEN BY DEFAULT (the whole point)
-  // ======================
-
   safeAppend(container, createCollapsibleCard("Inventory Sales", drinkHTML));
 
-  // Labor Card (editable, Pull Square Labor button lives inside)
-  const laborCard = renderLaborCard(report);
-  safeAppend(container, laborCard);
-  wireLaborCard(eventID);
+  // ======================
+  // 4) ADDITIONAL FEES CARD
+  // ======================
+  safeAppend(
+    container,
+    createCollapsibleCard("Additional Fees", buildFeesEditor(report))
+  );
 
-  // Expenses Card
+  // ======================
+  // 5) DISCOUNTS CARD
+  // ======================
+  safeAppend(
+    container,
+    createCollapsibleCard("Discounts", buildDiscountsEditor(report))
+  );
+
+  // ======================
+  // 6) TIPS CARD
+  // ======================
+  safeAppend(
+    container,
+    createCollapsibleCard("Tips", buildTipsEditor(report))
+  );
+
+  // Supply Fees card removed — ingredient costs tracked via Ingredient Costs (Recipe Matching)
+
+  // ======================
+  // 8) EMPLOYEES / LABOR CARD
+  // ======================
+  // ✅ Labor Card (editable)
+// 8) EMPLOYEES / LABOR CARD
+const laborCard = renderLaborCard(report);
+safeAppend(container, laborCard);
+
+// ⭐ WIRE ONLY AFTER IT EXISTS
+wireLaborCard(eventID);
+
+
+  // ======================
+  // 9) EXPENSES CARD
+  // ======================
   if (report.expenses && Object.keys(report.expenses).length) {
     safeAppend(container, renderExpensesCard(report.expenses, report.sales, report.taxes));
   }
 
-  // Adjustments group
-  safeAppend(container, createCollapsibleCard("Additional Fees", buildFeesEditor(report)));
-  safeAppend(container, createCollapsibleCard("Discounts", buildDiscountsEditor(report)));
-  safeAppend(container, createCollapsibleCard("Tips", buildTipsEditor(report)));
+  // ======================
+  // 10) PROFIT SUMMARY CARD
+  // ======================
+ if (report && report.sales && report.expenses) {
+  safeAppend(container, renderEventProfitSummary(report));
+}
 
-  // Ingredient Costs (advanced / secondary)
-  safeAppend(container, createCollapsibleCard("Ingredient Costs (Recipe Matching)", '<div id="salesFeesTab"></div>'));
+  // ======================
+  // 11) INGREDIENT COSTS CARD
+  // ======================
+  safeAppend(container, createCollapsibleCard("🍋 Ingredient Costs (Recipe Matching)", '<div id="salesFeesTab"></div>'));
   loadSalesFeesTab(eventID);
 
-  // Custom Fields (reference only, rarely needed)
-  if (Object.keys(customFieldsObj).length) {
-    const customHTML = Object.entries(customFieldsObj)
-      .map(([k, v]) => `<div><strong>${k}:</strong> ${v ?? ""}</div>`)
-      .join("");
-    safeAppend(container, createCollapsibleCard("Custom Fields", customHTML));
   }
-
-  // Profit Summary — open by default, it's the destination
-  if (report && report.sales && report.expenses) {
-    const profitCard = renderEventProfitSummary(report);
-    // Force it open immediately
-    const profitContent = profitCard.querySelector(".sheet-content");
-    const profitArrow   = profitCard.querySelector(".arrow");
-    if (profitContent) {
-      profitContent.classList.remove("collapsed");
-      profitContent.classList.add("expanded");
-    }
-    if (profitArrow) profitArrow.style.transform = "rotate(180deg)";
-    safeAppend(container, profitCard);
-
-    // Wire the inline Finalize Event button inside the Profit Summary card
-    const finalizeInline = document.getElementById("finalizeEventBtnInline");
-    if (finalizeInline) {
-      finalizeInline.addEventListener("click", () => {
-        withSpinner(finalizeInline, async () => {
-          try {
-            const res = await fetch(`${API_BASE}/api/events/${eventID}/finalize`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({})
-            });
-            const out = await res.json();
-            if (res.status === 403 && out.code === "FINALIZE_LIMIT_REACHED") {
-              showUpgradeModal("finalize");
-              return;
-            }
-            showToast("Event finalized!", "success");
-            showPostFinalizeFeedbackBanner();
-            await reloadEventDashboard();
-          } catch (err) {
-            console.error("Finalize error:", err);
-            showToast("Unexpected error finalizing event.", "error", 3500, () => finalizeInline.click());
-          }
-        });
-      });
-    }
-  }
-
-  } // end loadEventIntoDashboard cards block
 
 
 
@@ -5550,7 +5552,7 @@ async function loadManageKpis() {
         <div class="kpi-sub">after all expenses</div>
       </div>
       <div class="kpi-card kpi-best">
-        <div class="kpi-label">Best Event</div>
+        <div class="kpi-label">Best Finalized Event</div>
         <div class="kpi-value kpi-best-name">${bestName}</div>
         <div class="kpi-sub">${bestAmt} net profit</div>
       </div>

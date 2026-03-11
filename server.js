@@ -831,20 +831,30 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
 app.get("/api/events/trend", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
-    const netExpr = `
-      COALESCE(s."totalCollected", 0)
-      - COALESCE(x."healthDeptFee", 0)
-      - COALESCE(x."eventFee", 0)
-      - COALESCE(x."mileageReimbursement", 0)
-      - COALESCE(x."eventRunnerFees", 0)
-      - COALESCE(x."employeeBonus", 0)
-      - COALESCE(x."coordinatorFee", 0)
-      - COALESCE(x."posFee", 0)
-      - COALESCE(x."supplyFees", 0)
-      - COALESCE(x."laborFees", 0)`;
-
+    // Mirror buildPostEventReport exactly:
+    //   revenue = netSales (excludes tips, which are pass-through)
+    //   COGS    = sum of EventSalesFees (ingredient costs)
+    //   expenses = same columns as totalExpenses in buildPostEventReport
+    //             (supplyFees removed; additionalFees added)
     const rows = await dbAll(`
-      SELECT e."eventName", e."eventDate", (${netExpr}) AS "netProfit"
+      SELECT
+        e."eventName",
+        e."eventDate",
+        COALESCE(s."netSales", e."grossSales", 0)
+        - COALESCE((
+            SELECT SUM("totalCost") FROM "EventSalesFees"
+            WHERE "eventID" = e."eventID"
+          ), 0)
+        - COALESCE(x."healthDeptFee", 0)
+        - COALESCE(x."eventFee", 0)
+        - COALESCE(x."additionalFees", 0)
+        - COALESCE(x."mileageReimbursement", 0)
+        - COALESCE(x."eventRunnerFees", 0)
+        - COALESCE(x."employeeBonus", 0)
+        - COALESCE(x."coordinatorFee", 0)
+        - COALESCE(x."posFee", 0)
+        - COALESCE(x."laborFees", 0)
+        AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -1447,7 +1457,21 @@ app.post("/api/events",
     ];
 
     const result = await pool.query(sql, params);
-    res.json({ success: true, eventID: result.rows[0].eventID });
+    const newEventID = result.rows[0].eventID;
+
+    // Sync expense fields to EventExpenses so buildPostEventReport sees them
+    await pool.query(
+      `INSERT INTO "EventExpenses" ("eventID", "eventFee", "healthDeptFee", "mileageReimbursement", "eventRunnerFees")
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT("eventID") DO UPDATE SET
+         "eventFee"              = EXCLUDED."eventFee",
+         "healthDeptFee"         = EXCLUDED."healthDeptFee",
+         "mileageReimbursement"  = EXCLUDED."mileageReimbursement",
+         "eventRunnerFees"       = EXCLUDED."eventRunnerFees"`,
+      [newEventID, e.eventFee ?? 0, e.healthDeptFee ?? 0, e.mileageReimbursement ?? 0, e.eventRunnerFees ?? 0]
+    );
+
+    res.json({ success: true, eventID: newEventID });
   } catch (err) {
     console.error("❌ Error inserting event:", err);
     res.status(500).json({ error: String(err) });

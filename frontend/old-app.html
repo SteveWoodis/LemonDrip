@@ -13,124 +13,39 @@
   <meta property="og:url" content="https://venview.fly.dev/app.html">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="styles.css">
-  <style>
-    /* ── Dashboard header layout ─────────────────────────── */
-    .dashboard-title-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
-    }
-    .event-title {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: var(--vv-navy, #1a2e4a);
-    }
-    .event-date {
-      font-size: 0.9rem;
-      color: #64748b;
-      font-weight: 500;
-    }
-
-    /* ── Button rows ─────────────────────────────────────── */
-    .dashboard-buttons {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
-    .dash-btn-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-    /* Subtle visual separator between rows */
-    .dash-btn-row--secondary {
-      padding-top: 4px;
-    }
-    .dash-btn-row--danger {
-      padding-top: 8px;
-      border-top: 1px solid #f1f5f9;
-      margin-top: 2px;
-    }
-
-    /* Subdued danger button — outline only, fills red on hover */
-    .btn-danger-subtle {
-      background: transparent;
-      color: #dc2626;
-      border: 1px solid #fca5a5;
-      border-radius: 8px;
-      padding: 7px 14px;
-      font-size: 0.85rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .btn-danger-subtle:hover {
-      background: #dc2626;
-      color: #fff;
-      border-color: #dc2626;
-    }
-
-    /* Labor card: Pull Square Labor sits to the right */
-    .labor-square-btn {
-      margin-left: auto;
-      font-size: 0.82rem;
-    }
-
-    /* Finalized badge in title row */
-    .finalized-badge-large {
-      display: inline-block;
-      background: #dcfce7;
-      color: #15803d;
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      padding: 3px 10px;
-      border-radius: 99px;
-      border: 1px solid #bbf7d0;
-    }
-    .finalized-date-label {
-      font-size: 0.78rem;
-      color: #64748b;
-    }
-  </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 </head>
 <body>
 	<div class="app-shell">
   <header>
-    <div class="brand">
-      <img src="images/venview-icon-lg.png" alt="VenView" class="brand-logo">
-      <div class="brand-text">
-        <span class="brand-title">VenView Events</span>
-        <span class="brand-subtitle">Vendor Intelligence for Events</span>
+      <div class="brand">
+        <img src="images/venview-icon-lg.png" alt="VenView" class="brand-logo">
+        <div class="brand-text">
+          <span class="brand-title">VenView Events</span>
+          <span class="brand-subtitle">Vendor Intelligence for Events</span>
+        </div>
       </div>
-    </div>
-    <div class="nav-buttons">
-      <button class="hamburger" onclick="toggleMobileNav()" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-      <div class="header-buttons" id="headerButtonsDrawer">
-        <button id="btnHome"      class="nav-link" onclick="closeMobileNav(); window.location.href='/'">Home</button>
-        <button id="btnCompany"   class="nav-link" onclick="closeMobileNav(); navigateTo('companySection')">Register Company</button>
-        <button id="btnManage"    class="nav-link" onclick="closeMobileNav(); navigateTo('manageSection')">Manage Events</button>
-        <button id="btnInventory" class="nav-link" style="display:none" onclick="closeMobileNav(); navigateTo('inventorySection')">My Inventory</button>
-        <button id="btnRecipes"   class="nav-link" onclick="closeMobileNav(); navigateTo('recipesSection')">Recipes</button>
-        <button id="btnAdmin"     class="nav-link hidden" onclick="closeMobileNav(); navigateTo('adminSection')">Admin</button>
-        <button id="btnLogout"    class="nav-link" onclick="closeMobileNav(); handleLogout()">Logout</button>
-        <button id="btnAdd"       class="nav-cta"  onclick="closeMobileNav(); openAddEventForUser()">+ Add Event</button>
+      <div class="nav-buttons">
+        <button class="hamburger" onclick="toggleMobileNav()" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="header-buttons" id="headerButtonsDrawer">
+          <button id="btnHome"      class="nav-link" onclick="closeMobileNav(); window.location.href='/'">Home</button>
+          <button id="btnCompany"   class="nav-link" onclick="closeMobileNav(); navigateTo('companySection')">Register Company</button>
+          <button id="btnManage"    class="nav-link" onclick="closeMobileNav(); navigateTo('manageSection')">Manage Events</button>
+          <button id="btnInventory" class="nav-link" style="display:none" onclick="closeMobileNav(); navigateTo('inventorySection')">My Inventory</button>
+          <button id="btnRecipes"   class="nav-link" onclick="closeMobileNav(); navigateTo('recipesSection')">Recipes</button>
+          <button id="btnAdmin"     class="nav-link hidden" onclick="closeMobileNav(); navigateTo('adminSection')">Admin</button>
+          <button id="btnLogout"    class="nav-link" onclick="closeMobileNav(); handleLogout()">Logout</button>
+          <button id="btnAdd"       class="nav-cta"  onclick="closeMobileNav(); openAddEventForUser()">+ Add Event</button>
+        </div>
+        <!-- 🔔 Reorder Alerts Bell — far-right utility icon -->
+        <button id="btnAlerts" class="alerts-bell hidden" onclick="toggleAlertsPanel()" aria-label="Reorder alerts">
+          🔔
+          <span id="alertsBadge" class="alerts-badge hidden">0</span>
+        </button>
       </div>
-      <!-- 🔔 Reorder Alerts Bell — far-right utility icon -->
-      <button id="btnAlerts" class="alerts-bell hidden" onclick="toggleAlertsPanel()" aria-label="Reorder alerts">
-        🔔
-        <span id="alertsBadge" class="alerts-badge hidden">0</span>
-      </button>
-    </div>
   </header>
 
   <!-- 🔔 Alerts Panel (Pro) -->
@@ -372,12 +287,10 @@
 
       <!-- Dashboard Header (STATIC) -->
       <div class="dashboard-header">
-        <div class="dashboard-title-row">
-          <div id="dashEventName" class="event-title"></div>
-          <div id="dashEventDate" class="event-date"></div>
-          <div id="dashFinalizedIndicator"></div>
-        </div>
         <div class="dashboard-buttons"></div>
+        <div id="dashEventName" class="event-title"></div>
+        <div id="dashEventDate" class="event-date"></div>
+        <div id="dashFinalizedIndicator"></div>
       </div>
 
       <!-- Dashboard Cards (DYNAMIC) -->
