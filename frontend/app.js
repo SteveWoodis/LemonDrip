@@ -4134,6 +4134,8 @@ try {
   if (headerTitle) headerTitle.textContent = eventName;
   if (headerDate) headerDate.textContent = formatDateRange(eventDate, event.numDays);
   if (finalizedIndicator) finalizedIndicator.innerHTML = "";
+  const metaStripEl = document.getElementById("dashEventMeta");
+  if (metaStripEl) { metaStripEl.innerHTML = ""; metaStripEl.style.display = ""; }
 
   if (finalizedIndicator && event.isFinalized === 1) {
     const badge = document.createElement("div");
@@ -4155,15 +4157,15 @@ try {
   // Three tiers: primary actions | secondary actions | danger (isolated)
   // Pull Square Labor lives inside the Labor card, not here.
   // ======================
-  const buttonContainer = document.querySelector(".dashboard-buttons");
-  if (buttonContainer) {
-    buttonContainer.innerHTML = "";
+  const titleRow = document.querySelector(".dashboard-title-row");
+  const dangerContainer = document.querySelector(".dashboard-danger");
+  if (titleRow) {
+    // Remove any previously injected buttons (keep only dashEventName)
+    [...titleRow.children].forEach(el => {
+      if (el.id !== "dashEventName") el.remove();
+    });
 
-    // ── Primary row ──────────────────────────────────────────
-    const primaryRow = document.createElement("div");
-    primaryRow.className = "dash-btn-row dash-btn-row--primary";
-
-    // Pull Square Sales — step 1, always the main CTA
+    // Pull Square Sales
     const squareSalesBtn = document.createElement("button");
     squareSalesBtn.textContent = "🔄 Pull Square Sales";
     squareSalesBtn.classList.add("btn-primary");
@@ -4183,36 +4185,34 @@ try {
       });
     });
 
-    // Post-Event Report
-    const reportBtn = document.createElement("button");
-    reportBtn.textContent = "📊 Post-Event Report";
-    reportBtn.classList.add("btn-primary");
-    reportBtn.addEventListener("click", () => openPostEventReport(event));
-
-    safeAppend(primaryRow, squareSalesBtn);
-    safeAppend(primaryRow, reportBtn);
-
-    // ── Secondary row ────────────────────────────────────────
-    const secondaryRow = document.createElement("div");
-    secondaryRow.className = "dash-btn-row dash-btn-row--secondary";
-
+    // Edit Event
     const editBtn = document.createElement("button");
     editBtn.textContent = "✏️ Edit Event";
     editBtn.classList.add("btn-secondary");
     editBtn.addEventListener("click", () => editEvent(event));
 
+    // Post-Event Report
+    const reportBtn = document.createElement("button");
+    reportBtn.textContent = "📊 Post-Event Report";
+    reportBtn.classList.add("btn-secondary");
+    reportBtn.addEventListener("click", () => openPostEventReport(event));
+
+    // Duplicate Event
     const dupBtn = document.createElement("button");
     dupBtn.textContent = "📋 Duplicate Event";
     dupBtn.classList.add("btn-secondary");
     dupBtn.addEventListener("click", () => duplicateEvent(event));
 
-    safeAppend(secondaryRow, editBtn);
-    safeAppend(secondaryRow, dupBtn);
+    safeAppend(titleRow, squareSalesBtn);
+    safeAppend(titleRow, editBtn);
+    safeAppend(titleRow, reportBtn);
+    safeAppend(titleRow, dupBtn);
+  }
 
-    // ── Danger row — isolated, subdued until hovered ─────────
-    const dangerRow = document.createElement("div");
-    dangerRow.className = "dash-btn-row dash-btn-row--danger";
+  if (dangerContainer) {
+    dangerContainer.innerHTML = "";
 
+    // Delete Event — below meta strip, left-aligned
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "🗑️ Delete Event";
     deleteBtn.classList.add("btn-danger-subtle");
@@ -4220,48 +4220,40 @@ try {
       withSpinner(deleteBtn, () => deleteEvent(eventID, eventName));
     });
 
-    safeAppend(dangerRow, deleteBtn);
-
-    buttonContainer.appendChild(primaryRow);
-    buttonContainer.appendChild(secondaryRow);
-    buttonContainer.appendChild(dangerRow);
+    safeAppend(dangerContainer, deleteBtn);
   }
 
   // Store squareLocationId on window for use inside Labor card's Pull Square Labor button
   window._activeSquareLocationId = event.squareLocationId || null;
 
   // ======================
-  // 1) EVENT SUMMARY CARD
+  // 1) EVENT METADATA STRIP (inline under title row)
   // ======================
   const ev = report.event || event;
-  const summaryData = {
-    EventID: ev.eventID ?? eventID,
-    "Event Name": ev.eventName || "",
-    Date: ev.eventDate || eventDate,
-    "Event Type": ev.eventType || "",
-    Location: ev.eventLocation || eventLocation,
-    "Event Host": ev.eventHost || "",
-    Coordinator: ev.coordinator || coordinator,
-    Status: ev.status || status,
-    "Num Days": ev.numDays ?? "",
-    State: ev.state ?? "",
-    "Zip Code": ev.zipCode ?? "",
-    Time: ev.time || "",
-    "Event Fee": ev.eventFee ? `$${Number(ev.eventFee).toFixed(2)}` : "",
-    "Event Rating": ev.eventRating || "",
-    "Application Date": ev.applicationDate || "",
-    //"Square Location": ev.squareLocationId || "",
-    Notes: ev.notes || "",
-  };
+  const metaFields = [
+    { label: "Type",        value: ev.eventType || "" },
+    { label: "Host",        value: ev.eventHost || "" },
+    { label: "Coordinator", value: ev.coordinator || coordinator },
+    { label: "Location",    value: ev.eventLocation || eventLocation },
+    { label: "Status",      value: ev.status || status },
+    { label: "Time",        value: ev.time || "" },
+    { label: "Fee",         value: ev.eventFee ? `$${Number(ev.eventFee).toFixed(2)}` : "" },
+    { label: "Rating",      value: ev.eventRating || "" },
+    { label: "Applied",     value: ev.applicationDate || "" },
+    { label: "Notes",       value: ev.notes || "" },
+  ].filter(f => f.value !== "" && f.value != null && f.value !== "0");
 
-  const summaryHTML = Object.entries(summaryData)
-    .filter(([k, v]) => v !== "" && v != null)
-    .map(([k, v]) => `<div><strong>${k}:</strong> ${v}</div>`)
-    .join("");
-
-  safeAppend(container, createCollapsibleCard("Event Summary", summaryHTML));
-
-  safeAppend(container, renderManualSalesEntryCard(report));
+  const metaEl = document.getElementById("dashEventMeta");
+  if (metaEl) {
+    if (metaFields.length > 0) {
+      metaEl.innerHTML = metaFields
+        .map(f => `<span class="meta-chip"><span class="meta-chip-label">${f.label}</span><span class="meta-chip-value">${f.value}</span></span>`)
+        .join("");
+      metaEl.style.display = "";
+    } else {
+      metaEl.style.display = "none";
+    }
+  }
 
   // ======================
   // 2) CUSTOM FIELDS — parsed here, rendered later in workflow order
@@ -4334,20 +4326,23 @@ if (report.inventorySales && report.inventorySales.length) {
   // ======================
 
   safeAppend(container, createCollapsibleCard("Inventory Sales", drinkHTML));
-
+  safeAppend(container, renderManualSalesEntryCard(report));
+  safeAppend(container, createCollapsibleCard("Discounts", buildDiscountsEditor(report)));
   // Labor Card (editable, Pull Square Labor button lives inside)
   const laborCard = renderLaborCard(report);
   safeAppend(container, laborCard);
   wireLaborCard(eventID);
 
-  // Expenses Card
-  if (report.expenses && Object.keys(report.expenses).length) {
-    safeAppend(container, renderExpensesCard(report.expenses, report.sales, report.taxes));
-  }
+
+ 
 
   // Adjustments group
   safeAppend(container, createCollapsibleCard("Additional Fees", buildFeesEditor(report)));
-  safeAppend(container, createCollapsibleCard("Discounts", buildDiscountsEditor(report)));
+    // Expenses Card
+  if (report.expenses && Object.keys(report.expenses).length) {
+    safeAppend(container, renderExpensesCard(report.expenses, report.sales, report.taxes));
+  }
+  
   safeAppend(container, createCollapsibleCard("Tips", buildTipsEditor(report)));
 
   // Ingredient Costs (advanced / secondary)
