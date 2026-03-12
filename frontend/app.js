@@ -556,6 +556,10 @@ function normalizeEvent(e) {
     })(),
   };
 
+  // 🔹 Top-level sales/profit columns returned by the events list API
+  normalized.grossSales = n(e.grossSales);
+  normalized.netProfit  = n(e.netProfit);
+
   // 🔹 Profit-related event-level fields
   normalized.healthDeptFee        = n(e.healthDeptFee);
   normalized.mileageReimbursement = n(e.mileageReimbursement);
@@ -1865,10 +1869,7 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
 
   const method = isEditing ? "PUT" : "POST";
 
-  console.log(
-  "🚀 FINAL PAYLOAD STRINGIFIED:",
-  JSON.stringify(payload, null, 2)
-);
+  
 
 
   // --------------------------------------------------

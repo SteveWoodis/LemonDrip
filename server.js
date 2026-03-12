@@ -223,6 +223,10 @@ async function initDb() {
 
       ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "userId" TEXT;
       CREATE INDEX IF NOT EXISTS "EventInfo_userId_idx" ON "EventInfo" ("userId");
+      ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "internalScore" REAL DEFAULT 0;
+      ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "externalScore" REAL DEFAULT 0;
+      ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "eventScore" REAL DEFAULT 0;
+      ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "salesFeesLocked" BOOLEAN DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS "SalesSummary" (
         "SalesID" SERIAL PRIMARY KEY,
@@ -744,16 +748,20 @@ app.get("/api/events", async (req, res) => {
 
     const sql = `SELECT e.*,
       COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
-      COALESCE(s."totalCollected", 0)
+      COALESCE(s."netSales", e."grossSales", 0)
+        - COALESCE((SELECT SUM("totalCost") FROM "EventSalesFees" WHERE "eventID" = e."eventID"), 0)
         - COALESCE(x."healthDeptFee", 0)
         - COALESCE(x."eventFee", 0)
+        - COALESCE(x."additionalFees", 0)
         - COALESCE(x."mileageReimbursement", 0)
         - COALESCE(x."eventRunnerFees", 0)
         - COALESCE(x."employeeBonus", 0)
         - COALESCE(x."coordinatorFee", 0)
-        - COALESCE(x."posFee", 0)
-        - COALESCE(x."supplyFees", 0)
-        - COALESCE(x."laborFees", 0) AS "netProfit"
+        - COALESCE(x."laborFees", 0)
+        - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
+            THEN COALESCE(s."squareFees", 0)
+            ELSE COALESCE(x."posFee", 0)
+          END AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -779,16 +787,20 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
     const netExpr = `
-      COALESCE(s."totalCollected", 0)
+      COALESCE(s."netSales", e."grossSales", 0)
+      - COALESCE((SELECT SUM("totalCost") FROM "EventSalesFees" WHERE "eventID" = e."eventID"), 0)
       - COALESCE(x."healthDeptFee", 0)
       - COALESCE(x."eventFee", 0)
+      - COALESCE(x."additionalFees", 0)
       - COALESCE(x."mileageReimbursement", 0)
-      - COALESCE(x."eventRunnerFees", 0)
       - COALESCE(x."employeeBonus", 0)
       - COALESCE(x."coordinatorFee", 0)
-      - COALESCE(x."posFee", 0)
-      - COALESCE(x."supplyFees", 0)
-      - COALESCE(x."laborFees", 0)`;
+      - COALESCE(x."laborFees", 0)
+      - COALESCE(x."eventRunnerFees", 0)
+      - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
+          THEN COALESCE(s."squareFees", 0)
+          ELSE COALESCE(x."posFee", 0)
+        END`;
 
     const [stats] = await dbAll(`
       SELECT
@@ -852,8 +864,11 @@ app.get("/api/events/trend", searchLimiter, async (req, res) => {
         - COALESCE(x."eventRunnerFees", 0)
         - COALESCE(x."employeeBonus", 0)
         - COALESCE(x."coordinatorFee", 0)
-        - COALESCE(x."posFee", 0)
         - COALESCE(x."laborFees", 0)
+        - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
+            THEN COALESCE(s."squareFees", 0)
+            ELSE COALESCE(x."posFee", 0)
+          END
         AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
