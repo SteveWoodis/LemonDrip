@@ -20,13 +20,110 @@ async function loadRecipesSection() {
           ⬆ Upload CSV
           <input type="file" accept=".csv" style="display:none" onchange="handleRecipeCSVUpload(event)">
         </label>
-        <button class="btn btn-primary btn-sm" onclick="showNewRecipeForm()">+ New Recipe</button>
+        <button class="btn btn-primary btn-sm" onclick="showInlineAddRecipe()">＋ Add Recipe</button>
       </div>
     </div>
     <div id="recipeUploadStatus" style="margin-bottom:12px;"></div>
     <div id="recipesList"><div class="loading-spinner">Loading recipes…</div></div>
+    <div id="inlineAddRecipeContainer"></div>
   `;
   await renderRecipesList();
+}
+
+function showInlineAddRecipe() {
+  const container = document.getElementById('inlineAddRecipeContainer');
+  if (!container) return;
+
+  // Toggle off if already open
+  if (container.innerHTML.trim()) { container.innerHTML = ''; return; }
+
+  container.innerHTML = `
+    <div style="margin-top:16px;padding:14px 16px;background:#f0f8ff;border:1px solid #c7dff7;border-radius:8px">
+      <div style="font-weight:600;margin-bottom:10px;font-size:0.95em">New Recipe</div>
+      <div style="display:grid;grid-template-columns:1.8fr 1.8fr 0.8fr 1fr 1fr 1fr auto;gap:8px;align-items:end">
+        <div>
+          <label style="font-size:0.78em;color:#555;display:block;margin-bottom:3px">Recipe Name *</label>
+          <input id="nr_recipeName" class="form-input form-input-sm" placeholder="e.g. Regular Lemonade">
+        </div>
+        <div>
+          <label style="font-size:0.78em;color:#555;display:block;margin-bottom:3px">Ingredient Name *</label>
+          <input id="nr_ingName" class="form-input form-input-sm" placeholder="e.g. Lemon">
+        </div>
+        <div>
+          <label style="font-size:0.78em;color:#555;display:block;margin-bottom:3px">Qty Used</label>
+          <input id="nr_qty" class="form-input form-input-sm" type="number" step="0.01" value="1"
+            oninput="recalcInlineRecipeCost()">
+        </div>
+        <div>
+          <label style="font-size:0.78em;color:#555;display:block;margin-bottom:3px">Unit Type</label>
+          <input id="nr_unit" class="form-input form-input-sm" placeholder="Per Cup">
+        </div>
+        <div>
+          <label style="font-size:0.78em;color:#555;display:block;margin-bottom:3px">Unit Cost ($)</label>
+          <input id="nr_unitCost" class="form-input form-input-sm" type="number" step="0.001" placeholder="0.000"
+            oninput="recalcInlineRecipeCost()">
+        </div>
+        <div>
+          <label style="font-size:0.78em;color:#555;display:block;margin-bottom:3px">Cost Per Item</label>
+          <input id="nr_costPerItem" class="form-input form-input-sm" readonly
+            style="background:#f5f5f5;font-weight:600" placeholder="$0.00">
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="submitInlineRecipe()" style="white-space:nowrap">Save</button>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('inlineAddRecipeContainer').innerHTML=''">✕</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('nr_recipeName')?.focus();
+}
+
+function recalcInlineRecipeCost() {
+  const qty  = parseFloat(document.getElementById('nr_qty')?.value)     || 0;
+  const cost = parseFloat(document.getElementById('nr_unitCost')?.value) || 0;
+  const el   = document.getElementById('nr_costPerItem');
+  if (el) el.value = '$' + (qty * cost).toFixed(3);
+}
+
+async function submitInlineRecipe() {
+  const recipeName = document.getElementById('nr_recipeName')?.value?.trim();
+  const ingName    = document.getElementById('nr_ingName')?.value?.trim();
+  const qty        = parseFloat(document.getElementById('nr_qty')?.value)     || 1;
+  const unit       = document.getElementById('nr_unit')?.value?.trim()        || '';
+  const unitCost   = parseFloat(document.getElementById('nr_unitCost')?.value) || 0;
+
+  if (!recipeName) { showToast('Recipe name is required.', 'warning'); return; }
+  if (!ingName)    { showToast('Ingredient name is required.', 'warning'); return; }
+
+  try {
+    // 1. Create the recipe
+    const recipeRes = await fetch(`${API_BASE}/api/recipes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: recipeName, squareName: null }),
+    });
+    const recipeData = await recipeRes.json();
+    if (!recipeRes.ok || !recipeData.id) {
+      showToast(recipeData.error || 'Failed to create recipe.', 'error'); return;
+    }
+
+    // 2. Add the first ingredient
+    const ingRes = await fetch(`${API_BASE}/api/recipes/${recipeData.id}/ingredients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredientName: ingName, quantityUsed: qty, unitType: unit, unitCost }),
+    });
+    if (!ingRes.ok) {
+      showToast('Recipe created but ingredient failed to save.', 'warning');
+    }
+
+    // 3. Clear form and refresh list
+    document.getElementById('inlineAddRecipeContainer').innerHTML = '';
+    showToast('✅ Recipe saved.');
+    await renderRecipesList();
+  } catch (err) {
+    showToast('Failed to save recipe. Please try again.', 'error');
+  }
 }
 
 async function renderRecipesList() {

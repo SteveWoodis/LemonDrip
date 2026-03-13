@@ -3251,3 +3251,10 @@ select:focus {
   padding: 32px 0;
 }
 
+
+/* Inline Add Recipe row — collapse to 2-column grid on narrow screens */
+@media (max-width: 768px) {
+  #inlineAddRecipeContainer > div > div:nth-child(2) {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}

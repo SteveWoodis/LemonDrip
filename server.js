@@ -1700,6 +1700,7 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
   let refunds = 0;
   let totalCollected = 0;
   let discounts = 0;
+  let tips = 0;
 
   let orders = [];
   let ordersUsable = false;
@@ -1830,13 +1831,23 @@ const drinkMap = new Map();
 let totalDrinkCost = 0;
 
 for (const order of orders) {
+  // ── ORDER-LEVEL: tips (service charges) and refunds ──
+  // Source: Orders API is authoritative for both — avoids double-counting with Payments
+  for (const sc of order.service_charges || []) {
+    tips += (sc.total_money?.amount || 0) / 100;
+  }
+  refunds += (order.return_amounts?.total_money?.amount || 0) / 100;
+
   for (const li of order.line_items || []) {
     const name = li.name || "Unknown";
     const qty = Number(li.quantity || 0);
 
     // ── SALES TOTALS (ACCOUNTING) ──
-    const lineTotal = (li.total_money?.amount ??
-   (li.base_price_money?.amount || 0) * Number(li.quantity || 0)) / 100;
+    // Use gross_sales_money (pre-discount) so discounts are not double-subtracted.
+    // Falls back to total_money if gross_sales_money is absent.
+    const lineTotal = (li.gross_sales_money?.amount ??
+      li.total_money?.amount ??
+      (li.base_price_money?.amount || 0) * Number(li.quantity || 0)) / 100;
     grossSales += lineTotal;
 
     if (li.total_discount_money) {
@@ -1895,9 +1906,9 @@ console.log({ grossSales, discounts, netSales, totalCollected });
 
 
     // ─────────────────────────────────────────────
-    // 3️⃣ PAYMENTS (CASH TRUTH)
+    // 3️⃣ PAYMENTS — fees and total collected only
+    // Tips and refunds come from Orders (source of truth for Dashboard reconciliation)
     // ─────────────────────────────────────────────
-    let tips = 0;
     let squareFees = 0;
     let cursor = null;
 
@@ -1927,15 +1938,6 @@ console.log({ grossSales, discounts, netSales, totalCollected });
 
       for (const pay of payments) {
         totalCollected += (pay.amount_money?.amount || 0) / 100;
-        
-
-        if (pay.tip_money) {
-          tips += pay.tip_money.amount / 100;
-        }
-
-        if (pay.refunded_money) {
-          refunds += pay.refunded_money.amount / 100;
-        }
 
         for (const f of pay.processing_fee || []) {
           squareFees += (f.amount_money.amount || 0) / 100;
@@ -1955,9 +1957,11 @@ console.log({ grossSales, discounts, netSales, totalCollected });
       ordersLength: orders.length,
       ordersUsable,
       grossSales,
+      discounts,
+      refunds,
+      tips,
       netSales,
       totalCollected,
-      refunds
     });
 
     // ─────────────────────────────────────────────
