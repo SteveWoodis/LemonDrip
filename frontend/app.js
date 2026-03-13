@@ -1918,8 +1918,6 @@ if (Object.keys(customFields).length > 0) {
   canonical.customFields = customFields;
 }
 
-console.log("🧪 CANONICAL FINAL:", canonical);
-console.log("🧪 CUSTOM FIELDS FINAL:", customFields);
 
 
   // --------------------------------------------------
