@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:8080/api/formTemplates)",
+      "Bash(node -e \"const d=require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\); const t=JSON.parse\\(d\\); const def=t.find\\(x=>x.templateName===''''Default Template''''\\); console.log\\(JSON.stringify\\(\\(def?.fields||def?.Fields||[]\\).slice\\(0,5\\), null,2\\)\\);\")"
+    ]
+  }
+}

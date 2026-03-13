@@ -1293,32 +1293,147 @@ async function buildExpandedDetails(event) {
 //          Enforces the Starter plan cap of 2 days by showing the upgrade modal
 //          if the user tries to enter 3 or more.
 // ---------------------------
-function initNumDaysField(existingNumDays) {
+// ---------------------------
+// buildTimeSelect | builds a <select> with 30-min interval time options
+// ---------------------------
+function buildTimeSelect(id, selected = "") {
+  const sel = document.createElement("select");
+  sel.id = id;
+  sel.className = "day-time-select";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "-- Time --";
+  sel.appendChild(blank);
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      const hour12 = h % 12 || 12;
+      const ampm = h < 12 ? "AM" : "PM";
+      const label = `${hour12}:${m === 0 ? "00" : "30"} ${ampm}`;
+      const value = `${String(h).padStart(2, "0")}:${m === 0 ? "00" : "30"}`;
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      if (value === selected) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  return sel;
+}
+
+// ---------------------------
+// renderEventDayRows | builds day rows inside #eventDaysContainer
+// existingDays: array of {dayNumber, date, startTime, endTime} from server (optional)
+// ---------------------------
+function renderEventDayRows(existingDays = []) {
+  const container = document.getElementById("eventDaysContainer");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const numDays = Number(document.getElementById("form_Number_of_Days")?.value) || 1;
+  // Try multiple possible IDs (depends on template field label casing), fall back to activeEvent
+  const baseDate =
+    document.getElementById("form_Event_Date")?.value ||
+    document.getElementById("form_eventDate")?.value ||
+    document.getElementById("form_Event_date")?.value ||
+    window.activeEvent?.eventDate ||
+    "";
+
+  for (let i = 1; i <= numDays; i++) {
+    const existing = existingDays.find(d => d.dayNumber === i) || {};
+
+    // Auto-compute consecutive date from base date if not supplied
+    let autoDate = existing.date || "";
+    if (!autoDate && baseDate) {
+      const d = new Date(`${baseDate}T00:00:00`);
+      d.setDate(d.getDate() + (i - 1));
+      autoDate = d.toISOString().slice(0, 10);
+    }
+
+    const row = document.createElement("div");
+    row.className = "event-day-row";
+    row.dataset.day = i;
+
+    const dayLabel = document.createElement("span");
+    dayLabel.className = "day-row-label";
+    dayLabel.textContent = `Day ${i}`;
+
+    const dateInput = document.createElement("input");
+    dateInput.type = "date";
+    dateInput.className = "day-date-input";
+    dateInput.id = `day_date_${i}`;
+    dateInput.value = autoDate;
+
+    // Day 1 date stays in sync with form_Event_Date (two-way)
+    if (i === 1) {
+      dateInput.addEventListener("change", () => {
+        const eventDateEl = document.getElementById("form_Event_Date")
+          || document.getElementById("form_eventDate")
+          || document.getElementById("form_Event_date");
+        if (eventDateEl) eventDateEl.value = dateInput.value;
+        // Cascade: shift subsequent days to stay consecutive
+        for (let j = 2; j <= numDays; j++) {
+          const sibling = document.getElementById(`day_date_${j}`);
+          if (sibling) {
+            const d = new Date(`${dateInput.value}T00:00:00`);
+            d.setDate(d.getDate() + (j - 1));
+            sibling.value = d.toISOString().slice(0, 10);
+          }
+        }
+      });
+    }
+
+    const startSel = buildTimeSelect(`day_start_${i}`, existing.startTime || "");
+    const endSel   = buildTimeSelect(`day_end_${i}`,   existing.endTime   || "");
+
+    const startWrap = document.createElement("span");
+    startWrap.className = "day-time-wrap";
+    const startLbl = document.createElement("span");
+    startLbl.textContent = "Start";
+    startWrap.appendChild(startLbl);
+    startWrap.appendChild(startSel);
+
+    const endWrap = document.createElement("span");
+    endWrap.className = "day-time-wrap";
+    const endLbl = document.createElement("span");
+    endLbl.textContent = "End";
+    endWrap.appendChild(endLbl);
+    endWrap.appendChild(endSel);
+
+    row.appendChild(dayLabel);
+    row.appendChild(dateInput);
+    row.appendChild(startWrap);
+    row.appendChild(endWrap);
+    container.appendChild(row);
+  }
+}
+
+function initNumDaysField(existingNumDays, existingDays = []) {
   const input = document.getElementById("form_Number_of_Days");
-  const endDateSpan = document.getElementById("endDateDisplay");
   if (!input) return;
 
-  input.disabled = false;
   input.value = existingNumDays || 1;
 
-  const updateEndDate = () => {
-    const dateInput = document.getElementById("form_Event_Date");
-    const days = Number(input.value) || 1;
-    if (dateInput?.value && days > 1 && endDateSpan) {
-      const end = new Date(dateInput.value + "T00:00:00");
-      end.setDate(end.getDate() + days - 1);
-      endDateSpan.textContent = `→ ends ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-    } else if (endDateSpan) {
-      endDateSpan.textContent = "";
-    }
-  };
-  input.addEventListener("input", updateEndDate);
-  setTimeout(() => {
-    const dateInput = document.getElementById("form_Event_Date");
-    if (dateInput) dateInput.addEventListener("change", updateEndDate);
-    updateEndDate();
-  }, 0);
+  // Render initial day rows
+  renderEventDayRows(existingDays);
 
+  // Re-render rows when numDays changes
+  input.addEventListener("input", () => renderEventDayRows([]));
+
+  // Sync form_Event_Date → Day 1 date field when user changes the date picker
+  setTimeout(() => {
+    const dateInput = document.getElementById("form_Event_Date")
+      || document.getElementById("form_eventDate")
+      || document.getElementById("form_Event_date");
+    if (dateInput) {
+      dateInput.addEventListener("change", () => {
+        const day1 = document.getElementById("day_date_1");
+        if (day1) {
+          day1.value = dateInput.value;
+          day1.dispatchEvent(new Event("change")); // cascade to siblings
+        }
+      });
+    }
+  }, 0);
 }
 
 // ---------------------------
@@ -1412,8 +1527,12 @@ async function editEvent(eventData) {
     sqSelect.value = info.squareLocationId;
   }
 
-  // Pre-fill Number of Days for editing
-  initNumDaysField(info.numDays);
+  // Fetch EventDays (used after prefill so form_Event_Date is set for auto-date compute)
+  let existingDays = [];
+  try {
+    const daysRes = await fetch(`${API_BASE}/api/events/${eventID}/days`);
+    if (daysRes.ok) existingDays = await daysRes.json();
+  } catch (_) {}
 
   // Prefill dynamic fields from the full event data
   const formContainer = document.getElementById("eventForm");
@@ -1443,6 +1562,9 @@ async function editEvent(eventData) {
       input.value = val;
     }
   });
+
+  // Init day rows AFTER prefill so form_Event_Date is populated for auto-date fallback
+  initNumDaysField(info.numDays, existingDays);
 
   markDirty(); // editing an existing event — warn if navigating away
 }
@@ -1808,6 +1930,22 @@ console.log("🧪 CUSTOM FIELDS FINAL:", customFields);
 
   const numDaysInput = document.getElementById("form_Number_of_Days");
   if (numDaysInput) canonical.numDays = Number(numDaysInput.value) || 1;
+
+  // Collect day rows
+  const dayRows = document.querySelectorAll("#eventDaysContainer .event-day-row");
+  if (dayRows.length > 0) {
+    canonical.days = Array.from(dayRows).map(row => {
+      const n = Number(row.dataset.day);
+      return {
+        dayNumber: n,
+        date:      document.getElementById(`day_date_${n}`)?.value  || null,
+        startTime: document.getElementById(`day_start_${n}`)?.value || null,
+        endTime:   document.getElementById(`day_end_${n}`)?.value   || null,
+      };
+    });
+    // Keep eventDate in sync with Day 1
+    if (canonical.days[0]?.date) canonical.eventDate = canonical.days[0].date;
+  }
 
   if (Object.keys(customFields).length > 0) {
     canonical.customFields = customFields;
@@ -2198,7 +2336,6 @@ async function openAddEventForUser() {
   rebuildAddEventForm(stripEventColorFromTemplate(defaultTpl));
 
   loadSquareLocationsIntoForm();
-  initNumDaysField();
 }
 
 /*async function loadTemplates() {
@@ -2509,11 +2646,8 @@ console.log("✅ fields resolved:", fields);
         }
       }
 
-      labelEl.appendChild(input);
-      formContainer.appendChild(labelEl);
-
-      // Inject Number of Days field right after Application Date
-      if (/^application\s*date$/i.test(field.label)) {
+      // Inject Number of Days + day rows BEFORE Event Date
+      if (/^event\s*date$/i.test(field.label)) {
         const ndLabel = document.createElement("label");
         ndLabel.textContent = "Number of Days";
         const ndInput = document.createElement("input");
@@ -2522,15 +2656,24 @@ console.log("✅ fields resolved:", fields);
         ndInput.value = existing.numDays || existing.Number_of_Days || 1;
         ndInput.min = "1";
         ndInput.max = "30";
-        const endSpan = document.createElement("span");
-        endSpan.id = "endDateDisplay";
-        endSpan.style.cssText = "font-size:0.85rem;color:#666;margin-left:8px;";
         ndLabel.appendChild(ndInput);
-        ndLabel.appendChild(endSpan);
         formContainer.appendChild(ndLabel);
+      }
+
+      labelEl.appendChild(input);
+      formContainer.appendChild(labelEl);
+
+      // Inject day rows container immediately after Event Date
+      if (/^event\s*date$/i.test(field.label)) {
+        const container = document.createElement("div");
+        container.id = "eventDaysContainer";
+        formContainer.appendChild(container);
       }
     }
   );
+
+  // Wire numDays + render initial day rows for new events
+  initNumDaysField(existing.numDays || 1, []);
 
   // Add buttons — labels depend on context (new vs edit vs duplicate)
   const btnContainer = document.createElement("div");
@@ -4067,6 +4210,13 @@ async function loadEventIntoDashboard(evt) {
     return;
   }
 
+  // Prevent concurrent calls from doubling up cards
+  if (window._dashboardLoading) {
+    console.warn("⚠️ loadEventIntoDashboard already in progress, skipping duplicate call");
+    return;
+  }
+  window._dashboardLoading = true;
+
   const event = normalizeEvent(evt);
  // console.log("Dashboard event Object", event);
 
@@ -4118,6 +4268,7 @@ try {
 
 } catch (err) {
   console.error("Report load failed:", err);
+  window._dashboardLoading = false;
   showInlineError("eventDashboardContainer",
     "Could not load the financial report. The server may be unavailable.",
     () => loadEventIntoDashboard(evt));
@@ -4399,6 +4550,7 @@ if (report.inventorySales && report.inventorySales.length) {
     }
   }
 
+  window._dashboardLoading = false;
   } // end loadEventIntoDashboard cards block
 
 

@@ -228,6 +228,32 @@ async function initDb() {
       ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "eventScore" REAL DEFAULT 0;
       ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "salesFeesLocked" BOOLEAN DEFAULT FALSE;
 
+      CREATE TABLE IF NOT EXISTS "EventDays" (
+        "dayID"     SERIAL PRIMARY KEY,
+        "eventID"   INTEGER NOT NULL REFERENCES "EventInfo"("eventID") ON DELETE CASCADE,
+        "dayNumber" INTEGER NOT NULL,
+        "date"      TEXT NOT NULL,
+        "startTime" TEXT,
+        "endTime"   TEXT,
+        UNIQUE ("eventID", "dayNumber")
+      );
+
+      -- Migrate existing events: auto-generate consecutive day rows where none exist
+      INSERT INTO "EventDays" ("eventID", "dayNumber", "date", "startTime", "endTime")
+      SELECT
+        e."eventID",
+        gs AS "dayNumber",
+        (e."eventDate"::date + (gs - 1) * INTERVAL '1 day')::date::text AS "date",
+        NULL, NULL
+      FROM "EventInfo" e
+      CROSS JOIN generate_series(1, GREATEST(COALESCE(e."numDays", 1), 1)) AS gs
+      WHERE e."eventDate" IS NOT NULL
+        AND e."eventDate" ~ '^\d{4}-\d{2}-\d{2}$'
+        AND NOT EXISTS (
+          SELECT 1 FROM "EventDays" d WHERE d."eventID" = e."eventID"
+        )
+      ON CONFLICT ("eventID", "dayNumber") DO NOTHING;
+
       CREATE TABLE IF NOT EXISTS "SalesSummary" (
         "SalesID" SERIAL PRIMARY KEY,
         "eventID" INTEGER NOT NULL UNIQUE REFERENCES "EventInfo"("eventID"),
@@ -1171,6 +1197,28 @@ app.get("/api/events/:id", async (req, res) => {
 
 
 // -------------------------------
+// GET /api/events/:id/days
+// -------------------------------
+app.get("/api/events/:id/days", async (req, res) => {
+  try {
+    const eventID = Number(req.params.id);
+    if (!(await assertOwnsEvent(req, eventID))) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+    const days = await dbAll(
+      `SELECT "dayNumber", "date", "startTime", "endTime"
+       FROM "EventDays" WHERE "eventID" = $1
+       ORDER BY "dayNumber" ASC`,
+      [eventID]
+    );
+    res.json(days);
+  } catch (err) {
+    console.error("❌ Error fetching event days:", err);
+    res.status(500).json({ error: "Failed to fetch event days." });
+  }
+});
+
+// -------------------------------
 // GET /api/company
 // -------------------------------
 app.get("/api/company", async (req, res) => {
@@ -1411,12 +1459,6 @@ app.post("/api/events",
    const userId = req.session.getUserId();
    const e = coerceEvent(req.body);
 
-   // Starter users limited to 2-day events
-    const plan = await getUserPlan(req);
-    if (plan === "starter" && Number(e.numDays) > 2) {
-      e.numDays = 2;
-    }
-
    const sql = `
      INSERT INTO "EventInfo" (
        "userId", "eventName", "eventDate", "applicationDate", "finalizedDate",
@@ -1486,6 +1528,28 @@ app.post("/api/events",
       [newEventID, e.eventFee ?? 0, e.healthDeptFee ?? 0, e.mileageReimbursement ?? 0, e.eventRunnerFees ?? 0]
     );
 
+    // Save EventDays (client sends days array; fall back to auto-generating from eventDate+numDays)
+    const rawDays = Array.isArray(e.days) && e.days.length > 0
+      ? e.days
+      : Array.from({ length: Math.max(1, Number(e.numDays) || 1) }, (_, i) => {
+          const d = new Date(`${e.eventDate}T00:00:00`);
+          d.setDate(d.getDate() + i);
+          return { dayNumber: i + 1, date: d.toISOString().slice(0, 10), startTime: null, endTime: null };
+        });
+    const days = rawDays.filter(d => d.date && String(d.date).trim() !== "");
+
+    for (const day of days) {
+      await pool.query(
+        `INSERT INTO "EventDays" ("eventID", "dayNumber", "date", "startTime", "endTime")
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT ("eventID", "dayNumber") DO UPDATE SET
+           "date" = EXCLUDED."date",
+           "startTime" = EXCLUDED."startTime",
+           "endTime" = EXCLUDED."endTime"`,
+        [newEventID, day.dayNumber, day.date, day.startTime || null, day.endTime || null]
+      );
+    }
+
     res.json({ success: true, eventID: newEventID });
   } catch (err) {
     console.error("❌ Error inserting event:", err);
@@ -1526,12 +1590,6 @@ app.put("/api/events/:id",
     const userId = req.session.getUserId();
     const id = req.params.id;
     const e = coerceEvent(req.body);
-
-    // Starter users limited to 2-day events
-    const plan = await getUserPlan(req);
-    if (plan === "starter" && Number(e.numDays) > 2) {
-      e.numDays = 2;
-    }
 
     const sql = `
       UPDATE "EventInfo" SET
@@ -1603,6 +1661,25 @@ app.put("/api/events/:id",
       [id, e.eventFee ?? 0, e.healthDeptFee ?? 0, e.mileageReimbursement ?? 0, e.eventRunnerFees ?? 0]
     );
 
+    // Update EventDays — delete stale rows, upsert each day (skip days with no date)
+    if (Array.isArray(e.days) && e.days.length > 0) {
+      const validDays = e.days.filter(d => d.date && String(d.date).trim() !== "");
+      if (validDays.length > 0) {
+        await pool.query(`DELETE FROM "EventDays" WHERE "eventID" = $1`, [id]);
+        for (const day of validDays) {
+          await pool.query(
+            `INSERT INTO "EventDays" ("eventID", "dayNumber", "date", "startTime", "endTime")
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT ("eventID", "dayNumber") DO UPDATE SET
+               "date" = EXCLUDED."date",
+               "startTime" = EXCLUDED."startTime",
+               "endTime" = EXCLUDED."endTime"`,
+            [id, day.dayNumber, day.date, day.startTime || null, day.endTime || null]
+          );
+        }
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error("❌ Error updating event:", err);
@@ -1636,11 +1713,7 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
     }
 
    const ev = await dbGet(
-  `
-  SELECT "eventDate", "squareLocationId", "numDays"
-  FROM "EventInfo"
-  WHERE "eventID" = $1
-  `,
+  `SELECT "eventDate", "squareLocationId", "numDays" FROM "EventInfo" WHERE "eventID" = $1`,
   [eventID]
 );
 
@@ -1654,24 +1727,39 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
     const token = process.env.SQUARE_ACCESS_TOKEN;
 
     // ─────────────────────────────────────────────
-    // 1️⃣ DATE WINDOWS (supports multi-day events)
+    // 1️⃣ DATE WINDOWS — use EventDays as source of truth
+    //    Falls back to eventDate + numDays if no rows exist
     // ─────────────────────────────────────────────
-    const numDays = Math.max(1, Number(ev.numDays) || 1);
-    const localStart = new Date(`${ev.eventDate}T00:00:00-06:00`);
-    const localEnd   = new Date(`${ev.eventDate}T23:59:59-06:00`);
-    localEnd.setDate(localEnd.getDate() + (numDays - 1));
+    const dayRows = await dbAll(
+      `SELECT "date" FROM "EventDays" WHERE "eventID" = $1 ORDER BY "dayNumber" ASC`,
+      [eventID]
+    );
 
-    const orderStartISO = localStart.toISOString();
-    const orderEndISO   = localEnd.toISOString();
+    let firstDate, lastDate;
+    if (dayRows.length > 0) {
+      firstDate = dayRows[0].date;
+      lastDate  = dayRows[dayRows.length - 1].date;
+    } else {
+      const numDays = Math.max(1, Number(ev.numDays) || 1);
+      firstDate = ev.eventDate;
+      const d = new Date(`${ev.eventDate}T00:00:00`);
+      d.setDate(d.getDate() + (numDays - 1));
+      lastDate = d.toISOString().slice(0, 10);
+    }
 
+    const localStart = new Date(`${firstDate}T00:00:00-06:00`);
+    const localEnd   = new Date(`${lastDate}T23:59:59-06:00`);
+
+    const orderStartISO   = localStart.toISOString();
+    const orderEndISO     = localEnd.toISOString();
     const paymentStartISO = orderStartISO;
     const paymentEnd = new Date(localEnd);
     paymentEnd.setHours(paymentEnd.getHours() + 2);
     const paymentEndISO = paymentEnd.toISOString();
 
+    console.log(`📅 Square Sales pull: ${firstDate} → ${lastDate}`);
     console.log("orderStart", orderStartISO);
-    console.log("orderEnd", orderEndISO);
-    if (numDays > 1) console.log(`📅 Multi-day event: ${numDays} days`);
+    console.log("orderEnd",   orderEndISO);
 
     // ─────────────────────────────────────────────
     // 2️⃣ ORDERS (ITEMIZED SALES)
@@ -1680,50 +1768,52 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
      let grossSales = 0;
     let netSales = 0;
     try {
-      const orderRes = await fetch(
-        "https://connect.squareup.com/v2/orders/search",
-        {
-          method: "POST",
-          headers: {
-            "Square-Version": "2025-01-15",
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            location_ids: [ev.squareLocationId],
-            return_entries: false,
-            query: {
-              filter: {
-                state_filter: { states: ["COMPLETED"] },
-                date_time_filter: {
-                  closed_at: {
-                    start_at: orderStartISO,
-                    end_at: orderEndISO
-                  }
+      let orderCursor = null;
+      do {
+        const orderBody = {
+          location_ids: [ev.squareLocationId],
+          return_entries: false,
+          query: {
+            filter: {
+              state_filter: { states: ["COMPLETED"] },
+              date_time_filter: {
+                closed_at: {
+                  start_at: orderStartISO,
+                  end_at: orderEndISO
                 }
               }
             }
-          })
+          }
+        };
+        if (orderCursor) orderBody.cursor = orderCursor;
+
+        const orderRes = await fetch(
+          "https://connect.squareup.com/v2/orders/search",
+          {
+            method: "POST",
+            headers: {
+              "Square-Version": "2025-01-15",
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(orderBody)
+          }
+        );
+        if (!orderRes.ok) {
+          const raw = await orderRes.text();
+          throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
         }
-      );
-    //const raw = await orderRes.text();
-    //console.log("orderRes",raw);
-    if (!orderRes.ok) {
-      const raw = await orderRes.text();
-      throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
-    }
-    const orderJson = await orderRes.json();
+        const orderJson = await orderRes.json();
+        const pageOrders = orderJson.orders || [];
+        orders.push(...pageOrders);
+        orderCursor = orderJson.cursor || null;
+        console.log(`📦 Orders page: ${pageOrders.length} orders, cursor: ${orderCursor ? "yes" : "none"}`);
+      } while (orderCursor);
 
-//console.log(" Where am i at with orders", orderJson);
-
-   orders = (orderJson.orders || []);
-   if (orders.length > 0) {
-    const o = orders[0];
-
-    console.log("🧾 SAMPLE ORDER KEYS:", Object.keys(o));
-    }
-
-   ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
+      if (orders.length > 0) {
+        console.log("🧾 SAMPLE ORDER KEYS:", Object.keys(orders[0]));
+      }
+      ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
     } catch (err) {
       console.error("❌ Orders fetch failed:", err);
       return res.status(500).json({ error: "Orders fetch failed" });
@@ -3319,7 +3409,7 @@ async function getSquareLaborToken() {
 async function fetchSquareTimecardsForEvent(eventID) {
   const event = await dbGet(
     `
-    SELECT "eventDate", "squareLocationId"
+    SELECT "eventDate", "squareLocationId", "numDays"
     FROM "EventInfo"
     WHERE "eventID" = $1
     `,
@@ -3334,6 +3424,27 @@ async function fetchSquareTimecardsForEvent(eventID) {
     throw new Error("Event has no Square location ID.");
   }
 
+  // Use EventDays as source of truth for date range (same as Square Sales)
+  const dayRows = await dbAll(
+    `SELECT "date" FROM "EventDays" WHERE "eventID" = $1 ORDER BY "dayNumber" ASC`,
+    [eventID]
+  );
+
+  let startDate, endDate;
+  if (dayRows.length > 0) {
+    startDate = dayRows[0].date;
+    endDate   = dayRows[dayRows.length - 1].date;
+  } else {
+    // Fallback: eventDate + numDays from EventInfo
+    const numDays = Math.max(1, Number(event.numDays) || 1);
+    startDate = event.eventDate;
+    const d = new Date(`${event.eventDate}T00:00:00`);
+    d.setDate(d.getDate() + (numDays - 1));
+    endDate = d.toISOString().slice(0, 10);
+  }
+
+  console.log(`📅 Labor pull: ${startDate} → ${endDate} (${dayRows.length > 0 ? "EventDays" : "fallback"})`);
+
   const token = await getSquareLaborToken();
   const baseUrl = "https://connect.squareup.com";
 
@@ -3347,8 +3458,8 @@ async function fetchSquareTimecardsForEvent(eventID) {
           location_ids: [event.squareLocationId],
           workday: {
             date_range: {
-              start_date: event.eventDate,
-              end_date: event.eventDate
+              start_date: startDate,
+              end_date: endDate
             },
             match_timecards_by: "START_AT",
             default_timezone: "America/Chicago"
