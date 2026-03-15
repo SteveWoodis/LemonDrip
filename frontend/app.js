@@ -15,6 +15,7 @@ let lastLoadedEvents = [];
 let expensesEditMode = false;
 window.availableTemplates = [];
 
+
 window.USER_PLAN = "starter"; // default until server responds
 
 // ---------------------------

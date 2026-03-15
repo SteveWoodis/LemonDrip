@@ -7,6 +7,7 @@ const cors = require("cors");
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
 const recipes = require('./recipes.js');
+const waitlistRouter = require('./backend/routes/waitlist');
 const rateLimit = require("express-rate-limit");
 
 // ── Rate limiters ────────────────────────────────────────────────
@@ -502,6 +503,34 @@ async function initDb() {
       }
     }
 
+    // Data migration: remove required flag from "time" field in Default Template
+    try {
+      const tplRes = await pool.query(
+        `SELECT "TemplateID", "Fields" FROM "FormTemplate" WHERE "TemplateName" = 'Default Template' LIMIT 1`
+      );
+      if (tplRes.rows.length > 0) {
+        const row = tplRes.rows[0];
+        let fields = typeof row.Fields === 'string' ? JSON.parse(row.Fields) : row.Fields;
+        let changed = false;
+        fields = fields.map(f => {
+          if (f.label && f.label.toLowerCase() === 'time' && f.required) {
+            changed = true;
+            return { ...f, required: false };
+          }
+          return f;
+        });
+        if (changed) {
+          await pool.query(
+            `UPDATE "FormTemplate" SET "Fields" = $1 WHERE "TemplateID" = $2`,
+            [JSON.stringify(fields), row.TemplateID]
+          );
+          console.log('✅ Removed required flag from "time" field in Default Template');
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not patch Default Template time field:', err.message);
+    }
+
   } catch (err) {
     console.error("❌ PostgreSQL init failed:", err);
     throw err;
@@ -542,9 +571,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Protect all /api routes with session verification
-app.use("/api", verifySession());
-
+// ── Marketing landing page (venview.app/) ──────────────────────
+app.use(express.static(path.join(__dirname, "public")));
+app.use('/api', waitlistRouter);   // public, no auth needed
+app.use("/api", verifySession());           // gates everything else under /api
 
 // -------------------------------
 // 📂 Multer storage for permits
@@ -3148,7 +3178,8 @@ app.get("/api/inventory/low-stock", async (req, res) => {
 // API paths pass through to routes registered after this point (e.g. recipe routes).
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
-  res.sendFile(path.join(frontendPath, "index.html"));
+  if (req.path.startsWith("/app")) return next();
+  res.sendFile(path.join(frontendPath, "app.html"));
 });
 
 //=====================================================================================================
@@ -4209,6 +4240,12 @@ app.delete("/api/inventory/:id", async (req, res) => {
   }
 });
  
+// ── VenView App SPA (venview.app/app and all sub-routes) ───────
+// To this:
+app.use("/app", express.static(path.join(__dirname, "frontend")));
+app.get("/app/*", (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend", "app.html"));
+});
 // SuperTokens error handler (must be after all routes)
 app.use(stErrorHandler());
 

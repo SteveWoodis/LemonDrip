@@ -7,6 +7,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@mailchimp/mailchimp_marketing": "^3.0.80",
     "axios": "^1.13.4",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
