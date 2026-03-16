@@ -121,6 +121,7 @@
         <button id="btnManage"    class="nav-link" onclick="closeMobileNav(); navigateTo('manageSection')">Manage Events</button>
         <button id="btnInventory" class="nav-link" style="display:none" onclick="closeMobileNav(); navigateTo('inventorySection')">My Inventory</button>
         <button id="btnRecipes"   class="nav-link" onclick="closeMobileNav(); navigateTo('recipesSection')">Recipes</button>
+        <button id="btnSettings"  class="nav-link" onclick="closeMobileNav(); navigateTo('settingsSection')">Settings</button>
         <button id="btnAdmin"     class="nav-link hidden" onclick="closeMobileNav(); navigateTo('adminSection')">Admin</button>
         <button id="btnLogout"    class="nav-link" onclick="closeMobileNav(); handleLogout()">Logout</button>
         <button id="btnAdd"       class="nav-cta"  onclick="closeMobileNav(); openAddEventForUser()">+ Add Event</button>
@@ -169,6 +170,64 @@
     </div>
   </section>
 
+  <!-- ⚙️ Settings Section -->
+  <section id="settingsSection" class="hidden">
+
+    <!-- Post-OAuth return banner -->
+    <div id="returnBanner" class="sq-return-banner hidden">
+      <span style="font-size:20px;">✅</span>
+      <p><strong>Square connected successfully!</strong> Your locations are now available — link one when adding your next event.</p>
+    </div>
+
+    <!-- Onboarding banner (new / disconnected users) -->
+    <div id="onboardingBanner" class="card sq-onboarding-banner hidden">
+      <div class="sq-banner-icon">🔗</div>
+      <div class="sq-banner-body">
+        <strong>Connect Square to unlock automatic syncing</strong>
+        <p>Connect your Square account to automatically sync sales, locations, and labor from your events.</p>
+        <div class="sq-banner-actions">
+          <button class="sq-btn-banner" onclick="startSquareOAuth()">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/><rect x="7.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/><rect x="0.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/><rect x="7.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/></svg>
+            Connect Square
+          </button>
+          <button class="sq-btn-banner-dismiss" onclick="dismissSquareBanner()">I'll do this later</button>
+        </div>
+      </div>
+      <button class="sq-banner-close" onclick="dismissSquareBanner()" aria-label="Dismiss">✕</button>
+    </div>
+
+    <!-- Integrations card -->
+    <div class="card">
+      <div class="sq-page-header">
+        <h2>Settings</h2>
+        <p>Manage your account and integrations</p>
+      </div>
+
+      <p class="sq-section-label">Integrations</p>
+      <p style="font-size:0.85rem; color:var(--muted); margin-bottom:14px;">
+        Connect third-party services to automate your data.
+      </p>
+
+      <div class="sq-integration-item">
+        <div class="sq-integration-header">
+          <div class="sq-logo">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+              <rect x="2.5" y="2.5" width="21" height="21" rx="3.5" fill="white"/>
+              <rect x="7" y="7" width="12" height="12" rx="2" fill="black"/>
+            </svg>
+          </div>
+          <div class="sq-integration-meta">
+            <h3>Square POS</h3>
+            <p>Sync sales, locations &amp; labor automatically</p>
+          </div>
+          <span id="squareBadge" class="sq-badge sq-badge-off">Not Connected</span>
+        </div>
+        <div class="sq-integration-body" id="squareBody"></div>
+      </div>
+    </div>
+
+  </section><!-- /settingsSection -->
+
   <!-- ➕ Add Event Section -->
      <section id="addSection" class="card hidden">
       <h2 id="formTitle">Add New Event</h2>
@@ -177,6 +236,14 @@
     	<label for="permitFiles">Permit Documents:</label>
     	<input type="file" id="permitFiles" multiple>
     	<label>Square Location</label>
+        <div id="locationPrompt" class="sq-prompt hidden">
+          <div class="sq-prompt-icon">📍</div>
+          <div class="sq-prompt-text">
+            <strong>No Square locations found</strong>
+            <p>Connect your Square account to link a location and enable automatic sales sync.</p>
+            <button class="sq-btn-prompt-link" onclick="navigateTo('settingsSection')">Connect Square in Settings →</button>
+          </div>
+        </div>
         <select id="form_squareLocationId">
           <option value="">Select Square Location…</option>
         </select>

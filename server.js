@@ -482,6 +482,7 @@ async function initDb() {
       `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "reorderThreshold" REAL DEFAULT 0`,
       `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "reorderQty" REAL DEFAULT 0`,
       `ALTER TABLE "EventSupplies" ADD COLUMN IF NOT EXISTS "vendorInventoryId" INTEGER`,
+      `ALTER TABLE "UserPlan" ADD COLUMN IF NOT EXISTS "squareBannerDismissed" BOOLEAN DEFAULT FALSE`,
       `CREATE TABLE IF NOT EXISTS "InventoryAlerts" (
         "id"        SERIAL PRIMARY KEY,
         "userId"    TEXT NOT NULL,
@@ -1107,6 +1108,64 @@ app.get("/api/square/oauth/start", squareLimiter, verifySession(), async (req, r
   });
 
   res.redirect(`${getSquareBaseUrl()}/oauth2/authorize?${params.toString()}`);
+});
+
+// Square connection status (used by Settings UI)
+app.get("/api/square/status", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const [sq, prefs] = await Promise.all([
+      dbGet(
+        `SELECT "merchantId", "expiresAt", "status" FROM "SquareConnection" WHERE "userId" = $1`,
+        [userId]
+      ),
+      dbGet(
+        `SELECT "squareBannerDismissed" FROM "UserPlan" WHERE "userId" = $1`,
+        [userId]
+      )
+    ]);
+    res.json({
+      status:          sq?.status         || "disconnected",
+      merchantId:      sq?.merchantId     || null,
+      expiresAt:       sq?.expiresAt      || null,
+      bannerDismissed: prefs?.squareBannerDismissed || false
+    });
+  } catch (err) {
+    console.error("❌ Square status error:", err);
+    res.status(500).json({ error: "Failed to check Square status" });
+  }
+});
+
+// Disconnect Square (deletes the user's SquareConnection row)
+app.delete("/api/square/disconnect", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    await dbRun(`DELETE FROM "SquareConnection" WHERE "userId" = $1`, [userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ Square disconnect error:", err);
+    res.status(500).json({ error: "Failed to disconnect Square" });
+  }
+});
+
+// Persist user preferences (currently: banner dismiss)
+app.patch("/api/user/prefs", async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const { squareBannerDismissed } = req.body;
+    await dbRun(
+      `INSERT INTO "UserPlan" ("userId", "plan", "squareBannerDismissed")
+       VALUES ($1, 'starter', $2)
+       ON CONFLICT ("userId") DO UPDATE SET
+         "squareBannerDismissed" = EXCLUDED."squareBannerDismissed",
+         "updatedAt" = NOW()`,
+      [userId, squareBannerDismissed === true]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ User prefs error:", err);
+    res.status(500).json({ error: "Failed to update preferences" });
+  }
 });
 
 

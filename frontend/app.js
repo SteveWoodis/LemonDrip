@@ -127,7 +127,7 @@ async function checkSession() {
 // ---------------------------
 async function showAuthenticatedUI() {
   document.getElementById("authSection").classList.add("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnSettings, #btnLogout")
     .forEach(b => { if (b) b.style.display = ""; });
 
   // Fetch the user's plan from the server
@@ -158,6 +158,10 @@ async function showAuthenticatedUI() {
     showWelcomeModal();
   }
 
+  // Square: load connection status and handle post-OAuth URL params
+  loadSquareStatus();
+  handleSquareOAuthReturn();
+
   loadAppState();
 }
 
@@ -170,7 +174,7 @@ function showUnauthenticatedUI() {
   document.querySelectorAll(".app-shell > section")
     .forEach(sec => sec.classList.add("hidden"));
   document.getElementById("authSection").classList.remove("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnSettings, #btnLogout")
     .forEach(b => { if (b) b.style.display = "none"; });
   document.getElementById("btnAdmin")?.classList.add("hidden");
   document.getElementById("btnAlerts")?.classList.add("hidden");
@@ -1451,21 +1455,21 @@ async function loadSquareLocationsIntoForm() {
   const proFields = document.getElementById("proAddEventFields");
   if (proFields) proFields.style.display = "";
 
+  // If Square is not connected, show the prompt instead of hitting the API
+  if (window.SQUARE_STATUS?.status !== "connected") {
+    syncSquareFormState();
+    return;
+  }
+
   try {
-    const res = await fetch(
-      `${API_BASE}/api/square/locations`
-    );
+    const res = await fetch(`${API_BASE}/api/square/locations`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const locations = await res.json();
 
     const dropdown = document.getElementById("form_squareLocationId");
-    if (!dropdown) {
-      console.warn("Square Location dropdown not found.");
-      return;
-    }
+    if (!dropdown) return;
 
-    dropdown.innerHTML =
-      `<option value="">Select Square Location…</option>`;
-
+    dropdown.innerHTML = `<option value="">Select Square Location…</option>`;
     locations.forEach((loc) => {
       const opt = document.createElement("option");
       opt.value = loc.id;
@@ -1475,6 +1479,8 @@ async function loadSquareLocationsIntoForm() {
   } catch (err) {
     console.error("❌ Failed loading Square locations:", err);
   }
+
+  syncSquareFormState();
 }
 
 // ---------------------------
@@ -6491,4 +6497,167 @@ async function setUserPlan(userId, newPlan, btn) {
 }
 
 
+// ── Square Integration ────────────────────────────────────────────────────────
+
+// Cached status set by loadSquareStatus(); used throughout the app.
+window.SQUARE_STATUS = null;
+
+async function loadSquareStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/square/status`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    window.SQUARE_STATUS = await res.json();
+  } catch (err) {
+    console.warn("⚠️ Could not load Square status:", err.message);
+    window.SQUARE_STATUS = { status: "disconnected", bannerDismissed: false };
+  }
+  renderSquarePanel();
+  syncSquareFormState();
+}
+
+function renderSquarePanel() {
+  const badge  = document.getElementById("squareBadge");
+  const body   = document.getElementById("squareBody");
+  const banner = document.getElementById("onboardingBanner");
+  if (!badge || !body) return;
+
+  const s = window.SQUARE_STATUS || { status: "disconnected" };
+
+  // Onboarding banner: show when disconnected and not yet dismissed
+  if (banner) {
+    banner.classList.toggle("hidden", s.status === "connected" || s.bannerDismissed);
+  }
+
+  if (s.status === "disconnected") {
+    badge.className   = "sq-badge sq-badge-off";
+    badge.textContent = "Not Connected";
+    body.innerHTML = `
+      <ul class="sq-features-list">
+        <li><span class="sq-feat-check">✓</span><span><strong>Automatic sales sync</strong> — pull gross sales, refunds, tips &amp; fees after every event</span></li>
+        <li><span class="sq-feat-check">✓</span><span><strong>Location linking</strong> — associate a Square location with each event</span></li>
+        <li><span class="sq-feat-check">✓</span><span><strong>Labor import</strong> — sync team timecards directly into your event</span></li>
+      </ul>
+      <button class="btn-primary" onclick="startSquareOAuth()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/><rect x="7.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/><rect x="0.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/><rect x="7.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/></svg>
+        Connect Square
+      </button>
+      <p class="sq-reassurance">🔒 You'll be redirected to Square to authorize — we never see your Square password</p>`;
+
+  } else if (s.status === "connected") {
+    badge.className   = "sq-badge sq-badge-on";
+    badge.textContent = "Connected";
+    const expires = s.expiresAt ? new Date(s.expiresAt).toLocaleDateString() : "—";
+    body.innerHTML = `
+      <div class="sq-connected-stats">
+        <div class="sq-conn-stat">
+          <div class="sq-conn-stat-label">Merchant ID</div>
+          <div class="sq-conn-stat-value">${s.merchantId || "—"}</div>
+        </div>
+        <div class="sq-conn-stat">
+          <div class="sq-conn-stat-label">Token Expires</div>
+          <div class="sq-conn-stat-value">${expires}</div>
+        </div>
+      </div>
+      <div class="sq-conn-footer">
+        <span>✅ Events will sync automatically with Square</span>
+        <button class="sq-btn-disconnect" onclick="disconnectSquare()">Disconnect</button>
+      </div>`;
+
+  } else {
+    // status === 'error' or anything unexpected
+    badge.className   = "sq-badge sq-badge-warn";
+    badge.textContent = "Needs Reconnect";
+    body.innerHTML = `
+      <div class="sq-warn-notice">
+        <div class="sq-warn-icon">⚠️</div>
+        <div class="sq-warn-text">
+          <strong>Your Square connection needs to be renewed</strong>
+          <p>Your existing event data is safe — reconnect to resume automatic syncing.</p>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="startSquareOAuth()">🔄 Reconnect Square</button>
+      <p class="sq-reassurance">🔒 You'll be redirected to Square — takes about 30 seconds</p>`;
+  }
+}
+
+function syncSquareFormState() {
+  const prompt = document.getElementById("locationPrompt");
+  const select = document.getElementById("form_squareLocationId");
+  if (!prompt || !select) return;
+  const connected = window.SQUARE_STATUS?.status === "connected";
+  prompt.classList.toggle("hidden", connected);
+  select.classList.toggle("hidden", !connected);
+}
+
+function startSquareOAuth() {
+  window.location.href = `${API_BASE}/api/square/oauth/start`;
+}
+
+async function disconnectSquare() {
+  if (!confirm("Disconnect Square?\n\nYour existing event data won't be deleted, but automatic syncing will stop until you reconnect.")) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/square/disconnect`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    window.SQUARE_STATUS = { status: "disconnected", bannerDismissed: window.SQUARE_STATUS?.bannerDismissed };
+    renderSquarePanel();
+    syncSquareFormState();
+    showToast("Square disconnected", "info");
+  } catch (err) {
+    showToast("Failed to disconnect Square", "error");
+  }
+}
+
+function handleSquareOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const sq = params.get("square");
+  if (!sq) return;
+
+  // Remove the param from the URL without reloading
+  const url = new URL(window.location.href);
+  url.searchParams.delete("square");
+  history.replaceState(null, "", url.toString());
+
+  if (sq === "connected") {
+    showToast("✅ Square connected successfully!", "success", 5000);
+    loadSquareStatus();           // refresh panel with live data
+    navigateTo("settingsSection");
+    // Show return banner briefly
+    const rb = document.getElementById("returnBanner");
+    if (rb) {
+      rb.classList.remove("hidden");
+      setTimeout(() => {
+        rb.style.transition = "opacity 0.35s ease";
+        rb.style.opacity = "0";
+        setTimeout(() => rb.classList.add("hidden"), 350);
+      }, 5000);
+    }
+  } else if (sq === "error") {
+    showToast("Square connection failed. Please try again.", "error");
+    navigateTo("settingsSection");
+  }
+}
+
+async function dismissSquareBanner() {
+  const banner = document.getElementById("onboardingBanner");
+  if (banner) {
+    banner.style.transition = "opacity 0.25s ease";
+    banner.style.opacity = "0";
+    setTimeout(() => banner.classList.add("hidden"), 250);
+  }
+  if (window.SQUARE_STATUS) window.SQUARE_STATUS.bannerDismissed = true;
+  try {
+    await fetch(`${API_BASE}/api/user/prefs`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ squareBannerDismissed: true })
+    });
+  } catch (err) {
+    console.warn("⚠️ Could not persist banner dismiss:", err.message);
+  }
+}
+
+window.startSquareOAuth    = startSquareOAuth;
+window.disconnectSquare    = disconnectSquare;
+window.dismissSquareBanner = dismissSquareBanner;
+// ─────────────────────────────────────────────────────────────────────────────
 
