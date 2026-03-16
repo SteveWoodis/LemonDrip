@@ -3249,15 +3249,26 @@ function decrypt(ciphertext) {
 
 async function getSquareToken(userId) {
   const row = await dbGet(
-    `SELECT "accessTokenEnc", "status" FROM "SquareConnection" WHERE "userId" = $1`,
+    `SELECT "accessTokenEnc", "refreshTokenEnc", "expiresAt", "status"
+     FROM "SquareConnection" WHERE "userId" = $1`,
     [userId]
   );
   if (!row) {
     throw new Error("Square account not connected. Please connect via Settings.");
   }
+  if (row.status === 'error') {
+    throw new Error("Square connection needs to be reconnected. Please visit Settings.");
+  }
   if (row.status !== 'connected') {
     throw new Error(`Square connection status is '${row.status}'. Please reconnect via Settings.`);
   }
+
+  // Refresh proactively if expiring within 7 days
+  const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  if (row.refreshTokenEnc && row.expiresAt && new Date(row.expiresAt) < sevenDaysFromNow) {
+    return refreshSquareToken(userId, row);
+  }
+
   return decrypt(row.accessTokenEnc);
 }
 
@@ -3390,74 +3401,50 @@ async function saveEventLabor(eventID, laborList) {
 // Helper: base URL (still here if you need sandbox later)
 
 
-async function refreshSquareLaborToken(row) {
-  if (!row.refreshToken) {
-    throw new Error(
-      "Cannot refresh Square OAuth token: no refreshToken stored."
-    );
+// Refreshes the Square access token for a user on-demand.
+// Returns the new plain-text access token.
+// On failure: marks status='error' in SquareConnection so the UI can prompt reconnect.
+async function refreshSquareToken(userId, row) {
+  if (!row.refreshTokenEnc) {
+    throw new Error("Cannot refresh Square token: no refresh token stored.");
   }
 
   try {
     const tokenRes = await axios.post(
-      "https://connect.squareup.com/oauth2/token",
+      `${getSquareBaseUrl()}/oauth2/token`,
       {
         client_id: SQUARE_APP_ID,
         client_secret: SQUARE_APP_SECRET,
         grant_type: "refresh_token",
-        refresh_token: row.refreshToken
+        refresh_token: decrypt(row.refreshTokenEnc)
       },
-      {
-        headers: { "Content-Type": "application/json" }
-      }
+      { headers: { "Content-Type": "application/json" } }
     );
 
-    const payload = tokenRes.data;
+    const { access_token, refresh_token, merchant_id, expires_at } = tokenRes.data;
 
-    const newAccessToken = payload.access_token;
-    const newRefreshToken = payload.refresh_token;
-    const newMerchantId = payload.merchant_id;
-    const newExpiresAt = payload.expires_at;
-
-    // Update token row
     await dbRun(
-      `
-      UPDATE "SquareAuth"
-      SET "accessToken" = $1,
-          "refreshToken" = $2,
-          "merchantId" = $3,
-          "expiresAt" = $4,
-          "updatedAt" = NOW()
-      WHERE "id" = $5
-      `,
-      [
-        newAccessToken,
-        newRefreshToken,
-        newMerchantId,
-        newExpiresAt,
-        row.id
-      ]
+      `UPDATE "SquareConnection"
+       SET "accessTokenEnc"  = $1,
+           "refreshTokenEnc" = $2,
+           "merchantId"      = $3,
+           "expiresAt"       = $4,
+           "status"          = 'connected',
+           "updatedAt"       = NOW()
+       WHERE "userId" = $5`,
+      [encrypt(access_token), encrypt(refresh_token), merchant_id, expires_at, userId]
     );
 
-    console.log("✅ Square OAuth token refreshed for merchant:", newMerchantId);
-
-    // Return updated row
-    const updated = await dbGet(
-      `
-      SELECT "id", "accessToken", "refreshToken", "merchantId", "expiresAt"
-      FROM "SquareAuth"
-      WHERE "id" = $1
-      `,
-      [row.id]
-    );
-
-    return updated;
+    console.log("✅ Square token refreshed for user:", userId, "merchant:", merchant_id);
+    return access_token;
 
   } catch (err) {
-    console.error(
-      "❌ Error refreshing Square OAuth token:",
-      err.response?.data || err.message
+    console.error("❌ Square token refresh failed for user:", userId, err.response?.data || err.message);
+    await dbRun(
+      `UPDATE "SquareConnection" SET "status" = 'error', "updatedAt" = NOW() WHERE "userId" = $1`,
+      [userId]
     );
-    throw new Error("Failed to refresh Square OAuth token.");
+    throw new Error("Square token expired and could not be refreshed. Please reconnect via Settings.");
   }
 }
 
