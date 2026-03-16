@@ -645,7 +645,7 @@ app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
          "expiresAt"       = EXCLUDED."expiresAt",
          "status"          = 'connected',
          "updatedAt"       = NOW()`,
-      [userId, merchantId, accessToken, refreshToken, expiresAt]
+      [userId, merchantId, encrypt(accessToken), encrypt(refreshToken), expiresAt]
     );
 
     console.log("✅ Square OAuth connected for user:", userId, "merchant:", merchantId);
@@ -3217,8 +3217,36 @@ async function dbRun(sql, params = []) {
   return { rowCount: result.rowCount, rows: result.rows };
 }
 
-// Returns the plain-text Square access token for a user.
-// TODO Step 4: wrap return value with decrypt() once encryption is in place.
+// ── Token encryption (AES-256-GCM) ───────────────────────────────────────────
+// TOKEN_ENCRYPTION_KEY must be a 64-char hex string (32 bytes), set in Doppler.
+// Ciphertext format: <iv_hex>:<authTag_hex>:<data_hex>
+function _encKey() {
+  const hex = process.env.TOKEN_ENCRYPTION_KEY;
+  if (!hex || hex.length !== 64) {
+    throw new Error("TOKEN_ENCRYPTION_KEY must be a 64-char hex string (32 bytes).");
+  }
+  return Buffer.from(hex, "hex");
+}
+
+function encrypt(plaintext) {
+  const iv     = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", _encKey(), iv);
+  const data   = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return `${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${data.toString("hex")}`;
+}
+
+function decrypt(ciphertext) {
+  const [ivHex, tagHex, dataHex] = ciphertext.split(":");
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    _encKey(),
+    Buffer.from(ivHex, "hex")
+  );
+  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+  return decipher.update(Buffer.from(dataHex, "hex"), undefined, "utf8") + decipher.final("utf8");
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function getSquareToken(userId) {
   const row = await dbGet(
     `SELECT "accessTokenEnc", "status" FROM "SquareConnection" WHERE "userId" = $1`,
@@ -3230,7 +3258,7 @@ async function getSquareToken(userId) {
   if (row.status !== 'connected') {
     throw new Error(`Square connection status is '${row.status}'. Please reconnect via Settings.`);
   }
-  return row.accessTokenEnc;
+  return decrypt(row.accessTokenEnc);
 }
 
 
