@@ -1339,13 +1339,17 @@ function renderEventDayRows(existingDays = []) {
     window.activeEvent?.eventDate ||
     "";
 
+  // Determine Day 1 date: use existing day1 record, then form field, then activeEvent
+  const day1Existing = existingDays.find(d => d.dayNumber === 1);
+  const day1Base = (day1Existing?.date) || baseDate || "";
+
   for (let i = 1; i <= numDays; i++) {
     const existing = existingDays.find(d => d.dayNumber === i) || {};
 
-    // Auto-compute consecutive date from base date if not supplied
+    // Auto-compute consecutive date from Day 1 if this day has no date stored
     let autoDate = existing.date || "";
-    if (!autoDate && baseDate) {
-      const d = new Date(`${baseDate}T00:00:00`);
+    if (!autoDate && day1Base) {
+      const d = new Date(`${day1Base}T00:00:00`);
       d.setDate(d.getDate() + (i - 1));
       autoDate = d.toISOString().slice(0, 10);
     }

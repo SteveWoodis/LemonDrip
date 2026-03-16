@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VenView – Square Integration Prototype</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <style>
+    /* ── VenView design tokens (from styles.css) ───────────── */
+    :root {
+      --bg:           #f3f5fa;
+      --panel:        #ffffff;
+      --text:         #222;
+      --muted:        #666;
+      --accent:       #00ABE2;
+      --accent-hover: #0092c2;
+      --accent-soft:  #e0f5ff;
+      --border:       #dde3f0;
+      --shadow-soft:  0 4px 10px rgba(15,23,42,0.08);
+
+      --vv-navy:      #0B2A4A;
+      --vv-navy-2:    #0A3A67;
+      --vv-green:     #19B37A;
+      --vv-green-2:   #0F8F63;
+      --vv-lemon:     #FFD84D;
+      --vv-lemon-2:   #FFC72C;
+      --vv-ink:       #0B1B2B;
+      --vv-muted:     #5B6B7C;
+      --vv-bg:        #F6FBFF;
+      --vv-card:      #FFFFFF;
+      --vv-border:    rgba(11,42,74,0.12);
+      --vv-shadow:    0 12px 30px rgba(11,42,74,0.12);
+      --vv-radius:    16px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── App Shell ─────────────────────────────────────────── */
+    .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── Header (matches styles.css exactly) ───────────────── */
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-logo-placeholder {
+      height: 42px; width: 42px;
+      background: linear-gradient(135deg, var(--vv-green) 0%, var(--vv-lemon-2) 100%);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    .brand-text { display: flex; flex-direction: column; }
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--vv-green) 0%, var(--vv-lemon-2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .brand-subtitle { font-size: 0.8rem; color: var(--vv-muted); letter-spacing: 0.2px; }
+
+    .nav-buttons { display: flex; align-items: center; gap: 0.25rem; }
+    .nav-link {
+      background: none; border: none; color: #4b5563;
+      font-size: 0.875rem; font-weight: 500;
+      padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px;
+      font-family: inherit;
+      transition: color 0.15s ease;
+      white-space: nowrap; text-decoration: none;
+    }
+    .nav-link:hover { color: var(--vv-green); text-decoration: underline; text-underline-offset: 3px; }
+    .nav-link.active { color: var(--vv-green); font-weight: 600; }
+    .nav-cta {
+      background: var(--vv-green); color: #fff; border: none;
+      border-radius: 6px; padding: 0.45rem 1.1rem;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      margin-left: 0.5rem; font-family: inherit;
+      transition: background 0.15s ease, transform 0.1s ease;
+      white-space: nowrap;
+    }
+    .nav-cta:hover { background: #1d6936; transform: translateY(-1px); }
+
+    /* ── Main / Card (matches styles.css) ──────────────────── */
+    main { flex: 1; padding: 1.25rem; }
+    section { max-width: 780px; margin: 0 auto; animation: fadeIn 0.25s ease-in-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card {
+      background: var(--panel);
+      border-radius: 12px;
+      box-shadow: var(--shadow-soft);
+      padding: 1.25rem 1.5rem;
+      margin: 1rem auto;
+    }
+
+    /* ── Buttons (matches styles.css) ──────────────────────── */
+    button, .btn {
+      font-family: inherit;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 0.45rem 0.95rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      transition: background 0.15s ease, color 0.15s ease,
+        box-shadow 0.15s ease, transform 0.05s ease;
+    }
+    .btn-primary {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 2px 6px rgba(0,171,226,0.35);
+    }
+    .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 3px 8px rgba(0,146,194,0.4); }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-secondary {
+      background: #fff; color: #333; border: 1px solid #d0d7e5;
+    }
+    .btn-secondary:hover { background: #f4f6fb; }
+    .btn-green {
+      background: var(--vv-green); color: #fff;
+      box-shadow: 0 2px 6px rgba(25,179,122,0.30);
+    }
+    .btn-green:hover { background: var(--vv-green-2); }
+
+    /* Loading spinner variant */
+    .btn-primary.loading {
+      opacity: 0.78; cursor: not-allowed; pointer-events: none;
+    }
+    .btn-primary.loading .btn-label { display: none; }
+    .btn-primary.loading::after {
+      content: '';
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Forms (matches styles.css) ────────────────────────── */
+    label {
+      display: block;
+      margin: 0.4rem 0;
+      font-size: 0.86rem;
+      color: #444;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.4rem 0.5rem;
+      border-radius: 8px;
+      border: 1px solid #ccd4e5;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0,171,226,0.15);
+    }
+    select { background-color: #fff; }
+    .form-row { margin-bottom: 0.85rem; }
+
+    /* ── Page heading ───────────────────────────────────────── */
+    .page-header { margin-bottom: 4px; }
+    .page-header h2 { margin-top: 0; color: var(--vv-navy); font-size: 1.3rem; font-weight: 700; }
+    .page-header p  { color: var(--vv-muted); font-size: 0.88rem; margin-top: 2px; }
+
+    /* ── Section label ──────────────────────────────────────── */
+    .section-label {
+      font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.07em; text-transform: uppercase;
+      color: #9ca3af; margin-bottom: 10px; margin-top: 4px;
+    }
+
+    /* ── Onboarding Banner ──────────────────────────────────── */
+    .onboarding-banner {
+      background: linear-gradient(135deg, var(--accent-soft) 0%, #d0f0ff 100%);
+      border: 1px solid #b3e6f9;
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 0;
+      position: relative;
+      animation: fadeIn 0.35s ease;
+    }
+    .banner-icon {
+      width: 40px; height: 40px; flex-shrink: 0;
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #b3e6f9;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 2px 6px rgba(0,171,226,0.12);
+    }
+    .banner-body { flex: 1; }
+    .banner-body strong {
+      display: block; color: var(--vv-navy);
+      font-size: 0.92rem; font-weight: 700; margin-bottom: 4px;
+    }
+    .banner-body p { color: #0077a8; font-size: 0.84rem; line-height: 1.5; }
+    .banner-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+    .btn-banner {
+      background: var(--accent); color: #fff; border: none; cursor: pointer;
+      padding: 7px 18px; border-radius: 999px; font-size: 0.85rem;
+      font-family: inherit; font-weight: 600;
+      box-shadow: 0 2px 6px rgba(0,171,226,0.35);
+      transition: background 0.15s, transform 0.1s;
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    .btn-banner:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .btn-banner-dismiss {
+      background: none; border: none; color: #0077a8; cursor: pointer;
+      font-size: 0.82rem; font-family: inherit; font-weight: 500;
+      padding: 0; transition: color 0.15s;
+    }
+    .btn-banner-dismiss:hover { color: var(--vv-navy); }
+    .banner-close {
+      position: absolute; top: 10px; right: 12px;
+      background: none; border: none; cursor: pointer;
+      color: #7dd3ee; font-size: 15px; line-height: 1;
+      transition: color 0.15s; padding: 2px;
+    }
+    .banner-close:hover { color: var(--vv-navy); }
+
+    /* ── Integration card (inside .card) ───────────────────── */
+    .integration-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      transition: box-shadow 0.15s;
+    }
+    .integration-item:hover { box-shadow: 0 4px 14px rgba(11,42,74,0.09); }
+
+    .integration-header {
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border-bottom: 1px solid var(--border);
+      background: #fafbff;
+    }
+    .sq-logo {
+      width: 44px; height: 44px; flex-shrink: 0;
+      background: #000;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .integration-meta { flex: 1; }
+    .integration-meta h3 { font-size: 0.97rem; font-weight: 700; color: var(--vv-navy); margin: 0 0 2px; }
+    .integration-meta p  { font-size: 0.80rem; color: var(--vv-muted); margin: 0; }
+
+    /* Status badges (matching existing .badge-pro / .badge-starter pattern) */
+    .sq-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 11px; border-radius: 999px;
+      font-size: 0.74rem; font-weight: 700; letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    .sq-badge::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .sq-badge-off  { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+    .sq-badge-off::before { background: #94a3b8; }
+    .sq-badge-on   { background: #f0fdf4; color: var(--vv-green-2); border: 1px solid var(--vv-green); }
+    .sq-badge-on::before  { background: var(--vv-green); animation: pulse-dot 2s infinite; }
+    .sq-badge-warn { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+    .sq-badge-warn::before { background: #f59e0b; }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.35; }
+    }
+
+    /* Integration body panels */
+    .integration-body { padding: 18px; }
+
+    /* Disconnected panel */
+    .features-list {
+      list-style: none; padding: 0; margin: 0 0 18px;
+      display: flex; flex-direction: column; gap: 9px;
+    }
+    .features-list li {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-size: 0.86rem; color: var(--muted);
+    }
+    .feat-check {
+      width: 18px; height: 18px; flex-shrink: 0;
+      background: #f0fdf4; border: 1px solid var(--vv-green);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; color: var(--vv-green-2); margin-top: 1px;
+    }
+    .reassurance {
+      font-size: 0.77rem; color: #9ca3af;
+      display: flex; align-items: center; gap: 6px; margin-top: 12px;
+    }
+
+    /* Connected panel */
+    .connected-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .conn-stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 13px;
+    }
+    .conn-stat-label {
+      font-size: 0.70rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; color: #9ca3af; margin-bottom: 3px;
+    }
+    .conn-stat-value { font-size: 0.9rem; font-weight: 600; color: var(--vv-navy); }
+    .conn-footer {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .conn-footer span { font-size: 0.82rem; color: var(--vv-muted); }
+    .btn-disconnect {
+      background: none; border: none; color: #9ca3af;
+      font-size: 0.79rem; font-family: inherit; cursor: pointer;
+      padding: 2px 0; text-decoration: underline; text-underline-offset: 3px;
+      transition: color 0.15s;
+    }
+    .btn-disconnect:hover { color: #dc2626; }
+
+    /* Expired panel */
+    .warn-notice {
+      background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 8px; padding: 13px 15px; margin-bottom: 16px;
+      display: flex; gap: 11px;
+    }
+    .warn-icon { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+    .warn-text strong { display: block; color: #92400e; font-size: 0.87rem; margin-bottom: 3px; }
+    .warn-text p { color: #78350f; font-size: 0.81rem; line-height: 1.5; }
+
+    /* ── Post-OAuth return banner ───────────────────────────── */
+    .return-banner {
+      background: #f0fdf4; border: 1px solid var(--vv-green);
+      border-radius: 12px; padding: 13px 17px;
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 0; animation: fadeIn 0.3s ease;
+    }
+    .return-banner p { font-size: 0.87rem; color: #14532d; }
+    .return-banner strong { font-weight: 700; }
+
+    /* ── Contextual prompt (inline in forms) ────────────────── */
+    .sq-prompt {
+      background: var(--accent-soft);
+      border: 1px dashed #7dd3ee;
+      border-radius: 8px;
+      padding: 13px 15px;
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+      margin-top: 4px;
+    }
+    .sq-prompt-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .sq-prompt-text { flex: 1; }
+    .sq-prompt-text strong { display: block; font-size: 0.86rem; color: var(--vv-navy); margin-bottom: 2px; }
+    .sq-prompt-text p { font-size: 0.79rem; color: #0077a8; }
+    .btn-prompt-link {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      font-size: 0.81rem; font-family: inherit; font-weight: 600;
+      padding: 0; margin-top: 5px; display: inline-block;
+      text-decoration: underline; text-underline-offset: 2px;
+      transition: color 0.15s;
+    }
+    .btn-prompt-link:hover { color: var(--accent-hover); }
+
+    /* Disabled button hint */
+    .btn-hint {
+      font-size: 0.77rem; color: var(--muted);
+      margin-top: 5px; display: flex; align-items: center; gap: 5px;
+    }
+    .btn-hint a {
+      color: var(--accent); font-weight: 600;
+      cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+    }
+    button:disabled { opacity: 0.42; cursor: not-allowed; pointer-events: none; }
+
+    /* ── Divider ─────────────────────────────────────────────── */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+    /* ── Toast ───────────────────────────────────────────────── */
+    .toast-wrap {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .toast {
+      background: var(--vv-navy); color: #fff;
+      padding: 11px 20px; border-radius: 999px;
+      font-size: 0.87rem; font-weight: 500;
+      box-shadow: var(--vv-shadow);
+      pointer-events: auto; white-space: nowrap;
+      animation: toastIn 0.22s ease;
+    }
+    .toast.success { background: var(--vv-green-2); }
+    .toast.error   { background: #b91c1c; }
+    .toast.info    { background: var(--accent-hover); }
+    @keyframes toastIn  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes toastOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(8px); } }
+
+    /* ── Demo controls ───────────────────────────────────────── */
+    .demo-bar {
+      background: var(--vv-navy); border-radius: 12px;
+      padding: 12px 16px; margin-bottom: 0;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .demo-bar span {
+      color: #93c5fd; font-size: 0.73rem; font-weight: 700;
+      letter-spacing: 0.07em; text-transform: uppercase;
+    }
+    .demo-btn {
+      background: rgba(255,255,255,0.08); color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.15);
+      padding: 5px 13px; border-radius: 999px; font-size: 0.79rem;
+      font-family: inherit; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .demo-btn:hover, .demo-btn.active {
+      background: rgba(255,255,255,0.18); color: #fff;
+      border-color: rgba(255,255,255,0.35);
+    }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 540px) {
+      .connected-stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Header ────────────────────────────────────────────── -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo-placeholder">📍</div>
+      <div class="brand-text">
+        <span class="brand-title">VenView Events</span>
+        <span class="brand-subtitle">Vendor Intelligence for Events</span>
+      </div>
+    </div>
+    <div class="nav-buttons">
+      <div class="header-buttons" style="display:flex; align-items:center; gap:0.25rem;">
+        <button class="nav-link" onclick="showSection('manage')">Manage Events</button>
+        <button class="nav-link" onclick="showSection('add')" id="navAdd">Add Event</button>
+        <button class="nav-link active" onclick="showSection('settings')" id="navSettings">Settings</button>
+        <button class="nav-link">Logout</button>
+        <button class="nav-cta" onclick="showSection('add')">+ Add Event</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Toast container ───────────────────────────────────── -->
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <main>
+
+    <!-- ════════════════════════════════════════════════════
+         DEMO CONTROLS
+    ═════════════════════════════════════════════════════ -->
+    <section style="margin-bottom:0;">
+      <div class="demo-bar">
+        <span>🧪 Preview State:</span>
+        <button class="demo-btn active" id="demoD" onclick="setSquareState('disconnected')">Not Connected</button>
+        <button class="demo-btn" id="demoC" onclick="setSquareState('connected')">Connected</button>
+        <button class="demo-btn" id="demoE" onclick="setSquareState('expired')">Token Expired</button>
+        <button class="demo-btn" id="demoR" onclick="setSquareState('return')">Post-OAuth Return</button>
+        <button class="demo-btn" onclick="showSection('add')">→ View Add Event Form</button>
+      </div>
+    </section>
+
+
+    <!-- ════════════════════════════════════════════════════
+         SETTINGS SECTION
+    ═════════════════════════════════════════════════════ -->
+    <section id="settingsSection">
+
+      <!-- Post-OAuth return success (triggered by ?square=connected) -->
+      <div id="returnBanner" class="return-banner hidden">
+        <span style="font-size:20px;">✅</span>
+        <p><strong>Square connected successfully!</strong> Your locations are now available — link one when adding your next event.</p>
+      </div>
+
+      <!-- Onboarding banner (new users) -->
+      <div id="onboardingBanner" class="card onboarding-banner">
+        <div class="banner-icon">🔗</div>
+        <div class="banner-body">
+          <strong>Connect Square to unlock automatic syncing</strong>
+          <p>Connect your Square account to automatically sync sales, locations, and labor from your events. If you don't have a Square account you will need to enter the Event details manually.</p>
+          <div class="banner-actions">
+            <button class="btn-banner" onclick="startOAuthFlow('banner')">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <rect x="0.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/>
+                <rect x="7.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/>
+                <rect x="0.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/>
+                <rect x="7.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/>
+              </svg>
+              <span class="btn-label">Connect Square</span>
+            </button>
+            <button class="btn-banner-dismiss" onclick="dismissBanner()">I'll do this later</button>
+          </div>
+        </div>
+        <button class="banner-close" onclick="dismissBanner()" aria-label="Dismiss">✕</button>
+      </div>
+
+      <!-- Account card -->
+      <div class="card">
+        <div class="page-header" style="margin-bottom:16px;">
+          <h2>Settings</h2>
+          <p>Manage your account and integrations</p>
+        </div>
+
+        <p class="section-label">Account</p>
+        <div class="form-row">
+          <label>Email Address</label>
+          <input type="email" value="vendor@mycompany.com" readonly style="background:#f8fafc; color:#64748b;">
+        </div>
+        <div class="form-row">
+          <label>Current Plan</label>
+          <input type="text" value="Pro ✦" readonly style="background:#f8fafc; color:var(--vv-green-2); font-weight:600;">
+        </div>
+        <button class="btn-secondary" style="font-size:0.83rem; margin-top:4px;">Change Password</button>
+      </div>
+
+      <!-- Integrations card -->
+      <div class="card">
+        <p class="section-label">Integrations</p>
+        <p style="font-size:0.85rem; color:var(--muted); margin-bottom:14px;">
+          Connect third-party services to automate your data.
+        </p>
+
+        <div class="integration-item">
+          <!-- Header: always visible -->
+          <div class="integration-header">
+            <div class="sq-logo">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+                <rect x="2.5" y="2.5" width="21" height="21" rx="3.5" fill="white"/>
+                <rect x="7" y="7" width="12" height="12" rx="2" fill="black"/>
+              </svg>
+            </div>
+            <div class="integration-meta">
+              <h3>Square POS</h3>
+              <p>Sync sales, locations &amp; labor automatically</p>
+            </div>
+            <span id="squareBadge" class="sq-badge sq-badge-off">Not Connected</span>
+          </div>
+
+          <!-- Body: swapped by JS -->
+          <div class="integration-body" id="squareBody"></div>
+        </div>
+      </div>
+
+    </section><!-- /settings -->
+
+
+    <!-- ════════════════════════════════════════════════════
+         ADD EVENT SECTION — contextual prompts demo
+    ═════════════════════════════════════════════════════ -->
+    <section id="addSection" class="hidden">
+
+      <div class="card">
+        <div class="page-header" style="margin-bottom:16px;">
+          <h2>Add New Event</h2>
+          <p>Fill in the details for your upcoming event</p>
+        </div>
+
+        <div class="form-row">
+          <label>Event Name</label>
+          <input type="text" placeholder="e.g. Riverside Farmers Market — July">
+        </div>
+        <div class="form-row">
+          <label>Event Date</label>
+          <input type="date">
+        </div>
+        <div class="form-row">
+          <label>Event Type</label>
+          <select><option>Market</option><option>Festival</option><option>Pop-Up</option></select>
+        </div>
+
+        <!-- Square Location field -->
+        <div class="form-row">
+          <label>Square Location</label>
+
+          <!-- When NOT connected -->
+          <div id="locationPrompt" class="sq-prompt">
+            <div class="sq-prompt-icon">📍</div>
+            <div class="sq-prompt-text">
+              <strong>No Square locations found</strong>
+              <p>Connect your Square account to link a location and enable automatic sales sync for this event.</p>
+              <button class="btn-prompt-link" onclick="goConnectFromForm()">
+                Connect Square in Settings →
+              </button>
+            </div>
+          </div>
+
+          <!-- When connected -->
+          <select id="locationSelect" class="hidden">
+            <option value="">Select Square Location…</option>
+            <option value="L1">Main Street Market — Downtown</option>
+            <option value="L2">Riverside Festival Grounds</option>
+            <option value="L3">Westside Pop-Up Hub</option>
+          </select>
+        </div>
+
+        <hr class="divider">
+
+        <!-- Pull Sales -->
+        <div class="form-row">
+          <label>Sync Sales from Square</label>
+          <div>
+            <button class="btn-secondary" id="pullSalesBtn" disabled>🔄 Pull Square Sales</button>
+            <div class="btn-hint" id="pullSalesHint">
+              Square not connected ·
+              <a onclick="goConnectFromForm()">Connect in Settings</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pull Labor -->
+        <div class="form-row">
+          <label>Sync Labor from Square</label>
+          <div>
+            <button class="btn-secondary" id="pullLaborBtn" disabled>🔄 Pull Square Labor</button>
+            <div class="btn-hint" id="pullLaborHint">
+              Square not connected ·
+              <a onclick="goConnectFromForm()">Connect in Settings</a>
+            </div>
+          </div>
+        </div>
+
+        <hr class="divider">
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
+          <button class="btn-secondary" onclick="showSection('settings')">← Back to Settings</button>
+          <button class="btn-primary">
+            <span class="btn-label">Save Event</span>
+          </button>
+        </div>
+      </div>
+
+    </section><!-- /add event -->
+
+  </main>
+</div><!-- /app-shell -->
+
+<script>
+// ── State ────────────────────────────────────────────────────
+let sqState = 'disconnected';
+let bannerDismissed = false;
+
+const MOCK = {
+  merchant: 'Sunshine Eats LLC',
+  locations: 3,
+  lastSync: 'Today at 9:41 AM'
+};
+
+// ── Navigation ───────────────────────────────────────────────
+function showSection(name) {
+  document.getElementById('settingsSection').classList.toggle('hidden', name !== 'settings');
+  document.getElementById('addSection').classList.toggle('hidden', name !== 'add');
+  document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+  const map = { settings: 2, add: 1 };
+  if (map[name] !== undefined) {
+    document.querySelectorAll('.nav-link')[map[name]]?.classList.add('active');
+  }
+  if (name === 'add') syncAddEventForm();
+}
+
+// ── Demo switcher ─────────────────────────────────────────────
+function setSquareState(state) {
+  sqState = (state === 'return') ? 'connected' : state;
+
+  // Demo button highlight
+  ['demoD','demoC','demoE','demoR'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+  const map = { disconnected:'demoD', connected:'demoC', expired:'demoE', return:'demoR' };
+  document.getElementById(map[state])?.classList.add('active');
+
+  // Post-OAuth return banner
+  const rb = document.getElementById('returnBanner');
+  if (state === 'return') {
+    rb.classList.remove('hidden');
+    setTimeout(() => {
+      rb.style.animation = 'toastOut 0.35s ease forwards';
+      setTimeout(() => rb.classList.add('hidden'), 350);
+    }, 5000);
+  } else {
+    rb.classList.add('hidden');
+  }
+
+  // Onboarding banner
+  const ob = document.getElementById('onboardingBanner');
+  if (sqState === 'connected') {
+    ob.classList.add('hidden');
+  } else if (!bannerDismissed) {
+    ob.classList.remove('hidden');
+  }
+
+  renderSquarePanel();
+  syncAddEventForm();
+}
+
+// ── Render the integration card body ─────────────────────────
+function renderSquarePanel() {
+  const badge = document.getElementById('squareBadge');
+  const body  = document.getElementById('squareBody');
+
+  if (sqState === 'disconnected') {
+    badge.className = 'sq-badge sq-badge-off';
+    badge.textContent = 'Not Connected';
+    body.innerHTML = `
+      <ul class="features-list">
+        <li>
+          <span class="feat-check">✓</span>
+          <span><strong>Automatic sales sync</strong> — pull gross sales, refunds, tips &amp; processing fees after every event</span>
+        </li>
+        <li>
+          <span class="feat-check">✓</span>
+          <span><strong>Location linking</strong> — associate a Square location with each event for accurate per-location reporting</span>
+        </li>
+        <li>
+          <span class="feat-check">✓</span>
+          <span><strong>Labor import</strong> — sync team timecards and shift hours from Square directly into your event</span>
+        </li>
+      </ul>
+      <button class="btn-primary" id="connectBtn" onclick="startOAuthFlow('card')">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <rect x="0.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/>
+          <rect x="7.5" y="0.5" width="5" height="5" rx="0.8" fill="white"/>
+          <rect x="0.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/>
+          <rect x="7.5" y="7.5" width="5" height="5" rx="0.8" fill="white"/>
+        </svg>
+        <span class="btn-label">Connect Square</span>
+      </button>
+      <p class="reassurance">🔒 You'll be redirected to Square to authorize — we never see your Square password</p>
+    `;
+  }
+
+  else if (sqState === 'connected') {
+    badge.className = 'sq-badge sq-badge-on';
+    badge.textContent = 'Connected';
+    body.innerHTML = `
+      <div class="connected-stats">
+        <div class="conn-stat">
+          <div class="conn-stat-label">Merchant</div>
+          <div class="conn-stat-value">${MOCK.merchant}</div>
+        </div>
+        <div class="conn-stat">
+          <div class="conn-stat-label">Locations</div>
+          <div class="conn-stat-value">${MOCK.locations} available</div>
+        </div>
+        <div class="conn-stat">
+          <div class="conn-stat-label">Last Synced</div>
+          <div class="conn-stat-value">${MOCK.lastSync}</div>
+        </div>
+      </div>
+      <div class="conn-footer">
+        <span>✅ Events will sync automatically with Square</span>
+        <button class="btn-disconnect" onclick="confirmDisconnect()">Disconnect</button>
+      </div>
+    `;
+  }
+
+  else if (sqState === 'expired') {
+    badge.className = 'sq-badge sq-badge-warn';
+    badge.textContent = 'Needs Reconnect';
+    body.innerHTML = `
+      <div class="warn-notice">
+        <div class="warn-icon">⚠️</div>
+        <div class="warn-text">
+          <strong>Your Square connection has expired</strong>
+          <p>This happens automatically after 30 days. Reconnect to resume syncing sales and labor — your existing event data is safe.</p>
+        </div>
+      </div>
+      <button class="btn-primary" id="connectBtn" onclick="startOAuthFlow('card')">
+        <span class="btn-label">🔄 Reconnect Square</span>
+      </button>
+      <p class="reassurance">🔒 You'll be redirected to Square to re-authorize — takes about 30 seconds</p>
+    `;
+  }
+}
+
+// ── Sync Add Event form to sq state ──────────────────────────
+function syncAddEventForm() {
+  const on = sqState === 'connected';
+
+  document.getElementById('locationPrompt').classList.toggle('hidden', on);
+  document.getElementById('locationSelect').classList.toggle('hidden', !on);
+
+  const salesBtn  = document.getElementById('pullSalesBtn');
+  const salesHint = document.getElementById('pullSalesHint');
+  const laborBtn  = document.getElementById('pullLaborBtn');
+  const laborHint = document.getElementById('pullLaborHint');
+
+  if (on) {
+    salesBtn.removeAttribute('disabled');
+    laborBtn.removeAttribute('disabled');
+    salesHint.classList.add('hidden');
+    laborHint.classList.add('hidden');
+    salesBtn.onclick = () => showToast('✅ Square sales synced successfully', 'success');
+    laborBtn.onclick = () => showToast('✅ Square labor synced successfully', 'success');
+  } else {
+    salesBtn.setAttribute('disabled', '');
+    laborBtn.setAttribute('disabled', '');
+    salesHint.classList.remove('hidden');
+    laborHint.classList.remove('hidden');
+  }
+}
+
+// ── OAuth flow simulation ─────────────────────────────────────
+function startOAuthFlow(source) {
+  const btn = source === 'banner'
+    ? document.querySelector('.btn-banner')
+    : document.getElementById('connectBtn');
+  if (!btn) return;
+
+  const label = btn.querySelector('.btn-label');
+  if (label) label.style.display = 'none';
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  // Simulate redirect + callback (1.8s)
+  setTimeout(() => {
+    btn.classList.remove('loading');
+    if (label) label.style.display = '';
+    btn.disabled = false;
+    setSquareState('return');
+    showToast('✅ Square connected — Sunshine Eats LLC · 3 locations ready', 'success');
+  }, 1800);
+}
+
+// ── Disconnect ────────────────────────────────────────────────
+function confirmDisconnect() {
+  if (confirm('Disconnect Square?\n\nYour existing event sales data will not be deleted, but automatic syncing will stop until you reconnect.')) {
+    setSquareState('disconnected');
+    showToast('Square disconnected', 'info');
+  }
+}
+
+// ── Banner dismiss ────────────────────────────────────────────
+function dismissBanner() {
+  bannerDismissed = true;
+  const b = document.getElementById('onboardingBanner');
+  b.style.transition = 'opacity 0.25s ease';
+  b.style.opacity = '0';
+  setTimeout(() => b.classList.add('hidden'), 250);
+  // Production: POST /api/user/prefs { dismissedSquareBanner: true }
+}
+
+// ── Navigate to settings from form ───────────────────────────
+function goConnectFromForm() {
+  showSection('settings');
+  showToast('Connect Square below to enable automatic syncing', 'info');
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const wrap = document.getElementById('toastWrap');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => {
+    t.style.animation = 'toastOut 0.22s ease forwards';
+    setTimeout(() => t.remove(), 230);
+  }, 3500);
+}
+
+// ── Init ──────────────────────────────────────────────────────
+renderSquarePanel();
+syncAddEventForm();
+</script>
+</body>
+</html>

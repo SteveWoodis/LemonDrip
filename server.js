@@ -491,6 +491,23 @@ async function initDb() {
         "isRead"    BOOLEAN DEFAULT FALSE,
         "createdAt" TIMESTAMP DEFAULT NOW()
       )`,
+      `CREATE TABLE IF NOT EXISTS "SquareConnection" (
+        "id"               SERIAL PRIMARY KEY,
+        "userId"           TEXT NOT NULL UNIQUE,
+        "merchantId"       TEXT,
+        "accessTokenEnc"   TEXT NOT NULL,
+        "refreshTokenEnc"  TEXT,
+        "expiresAt"        TIMESTAMPTZ,
+        "scopes"           TEXT,
+        "status"           TEXT DEFAULT 'connected',
+        "createdAt"        TIMESTAMPTZ DEFAULT NOW(),
+        "updatedAt"        TIMESTAMPTZ DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS "OAuthState" (
+        "state"     TEXT PRIMARY KEY,
+        "userId"    TEXT NOT NULL,
+        "createdAt" TIMESTAMPTZ DEFAULT NOW()
+      )`,
     ];
 
     for (const sql of migrations) {
@@ -574,6 +591,72 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // ── Marketing landing page (venview.app/) ──────────────────────
 app.use(express.static(path.join(__dirname, "public")));
 app.use('/api', waitlistRouter);   // public, no auth needed
+// OAuth callback must be outside the verifySession gate — Square's redirect
+// carries no session cookie. Authentication is via the state→userId DB lookup.
+app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+
+  if (error) {
+    console.error("Square OAuth error:", error, error_description);
+    return res.redirect("/?square=error");
+  }
+
+  if (!code || !state) {
+    return res.status(400).send("Missing authorization code or state.");
+  }
+
+  // Always validate state — no dev/prod conditional
+  const stateRow = await dbGet(`SELECT "userId" FROM "OAuthState" WHERE "state" = $1`, [state]);
+  if (!stateRow) {
+    return res.status(400).send("Invalid or expired state parameter.");
+  }
+  const userId = stateRow.userId;
+
+  // Consume the state row (one-time use)
+  await dbRun(`DELETE FROM "OAuthState" WHERE "state" = $1`, [state]);
+
+  try {
+    const tokenRes = await axios.post(
+      `${getSquareBaseUrl()}/oauth2/token`,
+      {
+        client_id: SQUARE_APP_ID,
+        client_secret: SQUARE_APP_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: SQUARE_OAUTH_REDIRECT
+      },
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    const payload = tokenRes.data;
+    const accessToken  = payload.access_token;
+    const refreshToken = payload.refresh_token;
+    const merchantId   = payload.merchant_id;
+    const expiresAt    = payload.expires_at;
+
+    await dbRun(
+      `INSERT INTO "SquareConnection"
+         ("userId", "merchantId", "accessTokenEnc", "refreshTokenEnc", "expiresAt", "status")
+       VALUES ($1, $2, $3, $4, $5, 'connected')
+       ON CONFLICT ("userId") DO UPDATE SET
+         "merchantId"      = EXCLUDED."merchantId",
+         "accessTokenEnc"  = EXCLUDED."accessTokenEnc",
+         "refreshTokenEnc" = EXCLUDED."refreshTokenEnc",
+         "expiresAt"       = EXCLUDED."expiresAt",
+         "status"          = 'connected',
+         "updatedAt"       = NOW()`,
+      [userId, merchantId, accessToken, refreshToken, expiresAt]
+    );
+
+    console.log("✅ Square OAuth connected for user:", userId, "merchant:", merchantId);
+    res.redirect("/?square=connected");
+
+  } catch (err) {
+    console.error("❌ Error exchanging OAuth code:", err.response?.data || err.message);
+    res.redirect("/?square=error");
+  }
+});
+
 app.use("/api", verifySession());           // gates everything else under /api
 
 // -------------------------------
@@ -646,8 +729,6 @@ module.exports = { pool };
 // (No changes needed — all were compatible with CommonJS)
 // ============================================================================
 
-// Keep track of valid OAuth states
-const activeOAuthStates = new Set();
 
 
 // --- All routes and logic preserved exactly as-is ---
@@ -998,90 +1079,22 @@ app.get("/api/events/export/csv", searchLimiter, async (req, res) => {
 });
 
 
-// -------------------------------
-// 🔐 OAuth routes for Labor (Shifts)
-// -------------------------------
-app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
-  const { code, state, error, error_description } = req.query;
+// Start OAuth flow — requires session; callback is above the verifySession gate
+app.get("/api/square/oauth/start", squareLimiter, verifySession(), async (req, res) => {
+  const userId = req.session.getUserId();
+  const state  = crypto.randomBytes(24).toString("hex");
 
-  if (error) {
-    console.error("Square OAuth error:", error, error_description);
-    return res.status(400).send("Square OAuth error: " + error_description);
-  }
-
-  if (!code || !state) {
-    return res.status(400).send("Missing authorization code or state.");
-  }
-
-  // ------------------------------------------------------
-// ✅ SECURE: Validate state to prevent CSRF attacks
-// ------------------------------------------------------
-if (process.env.NODE_ENV === 'production') {
-  if (!activeOAuthStates.has(state)) {
-    return res.status(400).send("Invalid state parameter - possible CSRF attack");
-  }
-}
-activeOAuthStates.delete(state);
-  try {
-    const tokenRes = await axios.post(
-      "https://connect.squareup.com/oauth2/token",
-      {
-        client_id: SQUARE_APP_ID,
-        client_secret: SQUARE_APP_SECRET,
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: SQUARE_OAUTH_REDIRECT
-      },
-      {
-        headers: { "Content-Type": "application/json" }
-      }
-    );
-
-    const payload = tokenRes.data;
-
-    const accessToken = payload.access_token;
-    const refreshToken = payload.refresh_token;
-    const merchantId = payload.merchant_id;
-    const expiresAt = payload.expires_at;
-
-    // 🔒 Ensure clean single-row auth state
-    await dbRun(`DELETE FROM SquareAuth`);
-
-    await dbRun(
-      `
-      INSERT INTO SquareAuth
-        (accessToken, refreshToken, merchantId, expiresAt)
-      VALUES (?, ?, ?, ?)
-      `,
-      [accessToken, refreshToken, merchantId, expiresAt]
-    );
-
-    console.log("✅ Square OAuth connected for merchant:", merchantId);
-
-    res.send("Square OAuth connected successfully. You can close this tab.");
-
-  } catch (err) {
-    console.error(
-      "❌ Error exchanging OAuth code:",
-      err.response?.data || err.message
-    );
-    res.status(500).send("Error exchanging OAuth code. Check server logs.");
-  }
-});
-
-
-
-// Start OAuth flow
-app.get("/api/square/oauth/start", squareLimiter, (req, res) => {
-  const state = crypto.randomBytes(24).toString("hex");
-
-  activeOAuthStates.add(state);
-  setTimeout(() => activeOAuthStates.delete(state), 10 * 60 * 1000);
+  // Purge expired states, then persist state → userId
+  await dbRun(`DELETE FROM "OAuthState" WHERE "createdAt" < NOW() - INTERVAL '15 minutes'`);
+  await dbRun(`INSERT INTO "OAuthState" ("state", "userId") VALUES ($1, $2)`, [state, userId]);
 
   const scopes = [
     "TIMECARDS_READ",
     "TIMECARDS_SETTINGS_READ",
-    "EMPLOYEES_READ"
+    "EMPLOYEES_READ",
+    "ORDERS_READ",
+    "PAYMENTS_READ",
+    "MERCHANT_PROFILE_READ"
   ];
 
   const params = new URLSearchParams({
@@ -1089,14 +1102,11 @@ app.get("/api/square/oauth/start", squareLimiter, (req, res) => {
     scope: scopes.join(" "),
     session: "false",
     state,
-    redirect_uri: SQUARE_OAUTH_REDIRECT,  // RAW VALUE HERE
+    redirect_uri: SQUARE_OAUTH_REDIRECT,
     response_type: "code"
   });
 
-  const url = `https://connect.squareup.com/oauth2/authorize?${params.toString()}`;
-
-  console.log("START URL:", url);
-  res.redirect(url);
+  res.redirect(`${getSquareBaseUrl()}/oauth2/authorize?${params.toString()}`);
 });
 
 
@@ -1345,12 +1355,14 @@ app.post("/api/formTemplates", async (req, res) => {
 // -------------------------------
 app.get("/api/square/locations", squareLimiter, async (req, res) => {
   try {
-    const url = "https://connect.squareup.com/v2/locations";
+    const userId = req.session.getUserId();
+    const token = await getSquareToken(userId);
+    const url = `${getSquareBaseUrl()}/v2/locations`;
     const response = await fetch(url, {
       method: "GET",
       headers: {
         "Square-Version": "2025-01-15",
-        Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
@@ -1755,7 +1767,8 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
       return res.status(400).json({ error: "Event has no Square Location ID." });
     }
 
-    const token = process.env.SQUARE_ACCESS_TOKEN;
+    const userId = req.session.getUserId();
+    const token = await getSquareToken(userId);
 
     // ─────────────────────────────────────────────
     // 1️⃣ DATE WINDOWS — use EventDays as source of truth
@@ -1766,15 +1779,25 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
       [eventID]
     );
 
+    const evNumDays = Math.max(1, Number(ev.numDays) || 1);
+    const validDayRowsSales = dayRows.filter(r => r.date && String(r.date).trim() !== "");
+
     let firstDate, lastDate;
-    if (dayRows.length > 0) {
-      firstDate = dayRows[0].date;
-      lastDate  = dayRows[dayRows.length - 1].date;
+    if (validDayRowsSales.length >= evNumDays) {
+      // All days present in EventDays
+      firstDate = validDayRowsSales[0].date;
+      lastDate  = validDayRowsSales[validDayRowsSales.length - 1].date;
+    } else if (validDayRowsSales.length > 0) {
+      // Partial EventDays — anchor on Day 1 and extend by numDays
+      firstDate = validDayRowsSales[0].date;
+      const d = new Date(`${firstDate}T00:00:00`);
+      d.setDate(d.getDate() + (evNumDays - 1));
+      lastDate = d.toISOString().slice(0, 10);
     } else {
-      const numDays = Math.max(1, Number(ev.numDays) || 1);
+      // No EventDays — fall back to EventInfo
       firstDate = ev.eventDate;
       const d = new Date(`${ev.eventDate}T00:00:00`);
-      d.setDate(d.getDate() + (numDays - 1));
+      d.setDate(d.getDate() + (evNumDays - 1));
       lastDate = d.toISOString().slice(0, 10);
     }
 
@@ -1819,7 +1842,7 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
         if (orderCursor) orderBody.cursor = orderCursor;
 
         const orderRes = await fetch(
-          "https://connect.squareup.com/v2/orders/search",
+          `${getSquareBaseUrl()}/v2/orders/search`,
           {
             method: "POST",
             headers: {
@@ -1943,7 +1966,7 @@ console.log({ grossSales, discounts, netSales, totalCollected });
     let cursor = null;
 
     do {
-      const url = new URL("https://connect.squareup.com/v2/payments");
+      const url = new URL(`${getSquareBaseUrl()}/v2/payments`);
       url.searchParams.set("begin_time", paymentStartISO);
       url.searchParams.set("end_time", paymentEndISO);
       url.searchParams.set("location_id", ev.squareLocationId);
@@ -2057,17 +2080,9 @@ console.log({ grossSales, discounts, netSales, totalCollected });
 
 
 app.put("/api/events/:eventID/labor", async (req, res) => {
-   const token = process.env.SQUARE_ACCESS_TOKEN;
   try {
     const eventID = Number(req.params.eventID);
     const { laborRows } = req.body;
-
-    console.log("🔐 Labor token source:", {
-  exists: !! token,
-  length: token?.length,
-  prefix: token?.slice(0, 8)
-});
-
 
     if (!eventID || !Array.isArray(laborRows)) {
       return res.status(400).json({ error: "Invalid payload" });
@@ -2962,7 +2977,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     }
 
     // 1️⃣ Fetch Square timecards
-    const timecards = await fetchSquareTimecardsForEvent(eventID);
+    const timecards = await fetchSquareTimecardsForEvent(eventID, req.session.getUserId());
 
     // 2️⃣ Normalize → labor rows
     const laborList = timecards.map(tc => ({
@@ -3017,7 +3032,7 @@ app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
     }
 
     // 2️⃣ Fetch Square timecards (your existing helper)
-    const timecards = await fetchSquareTimecardsForEvent(eventID);
+    const timecards = await fetchSquareTimecardsForEvent(eventID, req.session.getUserId());
 
     // 3️⃣ Build laborRows from Square data
     const laborRows = timecards.map(tc => ({
@@ -3200,6 +3215,22 @@ async function dbAll(sql, params = []) {
 async function dbRun(sql, params = []) {
   const result = await pool.query(sql, params);
   return { rowCount: result.rowCount, rows: result.rows };
+}
+
+// Returns the plain-text Square access token for a user.
+// TODO Step 4: wrap return value with decrypt() once encryption is in place.
+async function getSquareToken(userId) {
+  const row = await dbGet(
+    `SELECT "accessTokenEnc", "status" FROM "SquareConnection" WHERE "userId" = $1`,
+    [userId]
+  );
+  if (!row) {
+    throw new Error("Square account not connected. Please connect via Settings.");
+  }
+  if (row.status !== 'connected') {
+    throw new Error(`Square connection status is '${row.status}'. Please reconnect via Settings.`);
+  }
+  return row.accessTokenEnc;
 }
 
 
@@ -3418,30 +3449,14 @@ const doFetch =
     : (...args) =>
         import("node-fetch").then(({ default: f }) => f(...args));
 
-// OAuth labor token
-async function getSquareLaborToken() {
-  const token = process.env.SQUARE_ACCESS_TOKEN;
-
-  console.log("🔐 Labor token source:", {
-    exists: !!token,
-    length: token?.length,
-    prefix: token?.slice(0, 8),
-    env: process.env.NODE_ENV
-  });
-  return token;
-
-
-  /*return process.env.SQUARE_ENV === "production"
-    ? process.env.SQUARE_PROD_ACCESS_TOKEN
-    : process.env.SQUARE_SANDBOX_ACCESS_TOKEN;*/
-
-
+async function getSquareLaborToken(userId) {
+  return getSquareToken(userId);
 }
 
 
 
 // Fetch shifts and aggregate into employees[]
-async function fetchSquareTimecardsForEvent(eventID) {
+async function fetchSquareTimecardsForEvent(eventID, userId) {
   const event = await dbGet(
     `
     SELECT "eventDate", "squareLocationId", "numDays"
@@ -3465,23 +3480,33 @@ async function fetchSquareTimecardsForEvent(eventID) {
     [eventID]
   );
 
+  const numDays = Math.max(1, Number(event.numDays) || 1);
+  // Only use EventDays rows that have a valid date
+  const validDayRows = dayRows.filter(r => r.date && String(r.date).trim() !== "");
+
   let startDate, endDate;
-  if (dayRows.length > 0) {
-    startDate = dayRows[0].date;
-    endDate   = dayRows[dayRows.length - 1].date;
+  if (validDayRows.length >= numDays) {
+    // All days accounted for in EventDays
+    startDate = validDayRows[0].date;
+    endDate   = validDayRows[validDayRows.length - 1].date;
+  } else if (validDayRows.length > 0) {
+    // Partial EventDays — use Day 1 as anchor and extend by numDays
+    startDate = validDayRows[0].date;
+    const d = new Date(`${startDate}T00:00:00`);
+    d.setDate(d.getDate() + (numDays - 1));
+    endDate = d.toISOString().slice(0, 10);
   } else {
-    // Fallback: eventDate + numDays from EventInfo
-    const numDays = Math.max(1, Number(event.numDays) || 1);
+    // No EventDays at all — fall back to EventInfo eventDate + numDays
     startDate = event.eventDate;
     const d = new Date(`${event.eventDate}T00:00:00`);
     d.setDate(d.getDate() + (numDays - 1));
     endDate = d.toISOString().slice(0, 10);
   }
 
-  console.log(`📅 Labor pull: ${startDate} → ${endDate} (${dayRows.length > 0 ? "EventDays" : "fallback"})`);
+  console.log(`📅 Labor pull: ${startDate} → ${endDate} (EventDays rows: ${validDayRows.length}/${numDays})`);
 
-  const token = await getSquareLaborToken();
-  const baseUrl = "https://connect.squareup.com";
+  const token = await getSquareLaborToken(userId);
+  const baseUrl = getSquareBaseUrl();
 
   let allTimecards = [];
   let cursor = null;
