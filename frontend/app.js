@@ -2057,6 +2057,17 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
 
   await uploadEventPermits(eventID);
 
+  // Save supply cost lump sum (form_supplyFees) to EventExpenses if provided
+  const supplyFeesInput = document.getElementById("form_supplyFees");
+  const supplyFeesVal = supplyFeesInput ? Number(supplyFeesInput.value) : 0;
+  if (supplyFeesVal > 0) {
+    await fetch(`${API_BASE}/api/events/${eventID}/expenses`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supplyFees: supplyFeesVal })
+    }).catch(err => console.warn("⚠️ Could not save supply fees:", err));
+  }
+
   showToast(isEditing ? "Event updated!" : "Event created!", "success");
 
   window.isEditing = false;
@@ -2683,6 +2694,19 @@ console.log("✅ fields resolved:", fields);
 
   // Wire numDays + render initial day rows for new events
   initNumDaysField(existing.numDays || 1, []);
+
+  // ── Supply / Ingredient Cost (lump sum) ─────────────────────────────────
+  // Starter fast path: single field so vendors can get a profit number in
+  // under 2 minutes without filling out per-item inventory.
+  // Maps to EventExpenses.supplyFees. Saved after the event POST/PUT.
+  const supplyWrapper = document.createElement("label");
+  supplyWrapper.innerHTML = `Supply / Ingredient Cost
+    <input type="number" id="form_supplyFees" name="supplyFees"
+           min="0" step="0.01" placeholder="0.00"
+           style="display:block;width:100%;margin-top:4px;"
+           title="Total you spent on ingredients and supplies for this event">`;
+  formContainer.appendChild(supplyWrapper);
+  // ────────────────────────────────────────────────────────────────────────
 
   // Add buttons — labels depend on context (new vs edit vs duplicate)
   const btnContainer = document.createElement("div");
@@ -3405,6 +3429,11 @@ function renderEventProfitSummary(report) {
       <div class="section-divider"></div>
       <div class="ledger-row final-row ${netProfitClass}"><span class="ledger-label">Net Profit</span><span class="ledger-amount gross-profit">${fmt(netProfit)}</span></div>
 
+      <div id="labor-warning-indicator" style="display:${Number(expenses.laborFees || 0) > 0 ? 'none' : 'flex'};align-items:center;gap:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:0.85rem;color:#92400e;">
+        <span style="font-size:1.1rem">⚠️</span>
+        <span>Labor not yet entered — profit may change. <a href="#" onclick="event.preventDefault();document.getElementById('laborSection')?.scrollIntoView({behavior:'smooth'});" style="color:#b45309;font-weight:600;">Add Labor</a></span>
+      </div>
+
       <div class="section-divider"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="section-title" style="margin:0">For Your Records</div>
@@ -3515,6 +3544,14 @@ function updateProfitSummary() {
   // Update the profit figure in the DOM
   const el = document.querySelector(".profit-summary .gross-profit");
   if (el) el.textContent = `$${netProfit.toFixed(2)}`;
+
+  // Labor warning: show yellow indicator when no labor has been entered so the
+  // vendor knows the profit figure may change once labor is added.
+  const laborWarningEl = document.getElementById("labor-warning-indicator");
+  const hasLabor = Number(expenses?.laborFees || 0) > 0;
+  if (laborWarningEl) {
+    laborWarningEl.style.display = hasLabor ? "none" : "flex";
+  }
 }
 
 
