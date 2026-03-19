@@ -509,6 +509,22 @@ async function initDb() {
         "userId"    TEXT NOT NULL,
         "createdAt" TIMESTAMPTZ DEFAULT NOW()
       )`,
+      // If OAuthState was created before the userId column was added, patch it.
+      // TRUNCATE first because existing rows have no userId and can't be used anyway.
+      `DO $$
+       BEGIN
+         IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'OAuthState')
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_attribute
+              WHERE attrelid = '"OAuthState"'::regclass
+                AND attname = 'userId' AND attnum > 0
+            )
+         THEN
+           TRUNCATE "OAuthState";
+           ALTER TABLE "OAuthState" ADD COLUMN "userId" TEXT NOT NULL DEFAULT '';
+           ALTER TABLE "OAuthState" ALTER COLUMN "userId" DROP DEFAULT;
+         END IF;
+       END $$`,
     ];
 
     for (const sql of migrations) {
@@ -650,7 +666,7 @@ app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
     );
 
     console.log("✅ Square OAuth connected for user:", userId, "merchant:", merchantId);
-    res.redirect("/?square=connected");
+    res.redirect("/app?square=connected");
 
   } catch (err) {
     console.error("❌ Error exchanging OAuth code:", err.response?.data || err.message);

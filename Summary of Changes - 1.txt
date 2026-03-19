@@ -1,0 +1,293 @@
+================================================================================
+VENVIEW — SQUARE OAUTH INTEGRATION
+Summary of All Changes (Steps 1–6)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 1 — Fix the Acute Data-Destruction Bug
+────────────────────────────────────────────────────────────────────────────────
+
+What was changed in server.js:
+
+1. New tables added to migrations (server.js lines ~485–508)
+   - SquareConnection — multi-tenant token store (replaces single-tenant SquareAuth)
+   - OAuthState — DB-backed OAuth state store (replaces in-memory Set)
+   Both created via CREATE TABLE IF NOT EXISTS, matching the existing migrations pattern.
+
+2. Killed the data-destruction bug (server.js line ~1048)
+   BEFORE: DELETE FROM SquareAuth  ← wiped every user's tokens on every connect
+   AFTER:  INSERT INTO "SquareConnection" ... ON CONFLICT ("userId") DO UPDATE SET ...
+   The destructive DELETE is replaced with a per-user upsert. Each user's row is
+   updated independently; no other user's tokens are touched.
+
+3. Fixed SQLite placeholders (server.js line ~1054)
+   BEFORE: VALUES (?, ?, ?, ?)
+   AFTER:  VALUES ($1, $2, $3, $4, $5)
+   PostgreSQL requires $N-style placeholders. SQLite-style ? caused a silent failure
+   on every token save.
+
+Temporary stand-in: merchantId was used as the userId key in SquareConnection until
+Step 2 wired real SuperTokens userId through the OAuthState lookup.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 2 — Thread userId Through OAuth
+────────────────────────────────────────────────────────────────────────────────
+
+Changes in server.js:
+
+  What                                  Change
+  ─────────────────────────────────────────────────────────────────────────────
+  /api/square/oauth/callback location   Moved ABOVE app.use("/api", verifySession())
+                                        Square's redirect carries no session cookie —
+                                        it was getting a 401 on every connect. Auth is
+                                        now handled via the state→userId DB lookup.
+
+  State validation (Bug 8 fix)          Removed if (NODE_ENV === 'production') wrapper.
+                                        CSRF check now always runs in all environments.
+
+  userId threading                      SELECT userId FROM OAuthState WHERE state=$1
+                                        then DELETE the state row (one-time use).
+                                        Real userId is now stored in SquareConnection.
+
+  Token exchange URL                    getSquareBaseUrl() replaces hardcoded
+                                        connect.squareup.com. Respects SQUARE_ENV.
+
+  Redirect on completion                res.redirect("/?square=connected") and
+                                        /?square=error — frontend can show a toast
+                                        (used in Step 6).
+
+  /api/square/oauth/start               Added verifySession() middleware + async.
+                                        Gets userId from req.session.getUserId().
+
+  OAuthState                            Purges rows older than 15 minutes, then
+                                        INSERTs state→userId mapping. DB-backed —
+                                        survives server restarts and multi-instance
+                                        deployments.
+
+  activeOAuthStates in-memory Set       Deleted entirely — no longer needed.
+
+  OAuth scopes (Bug 6 fix)              Added ORDERS_READ, PAYMENTS_READ,
+                                        MERCHANT_PROFILE_READ to the scopes array.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 3 — Fix Token Consumption
+────────────────────────────────────────────────────────────────────────────────
+
+Changes in server.js:
+
+  What                                  Change
+  ─────────────────────────────────────────────────────────────────────────────
+  New getSquareToken(userId) helper     Reads accessTokenEnc and status from
+                                        SquareConnection. Throws clear, user-facing
+                                        errors if missing or status != 'connected'.
+                                        (TODO Step 4 comment left for decrypt call.)
+
+  getSquareLaborToken(userId)           Rewired — now delegates entirely to
+                                        getSquareToken(userId). Old env-var read and
+                                        debug log removed.
+
+  fetchSquareTimecardsForEvent          Added userId parameter. Passes it to
+  (eventID, userId)                     getSquareLaborToken(userId). Hardcoded base
+                                        URL replaced with getSquareBaseUrl().
+
+  Site 1: GET /api/square/locations     Gets userId from session. Replaced
+                                        process.env.SQUARE_ACCESS_TOKEN with
+                                        await getSquareToken(userId).
+                                        URL uses getSquareBaseUrl().
+
+  Site 2: PUT /api/square/sales/:id     Gets userId from session. Replaced
+                                        process.env.SQUARE_ACCESS_TOKEN with
+                                        await getSquareToken(userId).
+                                        Both hardcoded Square URLs replaced with
+                                        getSquareBaseUrl().
+
+  Site 3: PUT /api/events/:id/labor     Removed the unused
+  (save route)                          const token = process.env.SQUARE_ACCESS_TOKEN
+                                        and its debug log. This route only saves
+                                        labor rows to the DB — it never called the
+                                        Square API.
+
+  PUT /api/events/:eventID/labor        Now passes req.session.getUserId() to
+  (Square pull route)                   fetchSquareTimecardsForEvent.
+
+  PUT /api/square/labor/:eventID        Now passes req.session.getUserId() to
+                                        fetchSquareTimecardsForEvent.
+
+process.env.SQUARE_ACCESS_TOKEN no longer appears anywhere in server.js.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 4 — Encryption + Security Cleanup
+────────────────────────────────────────────────────────────────────────────────
+
+Changes in server.js:
+
+  What                                  Change
+  ─────────────────────────────────────────────────────────────────────────────
+  encrypt(plaintext)                    AES-256-GCM with a random 12-byte IV per call.
+                                        Output format: iv_hex:authTag_hex:data_hex.
+
+  decrypt(ciphertext)                   Reverses encrypt(). Throws on bad key or
+                                        tampered/corrupted ciphertext (GCM auth tag).
+
+  _encKey() helper                      Reads TOKEN_ENCRYPTION_KEY from environment.
+                                        Validates it is exactly 64 hex chars (32 bytes).
+                                        Throws a clear message if missing or wrong length.
+
+  OAuth callback (token storage)        accessToken and refreshToken now stored as
+                                        encrypt(...) ciphertext. Plaintext tokens never
+                                        touch the database.
+
+  getSquareToken(userId)                Now returns decrypt(row.accessTokenEnc).
+                                        The TODO Step 4 comment was removed.
+
+  Bug 7 — token logging                 All console.log("🔐 Labor token source: ...")
+                                        calls were already removed by Step 3's rewrite
+                                        of getSquareLaborToken. Confirmed no traces
+                                        remain after Step 4.
+
+Doppler action required: add TOKEN_ENCRYPTION_KEY as a 64-char hex string.
+Generate with: openssl rand -hex 32
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 5 — Token Refresh
+────────────────────────────────────────────────────────────────────────────────
+
+Changes in server.js:
+
+refreshSquareToken(userId, row) — replaces the old refreshSquareLaborToken:
+
+  Old                                   New
+  ─────────────────────────────────────────────────────────────────────────────
+  Read row.refreshToken (plaintext)     Decrypts row.refreshTokenEnc with decrypt()
+  Updated SquareAuth by id              Updates SquareConnection by userId
+  Stored plaintext tokens               Stores encrypt(access_token) and
+                                        encrypt(refresh_token)
+  Hardcoded connect.squareup.com        Uses getSquareBaseUrl()
+  Threw raw error on failure            Sets status = 'error' in DB first, then
+                                        throws — UI can detect and prompt reconnect
+  Returned the full DB row              Returns just the plain-text access token,
+                                        ready to use immediately
+
+getSquareToken(userId) — now auto-refreshes:
+
+  - Selects refreshTokenEnc and expiresAt in the same query (no extra round-trip)
+  - Distinguishes 'error' status with its own clear error message
+  - If expiresAt is within 7 days AND a refreshTokenEnc exists, calls
+    refreshSquareToken(userId, row) transparently and returns the new token
+  - Normal case (token not near expiry): returns decrypt(row.accessTokenEnc) directly
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 6 — Settings UI
+────────────────────────────────────────────────────────────────────────────────
+
+server.js (3 new endpoints + 1 migration):
+
+  What                                  Detail
+  ─────────────────────────────────────────────────────────────────────────────
+  Migration                             ALTER TABLE "UserPlan" ADD COLUMN
+                                        "squareBannerDismissed" BOOLEAN DEFAULT FALSE
+                                        Persists onboarding banner dismiss state
+                                        per user.
+
+  GET /api/square/status                Returns { status, merchantId, expiresAt,
+                                        bannerDismissed }. Used by Settings UI on
+                                        every page load.
+
+  DELETE /api/square/disconnect         Removes the user's SquareConnection row.
+                                        Returns { ok: true }.
+
+  PATCH /api/user/prefs                 Upserts squareBannerDismissed into UserPlan.
+                                        Body: { squareBannerDismissed: true }
+
+─────────────────────────────────────────────
+
+app.html:
+
+  - Settings nav button added between Recipes and Admin buttons (id="btnSettings")
+  - Full settingsSection added with:
+      · Return banner (#returnBanner) — shown briefly after successful OAuth redirect
+      · Onboarding banner (#onboardingBanner) — shown to new/disconnected users,
+        dismissible, state persisted to server
+      · Integrations card with Square integration item:
+          - Header: Square logo, name, and live status badge (#squareBadge)
+          - Body (#squareBody): rendered dynamically by JS for all 4 states
+            (disconnected / connected / error / loading)
+  - Location prompt (#locationPrompt) added to Add Event form above the
+    Square Location <select>. Shown when Square is not connected; links user
+    to Settings. Hidden when connected (select shown instead).
+
+─────────────────────────────────────────────
+
+styles.css (~130 lines added, all prefixed sq- to avoid collisions):
+
+  - .sq-page-header, .sq-section-label
+  - .sq-return-banner
+  - .sq-onboarding-banner, .sq-banner-icon, .sq-banner-body, .sq-banner-actions,
+    .sq-btn-banner, .sq-btn-banner-dismiss, .sq-banner-close
+  - .sq-integration-item, .sq-integration-header, .sq-logo,
+    .sq-integration-meta, .sq-integration-body
+  - .sq-badge, .sq-badge-off, .sq-badge-on, .sq-badge-warn (with pulse animation)
+  - .sq-features-list, .sq-feat-check, .sq-reassurance
+  - .sq-connected-stats, .sq-conn-stat, .sq-conn-stat-label, .sq-conn-stat-value,
+    .sq-conn-footer, .sq-btn-disconnect
+  - .sq-warn-notice, .sq-warn-icon, .sq-warn-text
+  - .sq-prompt, .sq-prompt-icon, .sq-prompt-text, .sq-btn-prompt-link
+
+─────────────────────────────────────────────
+
+app.js (new functions + updates to existing):
+
+  Function                              Purpose
+  ─────────────────────────────────────────────────────────────────────────────
+  loadSquareStatus()                    Fetches GET /api/square/status on login.
+                                        Caches result to window.SQUARE_STATUS.
+                                        Calls renderSquarePanel() and
+                                        syncSquareFormState() after fetch.
+
+  renderSquarePanel()                   Renders the correct integration card body
+                                        based on window.SQUARE_STATUS. Handles
+                                        disconnected, connected, and error states.
+                                        Also controls onboarding banner visibility.
+
+  syncSquareFormState()                 Toggles #locationPrompt (shown) vs
+                                        #form_squareLocationId select (hidden) in
+                                        the Add Event form based on Square status.
+
+  startSquareOAuth()                    Redirects to /api/square/oauth/start.
+
+  disconnectSquare()                    Confirms with user, calls DELETE
+                                        /api/square/disconnect, updates local
+                                        SQUARE_STATUS, re-renders panel.
+
+  handleSquareOAuthReturn()             Reads ?square=connected or ?square=error
+                                        from the URL on page load. Cleans the param
+                                        from history, shows toast, navigates to
+                                        Settings, and shows the return banner.
+
+  dismissSquareBanner()                 Fades the onboarding banner, sets local
+                                        bannerDismissed flag, PATCHes
+                                        /api/user/prefs to persist on server.
+
+  showAuthenticatedUI() (updated)       Now includes #btnSettings in the
+                                        show/hide selector. Calls loadSquareStatus()
+                                        and handleSquareOAuthReturn() after login.
+
+  showUnauthenticatedUI() (updated)     Now includes #btnSettings in the hide
+                                        selector.
+
+  loadSquareLocationsIntoForm()         Now checks window.SQUARE_STATUS first.
+  (updated)                             If not connected, calls syncSquareFormState()
+                                        and returns without hitting the API.
+                                        Calls syncSquareFormState() after populating
+                                        the dropdown when connected.
+
+
+================================================================================
+END OF SUMMARY
+================================================================================
