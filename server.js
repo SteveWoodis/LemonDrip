@@ -3389,8 +3389,11 @@ async function getSquareToken(userId) {
   if (!row) {
     throw new Error("Square account not connected. Please connect via Settings.");
   }
+  if (row.status === 'expired') {
+    throw new Error("Square authorization has expired. Please reconnect via Settings.");
+  }
   if (row.status === 'error') {
-    throw new Error("Square connection needs to be reconnected. Please visit Settings.");
+    throw new Error("Square connection has an error. Please reconnect via Settings.");
   }
   if (row.status !== 'connected') {
     throw new Error(`Square connection status is '${row.status}'. Please reconnect via Settings.`);
@@ -3537,7 +3540,9 @@ async function saveEventLabor(eventID, laborList) {
 
 // Refreshes the Square access token for a user on-demand.
 // Returns the new plain-text access token.
-// On failure: marks status='error' in SquareConnection so the UI can prompt reconnect.
+// On auth failure (401/invalid_grant): marks status='expired' — token cannot be reused,
+//   vendor must re-authorize via OAuth.
+// On unexpected errors: marks status='error' — likely a network/config issue, may recover.
 async function refreshSquareToken(userId, row) {
   if (!row.refreshTokenEnc) {
     throw new Error("Cannot refresh Square token: no refresh token stored.");
@@ -3573,12 +3578,23 @@ async function refreshSquareToken(userId, row) {
     return access_token;
 
   } catch (err) {
-    console.error("❌ Square token refresh failed for user:", userId, err.response?.data || err.message);
-    await dbRun(
-      `UPDATE "SquareConnection" SET "status" = 'error', "updatedAt" = NOW() WHERE "userId" = $1`,
-      [userId]
+    const httpStatus = err.response?.status;
+    const isAuthFailure = httpStatus === 401 || httpStatus === 400;
+    const newStatus = isAuthFailure ? 'expired' : 'error';
+
+    console.error(
+      `❌ Square token refresh failed for user: ${userId} — status=${newStatus}`,
+      err.response?.data || err.message
     );
-    throw new Error("Square token expired and could not be refreshed. Please reconnect via Settings.");
+    await dbRun(
+      `UPDATE "SquareConnection" SET "status" = $1, "updatedAt" = NOW() WHERE "userId" = $2`,
+      [newStatus, userId]
+    );
+    throw new Error(
+      isAuthFailure
+        ? "Square authorization has expired. Please reconnect via Settings."
+        : "Square token refresh failed. Please reconnect via Settings."
+    );
   }
 }
 

@@ -6611,8 +6611,18 @@ function renderSquarePanel() {
   } else if (s.status === "connected") {
     badge.className   = "sq-badge sq-badge-on";
     badge.textContent = "Connected";
-    const expires = s.expiresAt ? new Date(s.expiresAt).toLocaleDateString() : "—";
+    const expiresAt  = s.expiresAt ? new Date(s.expiresAt) : null;
+    const expires    = expiresAt ? expiresAt.toLocaleDateString() : "—";
+    const daysLeft   = expiresAt ? Math.ceil((expiresAt - Date.now()) / 86400000) : null;
+    const expiringSoon = daysLeft !== null && daysLeft <= 30;
+    const expiryWarning = expiringSoon
+      ? `<div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:0.85rem;color:#92400e;">
+           <span>⚠️</span>
+           <span>Token expires in <strong>${daysLeft} day${daysLeft !== 1 ? "s" : ""}</strong> — it will refresh automatically on your next sync.</span>
+         </div>`
+      : "";
     body.innerHTML = `
+      ${expiryWarning}
       <div class="sq-connected-stats">
         <div class="sq-conn-stat">
           <div class="sq-conn-stat-label">Merchant ID</div>
@@ -6628,15 +6638,29 @@ function renderSquarePanel() {
         <button class="sq-btn-disconnect" onclick="disconnectSquare()">Disconnect</button>
       </div>`;
 
+  } else if (s.status === "expired") {
+    badge.className   = "sq-badge sq-badge-warn";
+    badge.textContent = "Authorization Expired";
+    body.innerHTML = `
+      <div class="sq-warn-notice">
+        <div class="sq-warn-icon">🔑</div>
+        <div class="sq-warn-text">
+          <strong>Square authorization has expired</strong>
+          <p>Your event data is safe. Re-authorize with Square to resume automatic syncing — takes about 30 seconds.</p>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="startSquareOAuth()">🔄 Re-authorize Square</button>
+      <p class="sq-reassurance">🔒 You'll be redirected to Square to re-approve access</p>`;
+
   } else {
     // status === 'error' or anything unexpected
     badge.className   = "sq-badge sq-badge-warn";
-    badge.textContent = "Needs Reconnect";
+    badge.textContent = "Connection Error";
     body.innerHTML = `
       <div class="sq-warn-notice">
         <div class="sq-warn-icon">⚠️</div>
         <div class="sq-warn-text">
-          <strong>Your Square connection needs to be renewed</strong>
+          <strong>Square connection encountered an error</strong>
           <p>Your existing event data is safe — reconnect to resume automatic syncing.</p>
         </div>
       </div>
