@@ -2182,6 +2182,10 @@ console.log({ grossSales, discounts, netSales, totalCollected });
 
     await saveInventorySales(eventID, inventoryRows);
 
+    const unmatchedItems = IS_PRO
+      ? inventoryRows.filter(r => r.unmatched).map(r => r.drinkName)
+      : [];
+
     res.json({
       success: true,
       sales: {
@@ -2192,6 +2196,10 @@ console.log({ grossSales, discounts, netSales, totalCollected });
         tips,
         totalCollected,
         squareFees
+      },
+      cogs: {
+        unmatchedCount: unmatchedItems.length,
+        unmatchedItems
       }
     });
 

@@ -4374,8 +4374,18 @@ try {
       }
       withSpinner(squareSalesBtn, async () => {
         try {
-          await pullSquareSales(eventID);
+          const syncResult = await pullSquareSales(eventID);
           await reloadEventDashboard();
+          const unmatched = syncResult?.cogs?.unmatchedCount ?? 0;
+          if (unmatched > 0) {
+            showToast(
+              `Square sync complete. ${unmatched} item${unmatched > 1 ? "s" : ""} missing inventory cost — open Inventory to add unit costs.`,
+              "warning",
+              6000
+            );
+          } else {
+            showToast("Square sales synced.", "success");
+          }
         } catch (err) {
           console.error("Square Sales pull error:", err);
           showToast("Failed to pull Square sales.", "error", 3500, () => pullSquareSales(eventID).then(reloadEventDashboard));
@@ -4476,36 +4486,54 @@ if (report.event?.customFields) {
 
 if (report.inventorySales && report.inventorySales.length) {
 
-  const totalRevenue = report.inventorySales.reduce(
-    (sum, r) => sum + (Number(r.totalCost) || 0),
-    0
-  );
-
   const totalQty = report.inventorySales.reduce(
     (sum, r) => sum + (Number(r.quantitySold) || 0),
     0
   );
 
-  // 🚫 Columns we do NOT want displayed
-  const hiddenColumns = ["eventID", "category", "metadata", "rowCost", "source"];
+  const matched   = report.inventorySales.filter(r => r.unitPrice != null);
+  const unmatched = report.inventorySales.filter(r => r.unitPrice == null);
 
-  // ✅ Create filtered copy for display only
-  const displayInventorySales = report.inventorySales.map(row => {
-    const filtered = {};
-    Object.keys(row).forEach(key => {
-      if (!hiddenColumns.includes(key)) {
-        filtered[key] = row[key];
-      }
-    });
-    return filtered;
-  });
+  const totalCOGS = matched.reduce((sum, r) => sum + (Number(r.totalCost) || 0), 0);
+
+  // Build rows — unmatched items get a visual flag
+  const rowsHTML = report.inventorySales.map(r => {
+    const isUnmatched = r.unitPrice == null;
+    const rowStyle = isUnmatched ? ' style="background:#fffbeb;"' : '';
+    const costCell = isUnmatched
+      ? `<td style="color:#b45309;font-weight:600;">⚠️ No inventory cost — <a href="#" onclick="event.preventDefault();navigateTo('inventorySection');" style="color:#b45309;">Add to Inventory</a></td>`
+      : `<td>${fmt(Number(r.totalCost))}</td>`;
+    return `<tr${rowStyle}>
+      <td>${r.name ?? r.drinkName ?? ""}</td>
+      <td>${Number(r.quantitySold)}</td>
+      <td>${isUnmatched ? "—" : fmt(Number(r.unitPrice))}</td>
+      ${costCell}
+    </tr>`;
+  }).join("");
+
+  const unmatchedBanner = unmatched.length > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:0.85rem;color:#92400e;">
+      <span style="font-size:1.1rem">⚠️</span>
+      <span><strong>${unmatched.length} item${unmatched.length > 1 ? "s" : ""} missing inventory cost</strong> — COGS for these items is $0.
+      <a href="#" onclick="event.preventDefault();navigateTo('inventorySection');" style="color:#b45309;font-weight:600;">Open Inventory</a> to add unit costs.</span>
+    </div>` : "";
 
   drinkHTML = `
-    <div><strong>Total Items Sold:</strong> ${totalQty}</div>
-    <div><strong>Total Item Revenue:</strong> ${fmt(totalRevenue)}</div>
-    <hr>
+    ${unmatchedBanner}
+    <div style="display:flex;gap:20px;margin-bottom:8px;">
+      <div><strong>Total Items Sold:</strong> ${totalQty}</div>
+      <div><strong>Total COGS (matched):</strong> ${fmt(totalCOGS)}</div>
+    </div>
     <div class="card-table-wrapper">
-      ${buildTableHTMLString(displayInventorySales)}
+      <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+        <thead><tr style="background:#f3f4f6;text-align:left;">
+          <th style="padding:6px 8px;">Item</th>
+          <th style="padding:6px 8px;">Qty Sold</th>
+          <th style="padding:6px 8px;">Unit Cost</th>
+          <th style="padding:6px 8px;">Total COGS</th>
+        </tr></thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
     </div>
   `;
 }
