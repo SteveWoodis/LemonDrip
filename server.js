@@ -2252,9 +2252,12 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
       }
 
       // 3️⃣ Ensure EventExpenses row exists, then update laborFees
+      // Ceiling-round each shift's subtotal (matches Square's per-shift payroll rounding),
+      // then sum the already-ceiled values.
       const laborFees = laborRows.reduce((sum, r) => {
         const flat = Number(r.flatRate) || 0;
-        return sum + (flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0));
+        const rawSub = flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0);
+        return sum + Math.ceil(rawSub * 100) / 100;
       }, 0);
 
       await client.query(
@@ -3174,10 +3177,10 @@ app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
       hourlyRate: Number(tc.hourlyRate || 0)
     }));
 
-    const laborFees = laborRows.reduce(
-      (sum, r) => sum + r.hoursWorked * r.hourlyRate,
-      0
-    );
+    const laborFees = laborRows.reduce((sum, r) => {
+      const rawSub = r.hoursWorked * r.hourlyRate;
+      return sum + Math.ceil(rawSub * 100) / 100;
+    }, 0);
 
     // 4️⃣ Save labor atomically
     const client = await pool.connect();
@@ -4055,10 +4058,20 @@ async function buildPostEventReport(eventID) {
       ...(squareLaborRows || [])
     ];
 
+    // Recompute laborFees from actual rows (ceiling per shift, matching the Labor Card's recalc)
+    // This overrides any stale DB value so the Event Profit Summary always matches the Labor Card total.
+    const recomputedLaborFees = laborRows.reduce((sum, r) => {
+      const flat = Number(r.flatRate) || 0;
+      const rawSub = flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0);
+      return sum + Math.ceil(rawSub * 100) / 100;
+    }, 0);
+
+    const expensesWithLabor = { ...(expenses || {}), laborFees: recomputedLaborFees };
+
     // 4️⃣ Assemble report (same structure you had)
     const report = {
       event,
-      expenses: expenses || {},
+      expenses: expensesWithLabor,
       labor: laborRows,
       supplies: supplyRows || [],
       discounts: discountRows || [],
@@ -4104,7 +4117,7 @@ async function buildPostEventReport(eventID) {
      ? Number(report.sales?.squareFees || 0)
      : Number(expenses?.posFee || 0);
 
-   const exp = expenses || {};
+   const exp = expensesWithLabor;
    // totalExpenses = legitimate business costs only.
    // Sales tax (stateFoodTax) is excluded — it is collected from customers and remitted
    // to the state; it is never the business's expense.

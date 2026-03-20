@@ -3786,14 +3786,15 @@ function wireLaborCard(eventID) {
       const rate  = Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
       const flat  = Number(row.querySelector('[data-field="flatRate"]')?.value || 0);
 
-      const sub = Number((flat > 0 ? flat : hours * rate).toFixed(2));
+      const rawSub = flat > 0 ? flat : hours * rate;
+      const displaySub = Math.ceil(rawSub * 100) / 100;  // ceiling to nearest cent (matches Square)
       const subEl = row.querySelector(".labor-subtotal");
-      if (subEl) subEl.textContent = fmt(sub);
+      if (subEl) subEl.textContent = fmt(displaySub);
 
-      total += sub;
+      total += displaySub;  // sum ceiling-rounded subtotals to match Square's per-shift approach
     });
 
-    total = Number(total.toFixed(2));
+    total = Math.ceil(total * 100) / 100;
     totalEl.textContent = fmt(total);
 
     // ✅ push labor total into Expenses auto row + Profit Summary
@@ -4585,6 +4586,20 @@ if (report.inventorySales && report.inventorySales.length) {
 
   // Profit Summary — open by default, it's the destination
   if (report && report.sales && report.expenses) {
+    // Sync labor fees from the Labor Card's live recalc (ceiling-rounded per shift).
+    // wireLaborCard/recalc() already ran above and updated window.activeEvent.expenses.laborFees,
+    // but the report object still carries the stale server value — patch it before rendering.
+    const liveLaborFees = window.activeEvent?.expenses?.laborFees;
+    if (liveLaborFees !== undefined) {
+      const oldLaborFees = Number(report.expenses.laborFees || 0);
+      const delta = liveLaborFees - oldLaborFees;
+      report.expenses.laborFees = liveLaborFees;
+      if (report.summary && delta !== 0) {
+        report.summary.totalExpenses = Number(report.summary.totalExpenses || 0) + delta;
+        report.summary.netProfit     = Number(report.summary.netProfit     || 0) - delta;
+      }
+    }
+
     const profitCard = renderEventProfitSummary(report);
     // Force it open immediately
     const profitContent = profitCard.querySelector(".sheet-content");

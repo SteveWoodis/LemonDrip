@@ -1,0 +1,207 @@
+================================================================================
+ VENVIEW CODE REVIEW — IMPLEMENTATION SUMMARY
+ Source: venview-code-review.md  |  Completed: March 19, 2026
+================================================================================
+
+8 fixes implemented across 2 files:
+  - server.js          (backend — all server-side logic)
+  - frontend/app.js    (frontend — UI and sync handling)
+
+--------------------------------------------------------------------------------
+FIX 1 — Hardcoded Timezone  |  HIGH SEVERITY  |  server.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  Square sync used a hardcoded -06:00 (Central Time) offset for all vendors.
+  Any vendor outside Central Time (Boston, LA, etc.) would have their sales
+  window shifted 1-3 hours, missing transactions at the edges of event days.
+
+CHANGES:
+  - Added STATE_TIMEZONE map covering all 50 US states + DC (IANA timezone names)
+  - Added getUtcOffsetString() helper — DST-aware UTC offset from IANA timezone
+    and date using Intl.DateTimeFormat; falls back to Central on any error
+  - Added resolveEventTimezone() — uses stored event timezone, then state lookup,
+    then Central Time as last resort
+  - DB migration: ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "timezone" TEXT
+  - coerceEvent(), POST /api/events INSERT, and PUT /api/events/:id UPDATE all
+    now accept and persist the timezone field
+  - Square sync route: replaced hardcoded -06:00 with dynamic DST-aware offset
+    calculated from the event's stored timezone (or state/Central fallback)
+  - Console logs the resolved timezone and offset on every sync
+
+FILES: server.js
+
+--------------------------------------------------------------------------------
+FIX 2 — EventSalesFees Audit  |  MEDIUM SEVERITY  |  server.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  Every netProfit query deducted EventSalesFees totals but it was unclear
+  whether anything populated this table, raising the possibility of phantom
+  deductions on real vendor profit numbers.
+
+FINDING:
+  Table IS populated — recipes.calculateEventSalesFees() in recipes.js writes
+  to it during Square sync for Pro users with recipes configured. Legitimate
+  recipe-based COGS, not a ghost.
+
+CHANGES:
+  - Startup audit: on server start, queries SELECT COUNT(*) FROM "EventSalesFees"
+    and logs the result so production state is visible on every deploy:
+      * 0 rows  → warns that recipe COGS is $0 (expected if Recipes not used)
+      * N rows  → confirms recipe COGS is active
+  - NET_PROFIT_SQL comment documents EventSalesFees as recipe COGS so future
+    developers understand the deduction source
+
+FILES: server.js
+
+--------------------------------------------------------------------------------
+FIX 3 — supplyFees Missing + Duplicated Formula  |  HIGH SEVERITY  |  server.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  supplyFees (EventExpenses) was not deducted in /api/events, /api/events/kpi,
+  or /api/events/trend — only in the CSV export. Vendors who entered supply
+  costs saw different profit numbers depending on where they looked.
+  The netProfit SQL expression was duplicated across 4 routes with 3 slightly
+  different versions, making any future change error-prone.
+
+CHANGES:
+  - Extracted shared NET_PROFIT_SQL constant — single source of truth for
+    netProfit used by all 4 routes (list, KPI, trend, CSV)
+  - Added - COALESCE(x."supplyFees", 0) to the shared expression
+  - Revenue base: netSales (excludes tips, which are pass-through to staff)
+  - Deductions: EventSalesFees (recipe COGS) + all EventExpenses columns
+    including supplyFees + Square processing fees or manual posFee
+  - All 4 routes now reference NET_PROFIT_SQL — no more drift between them
+
+FILES: server.js
+
+--------------------------------------------------------------------------------
+FIX 4 — CSV Export Wrong Revenue Base  |  HIGH SEVERITY  |  server.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  /api/events/export/csv calculated netProfit starting from totalCollected
+  (cash received including tips). Every other query used netSales as the base.
+  Any event with tips produced a higher netProfit in the CSV than the dashboard.
+
+CHANGES:
+  - CSV route now uses NET_PROFIT_SQL (same as list/KPI/trend)
+  - Revenue base is now netSales for all 4 routes — consistent everywhere
+  - CSV also gained the additionalFees deduction and correct Square vs manual
+    POS fee logic that the old CSV formula was missing
+
+FILES: server.js
+
+--------------------------------------------------------------------------------
+FIX 5 — Pro COGS Uses Selling Price  |  MEDIUM SEVERITY  |  server.js, app.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  Pro COGS used base_price_money from Square (the customer's selling price) as
+  the cost of goods. COGS should be what the vendor paid to produce the item.
+  This made gross profit nearly zero for most events.
+
+CHANGES — server.js:
+  - Removed selling-price COGS calculation from the order loop entirely
+  - After the loop, Pro users get a VendorInventory reconciliation:
+      * Fetches all VendorInventory rows for the userId
+      * Builds a lowercase name map (itemName → unitCost)
+      * For each sold item: looks up unitCost, calculates totalCost = qty × unitCost
+      * Items with no inventory match: unitPrice/totalCost set to null,
+        flagged as unmatched, warning logged with item names
+  - Sync response includes cogs: { unmatchedCount, unmatchedItems[] }
+
+CHANGES — frontend/app.js:
+  - Inventory Sales card replaced generic table with purpose-built renderer:
+      * Yellow warning banner at top if any items have no inventory cost,
+        with count and link to Inventory section
+      * Individual unmatched rows highlighted amber with inline "Add to
+        Inventory" link
+      * Reports "Total COGS (matched)" instead of totaling nulls as $0
+  - Sync button reads cogs.unmatchedCount from response and shows a warning
+    toast listing how many items need cost entries in Inventory
+
+FILES: server.js, frontend/app.js
+
+--------------------------------------------------------------------------------
+FIX 6 — Token Refresh Handling  |  MEDIUM SEVERITY  |  server.js, app.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  Proactive refresh threshold was 7 days — too short, leaving little runway
+  before tokens go stale. On refresh failure, status was set to 'error' for
+  all failure types, making it impossible for the UI to distinguish between
+  "token expired (needs re-auth)" vs "connection error (may recover)".
+  Settings UI had no expiry warning for tokens approaching expiry.
+
+CHANGES — server.js:
+  - Proactive refresh threshold extended from 7 days to 30 days
+  - refreshSquareToken: on failure, sets status='expired' for auth failures
+    (HTTP 401/400) vs status='error' for unexpected errors
+  - getSquareToken: explicit 'expired' check with clear "re-authorize" message,
+    separate from the generic 'error' message
+
+CHANGES — frontend/app.js — renderSquarePanel now handles 3 states:
+  - status='expired'     → "Authorization Expired" badge, "Re-authorize Square"
+                           button, explains token must be re-approved via OAuth
+  - status='error'       → "Connection Error" badge, "Reconnect Square" button
+  - status='connected'
+    + expiring ≤30 days  → Yellow banner: "Token expires in N days — refreshes
+                           automatically on your next sync"
+
+FILES: server.js, frontend/app.js
+
+--------------------------------------------------------------------------------
+FIX 7 — Square Processing Fee Polarity  |  LOW SEVERITY  |  server.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  Square returns processing_fee amounts as negative integers (e.g. -250 = $2.50
+  fee). Accumulating without Math.abs() produced a negative squareFees value.
+  Subtracting a negative in the netProfit formula added to profit instead of
+  reducing it — silently inflating every synced event's net profit.
+
+CHANGES:
+  - Added Math.abs() to the processing fee accumulation:
+      squareFees += Math.abs(f.amount_money?.amount || 0) / 100;
+  - squareFees is now always a positive value; deducting it in NET_PROFIT_SQL
+    correctly reduces profit
+
+FILES: server.js
+
+--------------------------------------------------------------------------------
+FIX 8 — UX: 2-Minute Event Entry Flow  |  UX  |  frontend/app.js
+--------------------------------------------------------------------------------
+PROBLEM:
+  Supply/ingredient costs and labor are the two biggest friction points at
+  event entry. Blocking the initial profit view on these prevented vendors from
+  getting a useful number in under 2 minutes.
+
+CHANGES:
+  Supply cost lump-sum field (Add Event form):
+  - "Supply / Ingredient Cost" number field injected into the Add/Edit Event
+    form just above the submit button
+  - Starter fast path: single dollar-amount field maps to EventExpenses.supplyFees
+  - After event POST/PUT, if value > 0, automatically saves to
+    PUT /api/events/:id/expenses so the profit formula picks it up immediately
+  - Pro users can still use the full per-item Inventory system for precise COGS
+
+  Labor warning indicator (Profit Summary card):
+  - Yellow banner renders below Net Profit when laborFees = 0:
+      "Labor not yet entered — profit may change. [Add Labor]"
+  - "Add Labor" link scrolls to the labor section
+  - Banner disappears automatically once labor is entered (updateProfitSummary
+    checks laborFees on every recalc and toggles display accordingly)
+  - Decouples labor entry from the initial profit view — vendors see a useful
+    estimate immediately and refine it when ready
+
+FILES: frontend/app.js
+
+================================================================================
+ FILES CHANGED
+================================================================================
+
+  c:\LemonDrip\server.js          Fixes 1, 2, 3, 4, 5, 6, 7
+  c:\LemonDrip\frontend\app.js    Fixes 5, 6, 8
+
+  All other files (recipes.js, square_locations.js, styles.css, HTML files)
+  were read for context only — no changes made.
+
+================================================================================
+ END OF SUMMARY
+================================================================================
