@@ -146,6 +146,64 @@ const fs = require("fs");
 const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
 
 const SQUARE_APP_SECRET = process.env.SQUARE_APP_SECRET;
+
+// ── Timezone helpers ────────────────────────────────────────────────────────
+// Maps US state abbreviations to their primary IANA timezone.
+// Multi-timezone states use the timezone covering the majority of the population.
+const STATE_TIMEZONE = {
+  AL: 'America/Chicago',    AK: 'America/Anchorage',  AZ: 'America/Phoenix',
+  AR: 'America/Chicago',    CA: 'America/Los_Angeles', CO: 'America/Denver',
+  CT: 'America/New_York',   DE: 'America/New_York',   FL: 'America/New_York',
+  GA: 'America/New_York',   HI: 'Pacific/Honolulu',   ID: 'America/Denver',
+  IL: 'America/Chicago',    IN: 'America/Indiana/Indianapolis',
+  IA: 'America/Chicago',    KS: 'America/Chicago',    KY: 'America/New_York',
+  LA: 'America/Chicago',    ME: 'America/New_York',   MD: 'America/New_York',
+  MA: 'America/New_York',   MI: 'America/Detroit',    MN: 'America/Chicago',
+  MS: 'America/Chicago',    MO: 'America/Chicago',    MT: 'America/Denver',
+  NE: 'America/Chicago',    NV: 'America/Los_Angeles', NH: 'America/New_York',
+  NJ: 'America/New_York',   NM: 'America/Denver',     NY: 'America/New_York',
+  NC: 'America/New_York',   ND: 'America/Chicago',    OH: 'America/New_York',
+  OK: 'America/Chicago',    OR: 'America/Los_Angeles', PA: 'America/New_York',
+  RI: 'America/New_York',   SC: 'America/New_York',   SD: 'America/Chicago',
+  TN: 'America/Chicago',    TX: 'America/Chicago',    UT: 'America/Denver',
+  VT: 'America/New_York',   VA: 'America/New_York',   WA: 'America/Los_Angeles',
+  WV: 'America/New_York',   WI: 'America/Chicago',    WY: 'America/Denver',
+  DC: 'America/New_York',
+};
+
+// Returns a UTC offset string like "-06:00" or "+05:30" for an IANA timezone
+// on a given date (DST-aware). Falls back to Central Time on any error.
+function getUtcOffsetString(ianaTimezone, dateStr) {
+  try {
+    const ref = new Date(`${dateStr}T12:00:00.000Z`);
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: ianaTimezone,
+      timeZoneName: 'shortOffset',
+      hour: 'numeric',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(ref);
+    const tzName = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    // e.g. "GMT-6", "GMT+5:30", "GMT-05:00"
+    const match = tzName.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/);
+    if (!match) return '-06:00';
+    const sign  = match[1];
+    const hours = match[2].padStart(2, '0');
+    const mins  = (match[3] || '00').padStart(2, '0');
+    return `${sign}${hours}:${mins}`;
+  } catch {
+    return '-06:00'; // Central Time fallback
+  }
+}
+
+// Returns the IANA timezone for an event, using stored value first,
+// then state lookup, then Central Time as last resort.
+function resolveEventTimezone(ev) {
+  if (ev.timezone) return ev.timezone;
+  const state = (ev.state || '').toUpperCase().trim();
+  return STATE_TIMEZONE[state] || 'America/Chicago';
+}
+// ────────────────────────────────────────────────────────────────────────────
 const SQUARE_OAUTH_REDIRECT =
   process.env.SQUARE_OAUTH_REDIRECT ||
   "http://localhost:3000/api/square/oauth/callback";
@@ -481,6 +539,7 @@ async function initDb() {
       `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "quantityOnHand" REAL DEFAULT 0`,
       `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "reorderThreshold" REAL DEFAULT 0`,
       `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "reorderQty" REAL DEFAULT 0`,
+      `ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "timezone" TEXT`,
       `ALTER TABLE "EventSupplies" ADD COLUMN IF NOT EXISTS "vendorInventoryId" INTEGER`,
       `ALTER TABLE "UserPlan" ADD COLUMN IF NOT EXISTS "squareBannerDismissed" BOOLEAN DEFAULT FALSE`,
       `CREATE TABLE IF NOT EXISTS "InventoryAlerts" (
@@ -866,6 +925,33 @@ app.get("/api/admin/users", verifySession(), async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 💰 SHARED NET PROFIT SQL EXPRESSION
+// Single source of truth for netProfit used by list, KPI, trend, and CSV routes.
+// Revenue base: netSales (excludes tips — pass-through to staff, not revenue).
+// Deductions: recipe COGS (EventSalesFees) + all EventExpenses including supplyFees
+//             + Square processing fees (or manual posFee for non-Square events).
+// To add/remove a deduction, change it here — all four routes update automatically.
+// ─────────────────────────────────────────────────────────────────────────────
+const NET_PROFIT_SQL = `
+  COALESCE(s."netSales", e."grossSales", 0)
+  - COALESCE((SELECT SUM("totalCost") FROM "EventSalesFees" WHERE "eventID" = e."eventID"), 0)
+  - COALESCE(x."healthDeptFee", 0)
+  - COALESCE(x."eventFee", 0)
+  - COALESCE(x."additionalFees", 0)
+  - COALESCE(x."supplyFees", 0)
+  - COALESCE(x."mileageReimbursement", 0)
+  - COALESCE(x."eventRunnerFees", 0)
+  - COALESCE(x."employeeBonus", 0)
+  - COALESCE(x."coordinatorFee", 0)
+  - COALESCE(x."laborFees", 0)
+  - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
+      THEN COALESCE(s."squareFees", 0)
+      ELSE COALESCE(x."posFee", 0)
+    END
+`.trim();
+// ─────────────────────────────────────────────────────────────────────────────
+
 // -------------------------------
 // 🔍 GET /api/events (list/search)
 // -------------------------------
@@ -902,20 +988,7 @@ app.get("/api/events", async (req, res) => {
 
     const sql = `SELECT e.*,
       COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
-      COALESCE(s."netSales", e."grossSales", 0)
-        - COALESCE((SELECT SUM("totalCost") FROM "EventSalesFees" WHERE "eventID" = e."eventID"), 0)
-        - COALESCE(x."healthDeptFee", 0)
-        - COALESCE(x."eventFee", 0)
-        - COALESCE(x."additionalFees", 0)
-        - COALESCE(x."mileageReimbursement", 0)
-        - COALESCE(x."eventRunnerFees", 0)
-        - COALESCE(x."employeeBonus", 0)
-        - COALESCE(x."coordinatorFee", 0)
-        - COALESCE(x."laborFees", 0)
-        - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
-            THEN COALESCE(s."squareFees", 0)
-            ELSE COALESCE(x."posFee", 0)
-          END AS "netProfit"
+      (${NET_PROFIT_SQL}) AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -940,28 +1013,13 @@ app.get("/api/events", async (req, res) => {
 app.get("/api/events/kpi", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
-    const netExpr = `
-      COALESCE(s."netSales", e."grossSales", 0)
-      - COALESCE((SELECT SUM("totalCost") FROM "EventSalesFees" WHERE "eventID" = e."eventID"), 0)
-      - COALESCE(x."healthDeptFee", 0)
-      - COALESCE(x."eventFee", 0)
-      - COALESCE(x."additionalFees", 0)
-      - COALESCE(x."mileageReimbursement", 0)
-      - COALESCE(x."employeeBonus", 0)
-      - COALESCE(x."coordinatorFee", 0)
-      - COALESCE(x."laborFees", 0)
-      - COALESCE(x."eventRunnerFees", 0)
-      - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
-          THEN COALESCE(s."squareFees", 0)
-          ELSE COALESCE(x."posFee", 0)
-        END`;
 
     const [stats] = await dbAll(`
       SELECT
         COUNT(*)                                                             AS "totalEvents",
         COUNT(*) FILTER (WHERE e."isFinalized" = 1)                         AS "finalizedEvents",
         COALESCE(SUM(COALESCE(s."grossSales", e."grossSales", 0)), 0)       AS "totalGrossSales",
-        COALESCE(SUM(${netExpr}), 0)                                        AS "totalNetProfit"
+        COALESCE(SUM(${NET_PROFIT_SQL}), 0)                                 AS "totalNetProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -969,7 +1027,7 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
     `, [userId]);
 
     const [bestEvent] = await dbAll(`
-      SELECT e."eventName", e."eventDate", (${netExpr}) AS "netProfit"
+      SELECT e."eventName", e."eventDate", (${NET_PROFIT_SQL}) AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -997,33 +1055,11 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
 app.get("/api/events/trend", searchLimiter, async (req, res) => {
   try {
     const userId = req.session.getUserId();
-    // Mirror buildPostEventReport exactly:
-    //   revenue = netSales (excludes tips, which are pass-through)
-    //   COGS    = sum of EventSalesFees (ingredient costs)
-    //   expenses = same columns as totalExpenses in buildPostEventReport
-    //             (supplyFees removed; additionalFees added)
     const rows = await dbAll(`
       SELECT
         e."eventName",
         e."eventDate",
-        COALESCE(s."netSales", e."grossSales", 0)
-        - COALESCE((
-            SELECT SUM("totalCost") FROM "EventSalesFees"
-            WHERE "eventID" = e."eventID"
-          ), 0)
-        - COALESCE(x."healthDeptFee", 0)
-        - COALESCE(x."eventFee", 0)
-        - COALESCE(x."additionalFees", 0)
-        - COALESCE(x."mileageReimbursement", 0)
-        - COALESCE(x."eventRunnerFees", 0)
-        - COALESCE(x."employeeBonus", 0)
-        - COALESCE(x."coordinatorFee", 0)
-        - COALESCE(x."laborFees", 0)
-        - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
-            THEN COALESCE(s."squareFees", 0)
-            ELSE COALESCE(x."posFee", 0)
-          END
-        AS "netProfit"
+        (${NET_PROFIT_SQL}) AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -1054,12 +1090,7 @@ app.get("/api/events/export/csv", searchLimiter, async (req, res) => {
         e."numDays", e."coordinator", e."eventHost", e."eventLocation",
         e."status", e."isFinalized", e."finalizedDate", e."eventFee",
         COALESCE(s."grossSales", e."grossSales", 0) AS "grossSales",
-        COALESCE(s."totalCollected", 0)
-          - COALESCE(x."healthDeptFee", 0) - COALESCE(x."eventFee", 0)
-          - COALESCE(x."mileageReimbursement", 0) - COALESCE(x."eventRunnerFees", 0)
-          - COALESCE(x."employeeBonus", 0) - COALESCE(x."coordinatorFee", 0)
-          - COALESCE(x."posFee", 0) - COALESCE(x."supplyFees", 0)
-          - COALESCE(x."laborFees", 0) AS "netProfit"
+        (${NET_PROFIT_SQL}) AS "netProfit"
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
@@ -1586,10 +1617,10 @@ app.post("/api/events",
         "healthDeptFee", "mileageReimbursement", "eventRunnerFees",
         "giftCardSales",
         "cash", "card", "wallet", "Other", "cashApp",
-        "taxOverride", "state", "zipCode"
+        "taxOverride", "state", "zipCode", "timezone"
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
+              $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
       RETURNING "eventID"
     `;
 
@@ -1628,6 +1659,7 @@ app.post("/api/events",
       e.taxOverride ?? null,
       e.state,
       e.zipCode ?? null,
+      e.timezone ?? null,
     ];
 
     const result = await pool.query(sql, params);
@@ -1718,8 +1750,8 @@ app.put("/api/events/:id",
         "healthDeptFee"=$22, "mileageReimbursement"=$23, "eventRunnerFees"=$24,
         "giftCardSales"=$25,
         "cash"=$26, "card"=$27, "wallet"=$28, "Other"=$29, "cashApp"=$30,
-        "taxOverride"=$31, "state"=$32, "zipCode"=$33
-      WHERE "eventID"=$34 AND "userId"=$35
+        "taxOverride"=$31, "state"=$32, "zipCode"=$33, "timezone"=$34
+      WHERE "eventID"=$35 AND "userId"=$36
     `;
 
     const params = [
@@ -1756,6 +1788,7 @@ app.put("/api/events/:id",
       e.taxOverride ?? null,
       e.state,
       e.zipCode ?? null,
+      e.timezone ?? null,
       id,
       userId
     ];
@@ -1876,8 +1909,12 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
       lastDate = d.toISOString().slice(0, 10);
     }
 
-    const localStart = new Date(`${firstDate}T00:00:00-06:00`);
-    const localEnd   = new Date(`${lastDate}T23:59:59-06:00`);
+    const eventTimezone = resolveEventTimezone(ev);
+    const startOffset   = getUtcOffsetString(eventTimezone, firstDate);
+    const endOffset     = getUtcOffsetString(eventTimezone, lastDate);
+    console.log(`🌍 Event timezone: ${eventTimezone} (${startOffset} on ${firstDate})`);
+    const localStart = new Date(`${firstDate}T00:00:00${startOffset}`);
+    const localEnd   = new Date(`${lastDate}T23:59:59${endOffset}`);
 
     const orderStartISO   = localStart.toISOString();
     const orderEndISO     = localEnd.toISOString();
@@ -1982,38 +2019,13 @@ for (const order of orders) {
       discounts += li.total_discount_money.amount / 100;
     }
 
-    // ── STARTER / PRO COST LOGIC ──
-    let unitPrice = null;
-    let rowCost = null;
-
-    if (IS_PRO) {
-      const resolvedUnitPrice =
-        (li.base_price_money?.amount ??
-         li.variation_total_price_money?.amount ??
-         0) / 100;
-
-      unitPrice = resolvedUnitPrice;
-      rowCost = resolvedUnitPrice * qty;
-      totalDrinkCost += rowCost;
-    }
-
     // ── AGGREGATE DRINKS ──
+    // Pro: unit costs come from VendorInventory (reconciled after loop).
+    // Square's base_price_money is the selling price, not cost of goods.
     if (!drinkMap.has(name)) {
-      drinkMap.set(name, {
-        drinkName: name,
-        unitPrice,
-        quantitySold: qty,
-        rowCost,
-        totalCost: rowCost
-      });
+      drinkMap.set(name, { drinkName: name, unitPrice: null, quantitySold: qty, rowCost: null, totalCost: null });
     } else {
-      const d = drinkMap.get(name);
-      d.quantitySold += qty;
-
-      if (IS_PRO) {
-        d.rowCost = unitPrice * qty;
-        d.totalCost += d.rowCost;
-      }
+      drinkMap.get(name).quantitySold += qty;
     }
   }
 }
@@ -2021,13 +2033,49 @@ for (const order of orders) {
 
 inventoryRows = Array.from(drinkMap.values());
 
+// ── PRO COGS: reconcile quantities against VendorInventory unit costs ──────
+// Square's base_price_money is the customer's selling price — not what the
+// vendor paid to produce the item. Real COGS comes from VendorInventory.unitCost.
+if (IS_PRO) {
+  const invRows = await dbAll(
+    `SELECT "itemName", "unitCost" FROM "VendorInventory" WHERE "userId" = $1`,
+    [userId]
+  );
+  const invByName = new Map(invRows.map(r => [r.itemName.toLowerCase(), Number(r.unitCost)]));
+
+  for (const item of inventoryRows) {
+    const unitCost = invByName.get(item.drinkName.toLowerCase()) ?? null;
+    item.unitPrice = unitCost;
+    if (unitCost !== null) {
+      item.rowCost   = unitCost * item.quantitySold;
+      item.totalCost = item.rowCost;
+      totalDrinkCost += item.totalCost;
+    } else {
+      item.rowCost   = null;
+      item.totalCost = null;
+      item.unmatched = true;
+    }
+  }
+
+  const unmatched = inventoryRows.filter(r => r.unmatched);
+  if (unmatched.length > 0) {
+    console.warn(
+      `⚠️  Pro COGS: ${unmatched.length} item(s) not in VendorInventory — COGS set to $0. ` +
+      `Add them in Inventory to track costs: ${unmatched.map(r => r.drinkName).join(', ')}`
+    );
+  }
+  console.log(`✅ Pro COGS reconciled: totalDrinkCost=$${totalDrinkCost.toFixed(2)}`);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 console.table(
   inventoryRows.map(d => ({
     drink: d.drinkName,
     qty: d.quantitySold,
-    unitPrice: d.unitPrice,
+    unitCost: d.unitPrice,
     rowCost: d.rowCost,
-    totalCost: d.totalCost
+    totalCost: d.totalCost,
+    unmatched: d.unmatched || false
   }))
 );
 console.log({ grossSales, discounts, netSales, totalCollected });
@@ -2068,7 +2116,9 @@ console.log({ grossSales, discounts, netSales, totalCollected });
         totalCollected += (pay.amount_money?.amount || 0) / 100;
 
         for (const f of pay.processing_fee || []) {
-          squareFees += (f.amount_money.amount || 0) / 100;
+          // Square reports processing fees as negative integers; Math.abs() ensures
+          // squareFees is always a positive number so subtracting it reduces profit.
+          squareFees += Math.abs(f.amount_money?.amount || 0) / 100;
         }
       }
 
@@ -2132,6 +2182,10 @@ console.log({ grossSales, discounts, netSales, totalCollected });
 
     await saveInventorySales(eventID, inventoryRows);
 
+    const unmatchedItems = IS_PRO
+      ? inventoryRows.filter(r => r.unmatched).map(r => r.drinkName)
+      : [];
+
     res.json({
       success: true,
       sales: {
@@ -2142,6 +2196,10 @@ console.log({ grossSales, discounts, netSales, totalCollected });
         tips,
         totalCollected,
         squareFees
+      },
+      cogs: {
+        unmatchedCount: unmatchedItems.length,
+        unmatchedItems
       }
     });
 
@@ -2194,9 +2252,12 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
       }
 
       // 3️⃣ Ensure EventExpenses row exists, then update laborFees
+      // Ceiling-round each shift's subtotal (matches Square's per-shift payroll rounding),
+      // then sum the already-ceiled values.
       const laborFees = laborRows.reduce((sum, r) => {
         const flat = Number(r.flatRate) || 0;
-        return sum + (flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0));
+        const rawSub = flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0);
+        return sum + Math.ceil(rawSub * 100) / 100;
       }, 0);
 
       await client.query(
@@ -3116,10 +3177,10 @@ app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
       hourlyRate: Number(tc.hourlyRate || 0)
     }));
 
-    const laborFees = laborRows.reduce(
-      (sum, r) => sum + r.hoursWorked * r.hourlyRate,
-      0
-    );
+    const laborFees = laborRows.reduce((sum, r) => {
+      const rawSub = r.hoursWorked * r.hourlyRate;
+      return sum + Math.ceil(rawSub * 100) / 100;
+    }, 0);
 
     // 4️⃣ Save labor atomically
     const client = await pool.connect();
@@ -3331,16 +3392,20 @@ async function getSquareToken(userId) {
   if (!row) {
     throw new Error("Square account not connected. Please connect via Settings.");
   }
+  if (row.status === 'expired') {
+    throw new Error("Square authorization has expired. Please reconnect via Settings.");
+  }
   if (row.status === 'error') {
-    throw new Error("Square connection needs to be reconnected. Please visit Settings.");
+    throw new Error("Square connection has an error. Please reconnect via Settings.");
   }
   if (row.status !== 'connected') {
     throw new Error(`Square connection status is '${row.status}'. Please reconnect via Settings.`);
   }
 
-  // Refresh proactively if expiring within 7 days
-  const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  if (row.refreshTokenEnc && row.expiresAt && new Date(row.expiresAt) < sevenDaysFromNow) {
+  // Refresh proactively if expiring within 30 days — gives plenty of runway
+  // before the token goes stale and syncs start failing with 401s.
+  const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  if (row.refreshTokenEnc && row.expiresAt && new Date(row.expiresAt) < thirtyDaysFromNow) {
     return refreshSquareToken(userId, row);
   }
 
@@ -3478,7 +3543,9 @@ async function saveEventLabor(eventID, laborList) {
 
 // Refreshes the Square access token for a user on-demand.
 // Returns the new plain-text access token.
-// On failure: marks status='error' in SquareConnection so the UI can prompt reconnect.
+// On auth failure (401/invalid_grant): marks status='expired' — token cannot be reused,
+//   vendor must re-authorize via OAuth.
+// On unexpected errors: marks status='error' — likely a network/config issue, may recover.
 async function refreshSquareToken(userId, row) {
   if (!row.refreshTokenEnc) {
     throw new Error("Cannot refresh Square token: no refresh token stored.");
@@ -3514,12 +3581,23 @@ async function refreshSquareToken(userId, row) {
     return access_token;
 
   } catch (err) {
-    console.error("❌ Square token refresh failed for user:", userId, err.response?.data || err.message);
-    await dbRun(
-      `UPDATE "SquareConnection" SET "status" = 'error', "updatedAt" = NOW() WHERE "userId" = $1`,
-      [userId]
+    const httpStatus = err.response?.status;
+    const isAuthFailure = httpStatus === 401 || httpStatus === 400;
+    const newStatus = isAuthFailure ? 'expired' : 'error';
+
+    console.error(
+      `❌ Square token refresh failed for user: ${userId} — status=${newStatus}`,
+      err.response?.data || err.message
     );
-    throw new Error("Square token expired and could not be refreshed. Please reconnect via Settings.");
+    await dbRun(
+      `UPDATE "SquareConnection" SET "status" = $1, "updatedAt" = NOW() WHERE "userId" = $2`,
+      [newStatus, userId]
+    );
+    throw new Error(
+      isAuthFailure
+        ? "Square authorization has expired. Please reconnect via Settings."
+        : "Square token refresh failed. Please reconnect via Settings."
+    );
   }
 }
 
@@ -3875,6 +3953,7 @@ function coerceEvent(body) {
     taxOverride: toNum(body.taxOverride),
     state: toStr(body.state),
     zipCode: toStr(body.zipCode),
+    timezone: toStr(body.timezone),
     customFields:
       body.customFields && Object.keys(body.customFields).length
         ? JSON.stringify(body.customFields)
@@ -3979,10 +4058,20 @@ async function buildPostEventReport(eventID) {
       ...(squareLaborRows || [])
     ];
 
+    // Recompute laborFees from actual rows (ceiling per shift, matching the Labor Card's recalc)
+    // This overrides any stale DB value so the Event Profit Summary always matches the Labor Card total.
+    const recomputedLaborFees = laborRows.reduce((sum, r) => {
+      const flat = Number(r.flatRate) || 0;
+      const rawSub = flat > 0 ? flat : (Number(r.hoursWorked) || 0) * (Number(r.hourlyRate) || 0);
+      return sum + Math.ceil(rawSub * 100) / 100;
+    }, 0);
+
+    const expensesWithLabor = { ...(expenses || {}), laborFees: recomputedLaborFees };
+
     // 4️⃣ Assemble report (same structure you had)
     const report = {
       event,
-      expenses: expenses || {},
+      expenses: expensesWithLabor,
       labor: laborRows,
       supplies: supplyRows || [],
       discounts: discountRows || [],
@@ -4028,7 +4117,7 @@ async function buildPostEventReport(eventID) {
      ? Number(report.sales?.squareFees || 0)
      : Number(expenses?.posFee || 0);
 
-   const exp = expenses || {};
+   const exp = expensesWithLabor;
    // totalExpenses = legitimate business costs only.
    // Sales tax (stateFoodTax) is excluded — it is collected from customers and remitted
    // to the state; it is never the business's expense.
@@ -4367,6 +4456,23 @@ app.use(stErrorHandler());
 (async () => {
   try {
     await initDb();
+
+    // ── EventSalesFees audit ─────────────────────────────────────────────────
+    // This table is populated by recipes.calculateEventSalesFees() during Square
+    // sync (recipe-based COGS). On startup we log the row count so you can confirm
+    // production data looks sane. If count is always 0 and you never use the
+    // Recipes feature, remove the EventSalesFees subquery from all netProfit
+    // formulas (list, KPI, trend, CSV) to eliminate phantom deductions.
+    pool.query(`SELECT COUNT(*) AS cnt FROM "EventSalesFees"`).then(({ rows }) => {
+      const cnt = Number(rows[0]?.cnt ?? 0);
+      if (cnt === 0) {
+        console.warn('⚠️  EventSalesFees is empty — recipe COGS = $0 for all events. ' +
+          'If you do not use the Recipes feature, this is expected.');
+      } else {
+        console.log(`✅ EventSalesFees: ${cnt} rows (recipe COGS active)`);
+      }
+    }).catch(err => console.warn('⚠️  EventSalesFees audit query failed:', err.message));
+    // ────────────────────────────────────────────────────────────────────────
 
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, "0.0.0.0", () =>

@@ -2057,6 +2057,17 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
 
   await uploadEventPermits(eventID);
 
+  // Save supply cost lump sum (form_supplyFees) to EventExpenses if provided
+  const supplyFeesInput = document.getElementById("form_supplyFees");
+  const supplyFeesVal = supplyFeesInput ? Number(supplyFeesInput.value) : 0;
+  if (supplyFeesVal > 0) {
+    await fetch(`${API_BASE}/api/events/${eventID}/expenses`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supplyFees: supplyFeesVal })
+    }).catch(err => console.warn("⚠️ Could not save supply fees:", err));
+  }
+
   showToast(isEditing ? "Event updated!" : "Event created!", "success");
 
   window.isEditing = false;
@@ -2683,6 +2694,19 @@ console.log("✅ fields resolved:", fields);
 
   // Wire numDays + render initial day rows for new events
   initNumDaysField(existing.numDays || 1, []);
+
+  // ── Supply / Ingredient Cost (lump sum) ─────────────────────────────────
+  // Starter fast path: single field so vendors can get a profit number in
+  // under 2 minutes without filling out per-item inventory.
+  // Maps to EventExpenses.supplyFees. Saved after the event POST/PUT.
+  const supplyWrapper = document.createElement("label");
+  supplyWrapper.innerHTML = `Supply / Ingredient Cost
+    <input type="number" id="form_supplyFees" name="supplyFees"
+           min="0" step="0.01" placeholder="0.00"
+           style="display:block;width:100%;margin-top:4px;"
+           title="Total you spent on ingredients and supplies for this event">`;
+  formContainer.appendChild(supplyWrapper);
+  // ────────────────────────────────────────────────────────────────────────
 
   // Add buttons — labels depend on context (new vs edit vs duplicate)
   const btnContainer = document.createElement("div");
@@ -3405,6 +3429,11 @@ function renderEventProfitSummary(report) {
       <div class="section-divider"></div>
       <div class="ledger-row final-row ${netProfitClass}"><span class="ledger-label">Net Profit</span><span class="ledger-amount gross-profit">${fmt(netProfit)}</span></div>
 
+      <div id="labor-warning-indicator" style="display:${Number(expenses.laborFees || 0) > 0 ? 'none' : 'flex'};align-items:center;gap:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:0.85rem;color:#92400e;">
+        <span style="font-size:1.1rem">⚠️</span>
+        <span>Labor not yet entered — profit may change. <a href="#" onclick="event.preventDefault();document.getElementById('laborSection')?.scrollIntoView({behavior:'smooth'});" style="color:#b45309;font-weight:600;">Add Labor</a></span>
+      </div>
+
       <div class="section-divider"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="section-title" style="margin:0">For Your Records</div>
@@ -3515,6 +3544,14 @@ function updateProfitSummary() {
   // Update the profit figure in the DOM
   const el = document.querySelector(".profit-summary .gross-profit");
   if (el) el.textContent = `$${netProfit.toFixed(2)}`;
+
+  // Labor warning: show yellow indicator when no labor has been entered so the
+  // vendor knows the profit figure may change once labor is added.
+  const laborWarningEl = document.getElementById("labor-warning-indicator");
+  const hasLabor = Number(expenses?.laborFees || 0) > 0;
+  if (laborWarningEl) {
+    laborWarningEl.style.display = hasLabor ? "none" : "flex";
+  }
 }
 
 
@@ -3749,14 +3786,15 @@ function wireLaborCard(eventID) {
       const rate  = Number(row.querySelector('[data-field="hourlyRate"]')?.value || 0);
       const flat  = Number(row.querySelector('[data-field="flatRate"]')?.value || 0);
 
-      const sub = Number((flat > 0 ? flat : hours * rate).toFixed(2));
+      const rawSub = flat > 0 ? flat : hours * rate;
+      const displaySub = Math.ceil(rawSub * 100) / 100;  // ceiling to nearest cent (matches Square)
       const subEl = row.querySelector(".labor-subtotal");
-      if (subEl) subEl.textContent = fmt(sub);
+      if (subEl) subEl.textContent = fmt(displaySub);
 
-      total += sub;
+      total += displaySub;  // sum ceiling-rounded subtotals to match Square's per-shift approach
     });
 
-    total = Number(total.toFixed(2));
+    total = Math.ceil(total * 100) / 100;
     totalEl.textContent = fmt(total);
 
     // ✅ push labor total into Expenses auto row + Profit Summary
@@ -4337,8 +4375,18 @@ try {
       }
       withSpinner(squareSalesBtn, async () => {
         try {
-          await pullSquareSales(eventID);
+          const syncResult = await pullSquareSales(eventID);
           await reloadEventDashboard();
+          const unmatched = syncResult?.cogs?.unmatchedCount ?? 0;
+          if (unmatched > 0) {
+            showToast(
+              `Square sync complete. ${unmatched} item${unmatched > 1 ? "s" : ""} missing inventory cost — open Inventory to add unit costs.`,
+              "warning",
+              6000
+            );
+          } else {
+            showToast("Square sales synced.", "success");
+          }
         } catch (err) {
           console.error("Square Sales pull error:", err);
           showToast("Failed to pull Square sales.", "error", 3500, () => pullSquareSales(eventID).then(reloadEventDashboard));
@@ -4439,36 +4487,54 @@ if (report.event?.customFields) {
 
 if (report.inventorySales && report.inventorySales.length) {
 
-  const totalRevenue = report.inventorySales.reduce(
-    (sum, r) => sum + (Number(r.totalCost) || 0),
-    0
-  );
-
   const totalQty = report.inventorySales.reduce(
     (sum, r) => sum + (Number(r.quantitySold) || 0),
     0
   );
 
-  // 🚫 Columns we do NOT want displayed
-  const hiddenColumns = ["eventID", "category", "metadata", "rowCost", "source"];
+  const matched   = report.inventorySales.filter(r => r.unitPrice != null);
+  const unmatched = report.inventorySales.filter(r => r.unitPrice == null);
 
-  // ✅ Create filtered copy for display only
-  const displayInventorySales = report.inventorySales.map(row => {
-    const filtered = {};
-    Object.keys(row).forEach(key => {
-      if (!hiddenColumns.includes(key)) {
-        filtered[key] = row[key];
-      }
-    });
-    return filtered;
-  });
+  const totalCOGS = matched.reduce((sum, r) => sum + (Number(r.totalCost) || 0), 0);
+
+  // Build rows — unmatched items get a visual flag
+  const rowsHTML = report.inventorySales.map(r => {
+    const isUnmatched = r.unitPrice == null;
+    const rowStyle = isUnmatched ? ' style="background:#fffbeb;"' : '';
+    const costCell = isUnmatched
+      ? `<td style="color:#b45309;font-weight:600;">⚠️ No inventory cost — <a href="#" onclick="event.preventDefault();navigateTo('inventorySection');" style="color:#b45309;">Add to Inventory</a></td>`
+      : `<td>${fmt(Number(r.totalCost))}</td>`;
+    return `<tr${rowStyle}>
+      <td>${r.name ?? r.drinkName ?? ""}</td>
+      <td>${Number(r.quantitySold)}</td>
+      <td>${isUnmatched ? "—" : fmt(Number(r.unitPrice))}</td>
+      ${costCell}
+    </tr>`;
+  }).join("");
+
+  const unmatchedBanner = unmatched.length > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:0.85rem;color:#92400e;">
+      <span style="font-size:1.1rem">⚠️</span>
+      <span><strong>${unmatched.length} item${unmatched.length > 1 ? "s" : ""} missing inventory cost</strong> — COGS for these items is $0.
+      <a href="#" onclick="event.preventDefault();navigateTo('inventorySection');" style="color:#b45309;font-weight:600;">Open Inventory</a> to add unit costs.</span>
+    </div>` : "";
 
   drinkHTML = `
-    <div><strong>Total Items Sold:</strong> ${totalQty}</div>
-    <div><strong>Total Item Revenue:</strong> ${fmt(totalRevenue)}</div>
-    <hr>
+    ${unmatchedBanner}
+    <div style="display:flex;gap:20px;margin-bottom:8px;">
+      <div><strong>Total Items Sold:</strong> ${totalQty}</div>
+      <div><strong>Total COGS (matched):</strong> ${fmt(totalCOGS)}</div>
+    </div>
     <div class="card-table-wrapper">
-      ${buildTableHTMLString(displayInventorySales)}
+      <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+        <thead><tr style="background:#f3f4f6;text-align:left;">
+          <th style="padding:6px 8px;">Item</th>
+          <th style="padding:6px 8px;">Qty Sold</th>
+          <th style="padding:6px 8px;">Unit Cost</th>
+          <th style="padding:6px 8px;">Total COGS</th>
+        </tr></thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
     </div>
   `;
 }
@@ -4520,6 +4586,20 @@ if (report.inventorySales && report.inventorySales.length) {
 
   // Profit Summary — open by default, it's the destination
   if (report && report.sales && report.expenses) {
+    // Sync labor fees from the Labor Card's live recalc (ceiling-rounded per shift).
+    // wireLaborCard/recalc() already ran above and updated window.activeEvent.expenses.laborFees,
+    // but the report object still carries the stale server value — patch it before rendering.
+    const liveLaborFees = window.activeEvent?.expenses?.laborFees;
+    if (liveLaborFees !== undefined) {
+      const oldLaborFees = Number(report.expenses.laborFees || 0);
+      const delta = liveLaborFees - oldLaborFees;
+      report.expenses.laborFees = liveLaborFees;
+      if (report.summary && delta !== 0) {
+        report.summary.totalExpenses = Number(report.summary.totalExpenses || 0) + delta;
+        report.summary.netProfit     = Number(report.summary.netProfit     || 0) - delta;
+      }
+    }
+
     const profitCard = renderEventProfitSummary(report);
     // Force it open immediately
     const profitContent = profitCard.querySelector(".sheet-content");
@@ -6546,8 +6626,18 @@ function renderSquarePanel() {
   } else if (s.status === "connected") {
     badge.className   = "sq-badge sq-badge-on";
     badge.textContent = "Connected";
-    const expires = s.expiresAt ? new Date(s.expiresAt).toLocaleDateString() : "—";
+    const expiresAt  = s.expiresAt ? new Date(s.expiresAt) : null;
+    const expires    = expiresAt ? expiresAt.toLocaleDateString() : "—";
+    const daysLeft   = expiresAt ? Math.ceil((expiresAt - Date.now()) / 86400000) : null;
+    const expiringSoon = daysLeft !== null && daysLeft <= 30;
+    const expiryWarning = expiringSoon
+      ? `<div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:0.85rem;color:#92400e;">
+           <span>⚠️</span>
+           <span>Token expires in <strong>${daysLeft} day${daysLeft !== 1 ? "s" : ""}</strong> — it will refresh automatically on your next sync.</span>
+         </div>`
+      : "";
     body.innerHTML = `
+      ${expiryWarning}
       <div class="sq-connected-stats">
         <div class="sq-conn-stat">
           <div class="sq-conn-stat-label">Merchant ID</div>
@@ -6563,15 +6653,29 @@ function renderSquarePanel() {
         <button class="sq-btn-disconnect" onclick="disconnectSquare()">Disconnect</button>
       </div>`;
 
+  } else if (s.status === "expired") {
+    badge.className   = "sq-badge sq-badge-warn";
+    badge.textContent = "Authorization Expired";
+    body.innerHTML = `
+      <div class="sq-warn-notice">
+        <div class="sq-warn-icon">🔑</div>
+        <div class="sq-warn-text">
+          <strong>Square authorization has expired</strong>
+          <p>Your event data is safe. Re-authorize with Square to resume automatic syncing — takes about 30 seconds.</p>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="startSquareOAuth()">🔄 Re-authorize Square</button>
+      <p class="sq-reassurance">🔒 You'll be redirected to Square to re-approve access</p>`;
+
   } else {
     // status === 'error' or anything unexpected
     badge.className   = "sq-badge sq-badge-warn";
-    badge.textContent = "Needs Reconnect";
+    badge.textContent = "Connection Error";
     body.innerHTML = `
       <div class="sq-warn-notice">
         <div class="sq-warn-icon">⚠️</div>
         <div class="sq-warn-text">
-          <strong>Your Square connection needs to be renewed</strong>
+          <strong>Square connection encountered an error</strong>
           <p>Your existing event data is safe — reconnect to resume automatic syncing.</p>
         </div>
       </div>
