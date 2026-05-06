@@ -584,6 +584,20 @@ async function initDb() {
            ALTER TABLE "OAuthState" ALTER COLUMN "userId" DROP DEFAULT;
          END IF;
        END $$`,
+      // ── POS item mapping table (generic — supports Square, Clover, Toast, Shopify) ──
+      `CREATE TABLE IF NOT EXISTS "PosItemMapping" (
+        "id"            SERIAL PRIMARY KEY,
+        "userId"        TEXT NOT NULL,
+        "posSystem"     TEXT NOT NULL DEFAULT 'square',
+        "posItemId"     TEXT NOT NULL,
+        "posItemName"   TEXT,
+        "variationName" TEXT,
+        "inventoryId"   INTEGER REFERENCES "VendorInventory"("id") ON DELETE SET NULL,
+        "createdAt"     TIMESTAMP DEFAULT NOW(),
+        UNIQUE ("userId", "posSystem", "posItemId")
+      )`,
+      `CREATE INDEX IF NOT EXISTS "PosItemMapping_userId_idx"
+         ON "PosItemMapping" ("userId", "posSystem")`,
     ];
 
     for (const sql of migrations) {
@@ -1142,7 +1156,8 @@ app.get("/api/square/oauth/start", squareLimiter, verifySession(), async (req, r
     "EMPLOYEES_READ",
     "ORDERS_READ",
     "PAYMENTS_READ",
-    "MERCHANT_PROFILE_READ"
+    "MERCHANT_PROFILE_READ",
+    "ITEMS_READ"          // needed for catalog fetch (mapping screen)
   ];
 
   const params = new URLSearchParams({
@@ -1980,12 +1995,42 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
         console.log("🧾 SAMPLE ORDER KEYS:", Object.keys(orders[0]));
       }
       ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
+
+      // ── DEBUG: dump raw Square orders to file ──────────────────
+      try {
+        const debugPath = require("path").join(require("os").tmpdir(), "square_orders_debug.json");
+        const debugPayload = {
+          fetchedAt: new Date().toISOString(),
+          eventID,
+          totalOrders: orders.length,
+          orders: orders.map((o, idx) => {
+            console.log(
+              `[Square Order ${idx + 1}/${orders.length}] id=${o.id} state=${o.state}` +
+              ` line_items=${(o.line_items || []).length}` +
+              ` total=${((o.total_money?.amount || 0) / 100).toFixed(2)}`
+            );
+            (o.line_items || []).forEach((li, liIdx) => {
+              console.log(
+                `  └─ item ${liIdx + 1}: "${li.name}" qty=${li.quantity}` +
+                ` gross=$${((li.gross_sales_money?.amount || li.total_money?.amount || 0) / 100).toFixed(2)}`
+              );
+            });
+            return o;
+          }),
+        };
+        fs.writeFileSync(debugPath, JSON.stringify(debugPayload, null, 2), "utf8");
+        console.log(`📝 Square orders written to ${debugPath}`);
+      } catch (debugErr) {
+        console.warn("⚠️ Could not write square_orders_debug.json:", debugErr.message);
+      }
+      // ──────────────────────────────────────────────────────────
+
     } catch (err) {
       console.error("❌ Orders fetch failed:", err);
       return res.status(500).json({ error: "Orders fetch failed" });
     }
 
-    
+
     // ─────────────────────────────────────────────
     // 🥤 DRINK SALES + GROSS SALES (ORDERS PATH)
     // ─────────────────────────────────────────────
@@ -2004,8 +2049,17 @@ for (const order of orders) {
   refunds += (order.return_amounts?.total_money?.amount || 0) / 100;
 
   for (const li of order.line_items || []) {
-    const name = li.name || "Unknown";
+    // Use catalog_object_id as the stable POS identifier per variation.
+    // Falls back to display name for custom-amount items that have no catalog entry.
+    const posItemId = li.catalog_object_id || null;
     const qty = Number(li.quantity || 0);
+
+    // Build a human-readable display name that includes the variation when it
+    // adds meaningful context (i.e. not just "Regular").
+    const displayName = li.variation_name && li.variation_name.toLowerCase() !== 'regular'
+      ? `${li.name || "Unknown"} - ${li.variation_name}`
+      : (li.name || "Unknown");
+    const name = displayName; // kept for accounting references below
 
     // ── SALES TOTALS (ACCOUNTING) ──
     // Use gross_sales_money (pre-discount) so discounts are not double-subtracted.
@@ -2020,12 +2074,14 @@ for (const order of orders) {
     }
 
     // ── AGGREGATE DRINKS ──
-    // Pro: unit costs come from VendorInventory (reconciled after loop).
-    // Square's base_price_money is the selling price, not cost of goods.
-    if (!drinkMap.has(name)) {
-      drinkMap.set(name, { drinkName: name, unitPrice: null, quantitySold: qty, rowCost: null, totalCost: null });
+    // Key by catalog_object_id so each Square variation gets its own row.
+    // Falls back to display name for items without a catalog ID.
+    // Pro: unit costs come from VendorInventory via PosItemMapping (reconciled after loop).
+    const mapKey = posItemId || name;
+    if (!drinkMap.has(mapKey)) {
+      drinkMap.set(mapKey, { drinkName: name, posItemId, unitPrice: null, quantitySold: qty, rowCost: null, totalCost: null });
     } else {
-      drinkMap.get(name).quantitySold += qty;
+      drinkMap.get(mapKey).quantitySold += qty;
     }
   }
 }
@@ -2034,9 +2090,23 @@ for (const order of orders) {
 inventoryRows = Array.from(drinkMap.values());
 
 // ── PRO COGS: reconcile quantities against VendorInventory unit costs ──────
-// Square's base_price_money is the customer's selling price — not what the
-// vendor paid to produce the item. Real COGS comes from VendorInventory.unitCost.
+// Primary lookup: PosItemMapping (catalog_object_id → VendorInventory).
+// Fallback: name-based match for items not yet mapped (keeps existing users working
+// during the transition to the mapping setup flow).
 if (IS_PRO) {
+  // Primary: ID-based match via PosItemMapping table
+  const mappingRows = await dbAll(
+    `SELECT m."posItemId", v."unitCost", v."itemName"
+     FROM "PosItemMapping" m
+     JOIN "VendorInventory" v ON m."inventoryId" = v."id"
+     WHERE m."userId" = $1 AND m."posSystem" = 'square'`,
+    [userId]
+  );
+  const invByPosId = new Map(
+    mappingRows.map(r => [r.posItemId, { unitCost: Number(r.unitCost), itemName: r.itemName }])
+  );
+
+  // Fallback: name-based match (backwards compatibility)
   const invRows = await dbAll(
     `SELECT "itemName", "unitCost" FROM "VendorInventory" WHERE "userId" = $1`,
     [userId]
@@ -2044,7 +2114,11 @@ if (IS_PRO) {
   const invByName = new Map(invRows.map(r => [r.itemName.toLowerCase(), Number(r.unitCost)]));
 
   for (const item of inventoryRows) {
-    const unitCost = invByName.get(item.drinkName.toLowerCase()) ?? null;
+    // Try ID-based match first, then fall back to name
+    const idMatch   = item.posItemId ? invByPosId.get(item.posItemId) : null;
+    const nameMatch = invByName.get(item.drinkName.toLowerCase());
+    const unitCost  = idMatch?.unitCost ?? (nameMatch !== undefined ? nameMatch : null);
+
     item.unitPrice = unitCost;
     if (unitCost !== null) {
       item.rowCost   = unitCost * item.quantitySold;
@@ -2061,7 +2135,7 @@ if (IS_PRO) {
   if (unmatched.length > 0) {
     console.warn(
       `⚠️  Pro COGS: ${unmatched.length} item(s) not in VendorInventory — COGS set to $0. ` +
-      `Add them in Inventory to track costs: ${unmatched.map(r => r.drinkName).join(', ')}`
+      `Map them in Settings → Square → Manage Mappings: ${unmatched.map(r => r.drinkName).join(', ')}`
     );
   }
   console.log(`✅ Pro COGS reconciled: totalDrinkCost=$${totalDrinkCost.toFixed(2)}`);
@@ -3237,6 +3311,133 @@ app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
 });
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🗺️  POS ITEM MAPPING ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/square/catalog
+// Returns the vendor's Square catalog as a flat list of variations.
+// Used to populate the left column of the mapping setup screen.
+app.get("/api/square/catalog", squareLimiter, verifySession(), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const token  = await getSquareToken(userId);
+    const baseUrl = getSquareBaseUrl();
+
+    let cursor  = null;
+    const items = [];
+
+    // Page through the full catalog (Square returns max 1000 objects per call)
+    do {
+      const url = new URL(`${baseUrl}/v2/catalog/list`);
+      url.searchParams.set("types", "ITEM");
+      if (cursor) url.searchParams.set("cursor", cursor);
+
+      const resp = await fetch(url.toString(), {
+        headers: {
+          "Square-Version": "2025-01-15",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error("❌ Square catalog fetch error:", resp.status, text);
+        return res.status(502).json({ error: "Failed to fetch Square catalog" });
+      }
+
+      const json = await resp.json();
+      for (const obj of json.objects || []) {
+        if (obj.type !== "ITEM") continue;
+        const itemData = obj.item_data || {};
+        for (const variation of itemData.variations || []) {
+          const vd = variation.item_variation_data || {};
+          items.push({
+            posItemId:     variation.id,
+            posItemName:   itemData.name || "Unknown",
+            variationName: vd.name || "",
+            price:         (vd.price_money?.amount || 0) / 100,
+          });
+        }
+      }
+      cursor = json.cursor || null;
+    } while (cursor);
+
+    res.json(items);
+  } catch (err) {
+    console.error("❌ /api/square/catalog error:", err);
+    res.status(500).json({ error: "Failed to load Square catalog" });
+  }
+});
+
+// GET /api/pos-mappings
+// Returns all saved POS→inventory mappings for the current user.
+app.get("/api/pos-mappings", verifySession(), async (req, res) => {
+  try {
+    const userId = req.session.getUserId();
+    const rows = await dbAll(
+      `SELECT m.id, m."posSystem", m."posItemId", m."posItemName", m."variationName",
+              m."inventoryId", v."itemName" AS "inventoryItemName", v."unitCost"
+       FROM "PosItemMapping" m
+       LEFT JOIN "VendorInventory" v ON m."inventoryId" = v."id"
+       WHERE m."userId" = $1
+       ORDER BY m."posItemName", m."variationName"`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /api/pos-mappings GET error:", err);
+    res.status(500).json({ error: "Failed to load mappings" });
+  }
+});
+
+// POST /api/pos-mappings
+// Saves (upserts) an array of POS→inventory mappings.
+// Body: [{ posSystem, posItemId, posItemName, variationName, inventoryId }, ...]
+// Pass inventoryId: null to mark an item as "not in my menu" (skips cost calc).
+app.post("/api/pos-mappings", verifySession(), async (req, res) => {
+  try {
+    const userId   = req.session.getUserId();
+    const mappings = req.body;
+
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+      return res.status(400).json({ error: "Expected a non-empty array of mappings" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const m of mappings) {
+        const { posSystem = "square", posItemId, posItemName, variationName, inventoryId } = m;
+        if (!posItemId) continue;
+        await client.query(
+          `INSERT INTO "PosItemMapping"
+             ("userId", "posSystem", "posItemId", "posItemName", "variationName", "inventoryId")
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT ("userId", "posSystem", "posItemId") DO UPDATE SET
+             "posItemName"   = EXCLUDED."posItemName",
+             "variationName" = EXCLUDED."variationName",
+             "inventoryId"   = EXCLUDED."inventoryId"`,
+          [userId, posSystem, posItemId, posItemName || null, variationName || null, inventoryId || null]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    res.json({ success: true, saved: mappings.length });
+  } catch (err) {
+    console.error("❌ /api/pos-mappings POST error:", err);
+    res.status(500).json({ error: "Failed to save mappings" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
@@ -4092,10 +4293,14 @@ async function buildPostEventReport(eventID) {
    console.log("🏛️ Tax result:", { rate: taxData.rate, state: taxData.detail?.state });
 
    const totalCollected = Number(report.sales?.totalCollected || 0);
-   const tips           = Number(report.sales?.tips || 0);
+   const squareTips     = Number(report.sales?.tips || 0);
+   const manualTips     = (report.tips || []).reduce((s, r) => s + Number(r.tipAmount || 0), 0);
+   const tips           = squareTips + manualTips;
    // Sales tax collected on behalf of the state — NOT a business expense.
    // Stored for informational display only; never deducted from profit.
-   const stateFoodTax = totalCollected * (taxData.rate || 0);
+   // For non-Square events totalCollected is 0; fall back to netSales as the tax base.
+   const taxBase      = totalCollected || Number(report.sales?.netSales || 0);
+   const stateFoodTax = taxBase * (taxData.rate || 0);
 
    // Attach rates + computed sales tax (informational only)
    report.taxes = {

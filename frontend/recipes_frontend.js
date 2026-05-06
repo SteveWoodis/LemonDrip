@@ -554,7 +554,7 @@ async function loadSalesFeesTab(eventID) {
                     <td style="color:#555">${escHtml(r.matchedName || '—')}</td>
                     <td style="text-align:center">${matchBadge(r.matchType)}</td>
                     <td style="text-align:center">${r.quantitySold}</td>
-                    <td style="text-align:right">$${Number(r.costPerUnit).toFixed(4)}</td>
+                    <td style="text-align:right">$${Number(r.costPerUnit).toFixed(2)}</td>
                     <td style="text-align:right"><strong>$${Number(r.totalCost).toFixed(2)}</strong></td>
                   </tr>`).join('')}
               </tbody>

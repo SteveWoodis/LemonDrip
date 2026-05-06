@@ -6735,6 +6735,12 @@ function handleSquareOAuthReturn() {
         setTimeout(() => rb.classList.add("hidden"), 350);
       }, 5000);
     }
+    // If this is a first-time connection (no existing mappings), open the mapping screen
+    // so the vendor can link their Square items to their recipe cards right away.
+    fetch(`${API_BASE}/api/pos-mappings`)
+      .then(r => r.json())
+      .then(maps => { if (!maps || maps.length === 0) openPosMappingScreen(); })
+      .catch(() => {}); // non-critical — vendor can always open it from Settings later
   } else if (sq === "error") {
     showToast("Square connection failed. Please try again.", "error");
     navigateTo("settingsSection");
@@ -6763,5 +6769,314 @@ async function dismissSquareBanner() {
 window.startSquareOAuth    = startSquareOAuth;
 window.disconnectSquare    = disconnectSquare;
 window.dismissSquareBanner = dismissSquareBanner;
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🗺️  POS ITEM MAPPING SCREEN
+// Shown after Square OAuth or from Settings → "Manage Mappings".
+// Lets vendors match their Square catalog variations to their recipe cards.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function openPosMappingScreen() {
+  // Show a loading indicator while we fetch catalog + inventory + existing mappings
+  const existingModal = document.getElementById("posMappingModal");
+  if (existingModal) existingModal.remove();
+
+  const loadingEl = document.createElement("div");
+  loadingEl.id = "posMappingModal";
+  loadingEl.style.cssText = `
+    position:fixed; inset:0; background:rgba(0,0,0,0.55);
+    display:flex; align-items:center; justify-content:center; z-index:9999;
+  `;
+  loadingEl.innerHTML = `<div style="background:#fff;padding:32px 40px;border-radius:12px;font-size:15px;color:#444;">
+    Loading your Square catalog…
+  </div>`;
+  document.body.appendChild(loadingEl);
+
+  try {
+    const [catalogRes, inventoryRes, mappingsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/square/catalog`),
+      fetch(`${API_BASE}/api/inventory`),
+      fetch(`${API_BASE}/api/pos-mappings`),
+    ]);
+
+    if (!catalogRes.ok) throw new Error("Could not load Square catalog");
+    const catalogItems  = await catalogRes.json();  // [{ posItemId, posItemName, variationName, price }]
+    const inventoryItems = inventoryRes.ok ? await inventoryRes.json() : [];
+    const existingMaps  = mappingsRes.ok  ? await mappingsRes.json()  : [];
+
+    // Build lookup of existing mappings: posItemId → inventoryId
+    const savedMap = new Map(existingMaps.map(m => [m.posItemId, m.inventoryId]));
+
+    loadingEl.remove();
+    renderPosMappingModal(catalogItems, inventoryItems, savedMap);
+  } catch (err) {
+    loadingEl.remove();
+    showToast("Failed to load mapping screen: " + err.message, "error");
+  }
+}
+
+// ── Name similarity scorer ───────────────────────────────────────────────────
+// Scores how well a Square item name matches an inventory item name.
+// Returns a value 0–1. Uses token overlap so word order doesn't matter.
+function scoreNameMatch(squareItem, inventoryName) {
+  const stopWords = new Set(["the", "a", "an", "and", "or", "of", "in", "for", "with"]);
+
+  function tokenize(str) {
+    return str.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length > 1 && !stopWords.has(w));
+  }
+
+  // Build a combined search string from the Square item name + variation
+  const searchStr = squareItem.variationName &&
+    squareItem.variationName.toLowerCase() !== "regular"
+      ? `${squareItem.posItemName} ${squareItem.variationName}`
+      : squareItem.posItemName;
+
+  const squareTokens = new Set(tokenize(searchStr));
+  const invTokens    = new Set(tokenize(inventoryName));
+  if (!squareTokens.size || !invTokens.size) return 0;
+
+  let overlap = 0;
+  for (const t of squareTokens) { if (invTokens.has(t)) overlap++; }
+
+  // Bonus: if the variation name (e.g. "Strawberry") appears as a substring
+  // of the inventory name, that's a strong signal — boost the score.
+  const variation = (squareItem.variationName || "").toLowerCase().trim();
+  const invLower  = inventoryName.toLowerCase();
+  if (variation && variation !== "regular" && invLower.includes(variation)) {
+    overlap += 1.5;
+  }
+
+  return overlap / Math.max(squareTokens.size, invTokens.size);
+}
+
+// Finds the best matching inventory item for a Square catalog item.
+// Returns { inventoryId, inventoryName, score } or null if no good match.
+function suggestInventoryMatch(squareItem, inventoryItems) {
+  let best = null;
+  for (const inv of inventoryItems) {
+    const score = scoreNameMatch(squareItem, inv.itemName);
+    if (!best || score > best.score) {
+      best = { inventoryId: inv.id, inventoryName: inv.itemName, score };
+    }
+  }
+  // Only suggest if confidence is reasonably high
+  return best && best.score >= 0.45 ? best : null;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderPosMappingModal(catalogItems, inventoryItems, savedMap) {
+  const modal = document.createElement("div");
+  modal.id = "posMappingModal";
+  modal.style.cssText = `
+    position:fixed; inset:0; background:rgba(0,0,0,0.55);
+    display:flex; align-items:flex-start; justify-content:center;
+    z-index:9999; overflow-y:auto; padding:40px 16px;
+  `;
+
+  // Inventory options for the dropdowns
+  const inventoryOptions = inventoryItems.map(inv =>
+    `<option value="${inv.id}">${inv.itemName} ($${Number(inv.unitCost || 0).toFixed(2)}/unit)</option>`
+  ).join("");
+
+  // For each Square item, determine what to pre-select:
+  // 1. A saved mapping takes priority.
+  // 2. If no saved mapping, run the auto-suggester.
+  // 3. Track whether a row was auto-suggested (so we can badge it).
+  const rowData = catalogItems.map(item => {
+    const savedId   = savedMap.has(item.posItemId) ? savedMap.get(item.posItemId) : undefined;
+    const suggestion = !savedId ? suggestInventoryMatch(item, inventoryItems) : null;
+    const preselect  = savedId !== undefined ? savedId : (suggestion ? suggestion.inventoryId : null);
+    const isSuggested = !savedId && !!suggestion;
+
+    const displayLabel = item.variationName && item.variationName.toLowerCase() !== 'regular'
+      ? `${item.posItemName} — ${item.variationName}`
+      : item.posItemName;
+
+    return { item, displayLabel, preselect, isSuggested };
+  });
+
+  const suggestedCount = rowData.filter(r => r.isSuggested).length;
+
+  const rows = rowData.map(({ item, displayLabel, preselect, isSuggested }) => {
+    const selectStyle = isSuggested
+      ? "width:100%;padding:6px 8px;border:1.5px solid #f59e0b;border-radius:6px;font-size:13px;background:#fffbeb;"
+      : "width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;";
+
+    const badge = isSuggested
+      ? `<span class="pos-suggest-badge" style="
+            display:inline-block;margin-left:6px;padding:1px 7px;
+            background:#fef3c7;color:#92400e;border-radius:99px;
+            font-size:11px;font-weight:600;vertical-align:middle;
+          ">suggested</span>`
+      : "";
+
+    return `
+      <tr data-pos-item-id="${item.posItemId}"
+          data-pos-item-name="${item.posItemName.replace(/"/g, '&quot;')}"
+          data-variation-name="${(item.variationName || '').replace(/"/g, '&quot;')}"
+          data-suggested="${isSuggested}">
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;">
+          ${displayLabel}
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <select class="pos-mapping-select" data-preselect="${preselect || ''}"
+                    style="${selectStyle}">
+              <option value="">— Not in my menu —</option>
+              ${inventoryOptions}
+            </select>
+            ${badge}
+          </div>
+        </td>
+      </tr>`;
+  }).join("");
+
+  // Legend line — only shown when there are suggestions
+  const legendHtml = suggestedCount > 0 ? `
+    <div style="padding:10px 28px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:12px;color:#78350f;">
+      ✨ <strong>${suggestedCount} item(s)</strong> were auto-matched based on name similarity
+      and are marked <span style="background:#fef3c7;border-radius:4px;padding:1px 6px;font-weight:600;">suggested</span>.
+      Review them and adjust any that are wrong before saving.
+    </div>` : "";
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:720px;box-shadow:0 8px 32px rgba(0,0,0,0.18);overflow:hidden;">
+
+      <!-- Header -->
+      <div style="padding:24px 28px 16px;border-bottom:1px solid #e5e7eb;">
+        <h2 style="margin:0 0 6px;font-size:20px;font-weight:700;color:#111;">
+          Match Your Square Menu to Your Recipe Cards
+        </h2>
+        <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
+          Your Square items are on the left. Pick the matching recipe card on the right.
+          Do this once — the app remembers it and calculates costs automatically every event.
+          Use <em>"Not in my menu"</em> for items you don't track (tips, misc charges, etc.).
+        </p>
+      </div>
+
+      <!-- Auto-suggestion legend -->
+      ${legendHtml}
+
+      <!-- Unmapped warning bar -->
+      <div id="posMappingWarning" style="display:none;padding:10px 28px;background:#fff7ed;border-bottom:1px solid #fed7aa;">
+        <span style="font-size:13px;color:#c2410c;">
+          ⚠️ <span id="posMappingUnmappedCount">0</span> item(s) have no recipe card selected — costs will show as $0 for those.
+        </span>
+      </div>
+
+      <!-- Table -->
+      <div style="overflow-y:auto;max-height:400px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f9fafb;">
+              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;width:45%;">
+                Square Item
+              </th>
+              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">
+                Your Recipe Card
+              </th>
+            </tr>
+          </thead>
+          <tbody id="posMappingRows">
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:16px 28px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#fff;">
+        <span id="posMappingFooterNote" style="font-size:12px;color:#9ca3af;"></span>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closePosMappingModal()"
+                  style="padding:8px 18px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;color:#374151;">
+            Cancel
+          </button>
+          <button onclick="savePosMappings()"
+                  style="padding:8px 20px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">
+            Save Mappings
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  // Pre-fill dropdowns and wire up change handlers
+  const selects = modal.querySelectorAll(".pos-mapping-select");
+  selects.forEach(sel => {
+    const preselect = sel.dataset.preselect;
+    if (preselect) sel.value = preselect;
+
+    sel.addEventListener("change", () => {
+      // Once the user touches a suggested row, clear the suggestion styling
+      const row = sel.closest("tr");
+      if (row?.dataset.suggested === "true") {
+        row.dataset.suggested = "false";
+        sel.style.border  = "1px solid #d1d5db";
+        sel.style.background = "";
+        const badge = row.querySelector(".pos-suggest-badge");
+        if (badge) badge.remove();
+      }
+      updateUnmappedWarning();
+    });
+  });
+
+  updateUnmappedWarning();
+}
+
+function updateUnmappedWarning() {
+  const modal = document.getElementById("posMappingModal");
+  if (!modal) return;
+  const selects = modal.querySelectorAll(".pos-mapping-select");
+  const unmapped = Array.from(selects).filter(s => !s.value).length;
+  const warning  = document.getElementById("posMappingWarning");
+  const count    = document.getElementById("posMappingUnmappedCount");
+  if (warning) warning.style.display = unmapped > 0 ? "block" : "none";
+  if (count)   count.textContent = unmapped;
+}
+
+async function savePosMappings() {
+  const modal = document.getElementById("posMappingModal");
+  if (!modal) return;
+
+  const rows = modal.querySelectorAll("#posMappingRows tr");
+  const mappings = Array.from(rows).map(row => ({
+    posSystem:     "square",
+    posItemId:     row.dataset.posItemId,
+    posItemName:   row.dataset.posItemName,
+    variationName: row.dataset.variationName,
+    inventoryId:   row.querySelector(".pos-mapping-select")?.value || null,
+  }));
+
+  const btn = modal.querySelector("button[onclick='savePosMappings()']");
+  if (btn) { btn.textContent = "Saving…"; btn.disabled = true; }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/pos-mappings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mappings),
+    });
+    if (!res.ok) throw new Error("Save failed");
+    closePosMappingModal();
+    showToast("✅ Mappings saved! Cost calculations are now accurate.", "success", 5000);
+  } catch (err) {
+    if (btn) { btn.textContent = "Save Mappings"; btn.disabled = false; }
+    showToast("Failed to save mappings. Please try again.", "error");
+  }
+}
+
+function closePosMappingModal() {
+  const modal = document.getElementById("posMappingModal");
+  if (modal) modal.remove();
+}
+
+window.openPosMappingScreen  = openPosMappingScreen;
+window.closePosMappingModal  = closePosMappingModal;
+window.savePosMappings       = savePosMappings;
 // ─────────────────────────────────────────────────────────────────────────────
 

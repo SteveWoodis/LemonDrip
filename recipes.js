@@ -201,8 +201,8 @@ async function calculateEventSalesFees(eventID) {
         matchType: match.matchType,
         matchedName: match.recipe.name,
         quantitySold: item.quantitySold || 0,
-        costPerUnit: Math.round(costPerUnit * 10000) / 10000,
-        totalCost: Math.round(costPerUnit * (item.quantitySold || 0) * 100) / 100,
+        costPerUnit: Math.floor(costPerUnit * 100) / 100,
+        totalCost: (Math.floor(costPerUnit * 100) / 100) * (item.quantitySold || 0),
       });
     }
 
@@ -240,43 +240,174 @@ async function calculateEventSalesFees(eventID) {
 }
 
 // ─── CSV parser for recipe import ────────────────────────────
-// Expected columns (case-insensitive):
-//   recipeName, ingredientName, quantityUsed, unitType, unitCost
+// Handles the multi-column spreadsheet layout exported from Google Sheets.
+// The CSV may contain two recipe tables side-by-side:
+//
+//   LEFT-style block (standard):
+//     Header:  recipename | Ingredient Name | Quantity Used | Unit Type | Unit Cost | …
+//     Data:    Recipe A   | Straw           | 1             | Per Cup   | 0.01      | …
+//              (empty)    | Cup & Lid       | 1             | Per Cup   | 0.21      | …
+//
+//   RIGHT-style block (title-in-header layout):
+//     Header:  Cherry Lemonade | Ingredient Name | Quantity Used | Unit Type | Unit Cost | …
+//     Data:    Straw           | 1               | Per Cup       | 0.01      | …
+//     (new recipe detected when next column = "Ingredient Name")
 function parseRecipeCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) throw new Error('CSV must have a header and at least one row');
+  // Full RFC-4180 CSV parser: handles quoted fields with embedded commas and newlines.
+  function parseAllRows(src) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    let i = 0;
+    while (i < src.length) {
+      const ch = src[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          // Escaped quote "" → literal "
+          if (src[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false;
+          i++;
+        } else {
+          field += ch;
+          i++;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+          i++;
+        } else if (ch === ',') {
+          row.push(field.trim());
+          field = '';
+          i++;
+        } else if (ch === '\r' && src[i + 1] === '\n') {
+          row.push(field.trim());
+          rows.push(row);
+          row = []; field = ''; i += 2;
+        } else if (ch === '\n') {
+          row.push(field.trim());
+          rows.push(row);
+          row = []; field = ''; i++;
+        } else {
+          field += ch;
+          i++;
+        }
+      }
+    }
+    // Last field/row
+    if (field || row.length) { row.push(field.trim()); rows.push(row); }
+    return rows;
+  }
 
-  const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
+  const allRows = parseAllRows(text);
+  if (allRows.length < 2) throw new Error('CSV must have a header and at least one row');
 
-  const col = name => {
-    const idx = header.indexOf(name);
-    if (idx === -1) throw new Error(`Missing column: "${name}"`);
-    return idx;
-  };
+  const rawHeader = allRows[0];
 
-  const iRecipe = col('recipename');
-  const iIngredient = col('ingredientname');
-  const iQty = col('quantityused');
-  const iUnit = header.indexOf('unittype');   // optional
-  const iCost = col('unitcost');
+  // Detect recipe blocks by scanning for "Ingredient Name" in the header row.
+  //
+  // At header index i, rawHeader[i] === "Ingredient Name":
+  //   • rawHeader[i-1] === "recipename"  → LEFT-style block
+  //       recipe name comes from data col i-1 (carry forward when empty)
+  //       ingredient is at data col i, qty at i+1, unit at i+2, cost at i+3
+  //   • rawHeader[i-1] is an actual recipe name → RIGHT-style block
+  //       initial recipe name = rawHeader[i-1]
+  //       ingredient is at data col i-1, qty at i, unit at i+1, cost at i+2
+  //       new recipe detected when data[qtyCol] === "Ingredient Name"
+  const blocks = [];
+  for (let i = 1; i < rawHeader.length; i++) {
+    if (rawHeader[i].trim().toLowerCase() !== 'ingredient name') continue;
+    const prev = rawHeader[i - 1].trim().toLowerCase().replace(/\s+/g, '');
+    if (prev === 'recipename') {
+      // Left-style block
+      blocks.push({
+        style: 'left',
+        recipeNameCol: i - 1,
+        ingCol: i,
+        qtyCol: i + 1,
+        unitCol: i + 2,
+        costCol: i + 3,
+        currentRecipeName: '',
+      });
+    } else if (rawHeader[i - 1].trim()) {
+      // Right-style block — recipe name is in the header cell at i-1
+      blocks.push({
+        style: 'right',
+        ingCol: i - 1,
+        qtyCol: i,
+        unitCol: i + 1,
+        costCol: i + 2,
+        currentRecipeName: rawHeader[i - 1].trim(),
+      });
+    }
+  }
 
-  const recipes = new Map(); // recipeName → [ingredients]
+  if (blocks.length === 0) throw new Error('No recipe columns found in CSV header');
 
-  for (const line of lines.slice(1)) {
-    if (!line.trim()) continue;
-    const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+  const recipes = new Map(); // recipeName → ingredient[]
 
-    const recipeName = cols[iRecipe]?.trim();
-    const ingredientName = cols[iIngredient]?.trim();
-    if (!recipeName || !ingredientName) continue;
+  for (let lineIdx = 1; lineIdx < allRows.length; lineIdx++) {
+    const cols = allRows[lineIdx];
+    if (!cols.length || cols.every(c => !c)) continue;
 
-    const rawCost = (cols[iCost] || '0').replace(/[$,\s]/g, '');
-    const unitCost = Number(rawCost) || 0;
-    const quantityUsed = Number(cols[iQty] || 1) || 1;
-    const unitType = iUnit >= 0 ? (cols[iUnit]?.trim() || null) : null;
+    for (const block of blocks) {
+      const ingCell  = (cols[block.ingCol]  || '').trim();
+      const qtyCell  = (cols[block.qtyCol]  || '').trim();
+      const unitCell = (cols[block.unitCol] || '').trim();
+      const costCell = (cols[block.costCol] || '').trim();
 
-    if (!recipes.has(recipeName)) recipes.set(recipeName, []);
-    recipes.get(recipeName).push({ ingredientName, quantityUsed, unitType, unitCost });
+      if (block.style === 'left') {
+        const recipeCell = (cols[block.recipeNameCol] || '').trim();
+
+        // Inline header row — update recipe name if present, then skip
+        if (ingCell.toLowerCase() === 'ingredient name') {
+          if (recipeCell && recipeCell.toLowerCase() !== 'ingredient name') {
+            block.currentRecipeName = recipeCell;
+          }
+          continue;
+        }
+
+        // Update recipe name on the first ingredient row of each recipe
+        if (recipeCell && recipeCell.toLowerCase() !== 'ingredient name') {
+          block.currentRecipeName = recipeCell;
+        }
+      } else {
+        // Right-style: new recipe detected when the qty cell reads "Ingredient Name"
+        if (qtyCell.toLowerCase() === 'ingredient name') {
+          if (ingCell) block.currentRecipeName = ingCell;
+          continue;
+        }
+      }
+
+      const recipeName = block.currentRecipeName;
+      if (!recipeName || !ingCell) continue;
+
+      // Skip totals and summary rows
+      const ingLower = ingCell.toLowerCase();
+      if (ingLower.startsWith('cost per') || ingLower === 'ingredient name') continue;
+
+      const rawCost = costCell.replace(/[$,\s]/g, '');
+      const unitCost = Number(rawCost) || 0;
+      const rawQty = qtyCell.replace(/[$,\s]/g, '');
+      const quantityUsed = Number(rawQty) || 1;
+      const unitType = unitCell || null;
+
+      if (!recipes.has(recipeName)) recipes.set(recipeName, []);
+      recipes.get(recipeName).push({ ingredientName: ingCell, quantityUsed, unitType, unitCost });
+    }
+  }
+
+  // Deduplicate: if the same recipe name appeared in multiple blocks (left + right),
+  // ingredients from both blocks were merged into one Map entry, doubling them.
+  // Keep only the first occurrence of each ingredient name per recipe.
+  for (const [name, ings] of recipes) {
+    const seen = new Set();
+    recipes.set(name, ings.filter(ing => {
+      const key = ing.ingredientName.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }));
   }
 
   return recipes; // Map<recipeName, ingredient[]>
@@ -550,13 +681,13 @@ function registerRoutes(app) {
 
         for (const [recipeName, ingredients] of recipeMap) {
           // Find or create recipe card
-          let card = await dbGet(
+          let card = (await client.query(
             `SELECT "id" FROM "RecipeCards" WHERE "userId"=$1 AND LOWER("name")=LOWER($2)`,
             [userId, recipeName]
-          );
+          )).rows[0] || null;
 
           if (!card) {
-            const r = await _pool.query(
+            const r = await client.query(
               `INSERT INTO "RecipeCards" ("userId","name") VALUES ($1,$2) RETURNING "id"`,
               [userId, recipeName]
             );
@@ -566,28 +697,19 @@ function registerRoutes(app) {
             updated++;
           }
 
-          // Upsert each ingredient (match by ingredientName within this recipe)
-          for (const ing of ingredients) {
-            const existing = await dbGet(
-              `SELECT "id" FROM "RecipeIngredients"
-               WHERE "recipeId"=$1 AND LOWER("ingredientName")=LOWER($2)`,
-              [card.id, ing.ingredientName]
-            );
+          // Full replace: delete all existing ingredients then re-insert from CSV.
+          // This ensures removed or renamed ingredients don't linger and inflate costs.
+          await client.query(
+            `DELETE FROM "RecipeIngredients" WHERE "recipeId"=$1`,
+            [card.id]
+          );
 
-            if (existing) {
-              await _pool.query(
-                `UPDATE "RecipeIngredients"
-                 SET "quantityUsed"=$1,"unitType"=$2,"unitCost"=$3,"updatedAt"=NOW()
-                 WHERE "id"=$4`,
-                [ing.quantityUsed, ing.unitType, ing.unitCost, existing.id]
-              );
-            } else {
-              await _pool.query(
-                `INSERT INTO "RecipeIngredients" ("recipeId","ingredientName","quantityUsed","unitType","unitCost")
-                 VALUES ($1,$2,$3,$4,$5)`,
-                [card.id, ing.ingredientName, ing.quantityUsed, ing.unitType, ing.unitCost]
-              );
-            }
+          for (const ing of ingredients) {
+            await client.query(
+              `INSERT INTO "RecipeIngredients" ("recipeId","ingredientName","quantityUsed","unitType","unitCost")
+               VALUES ($1,$2,$3,$4,$5)`,
+              [card.id, ing.ingredientName, ing.quantityUsed, ing.unitType, ing.unitCost]
+            );
             ingredientsUpserted++;
           }
         }
@@ -752,11 +874,12 @@ function registerRoutes(app) {
          SET "recipeId"=$1,"matchType"='manual',"matchedName"=$2,
              "costPerUnit"=$3,"totalCost"=$4,"calculatedAt"=NOW()
          WHERE "id"=$5`,
-        [recipeId, recipe.name, costPerUnit,
-         Math.round(costPerUnit * qty * 100) / 100, salesFeeId]
+        [recipeId, recipe.name, Math.floor(costPerUnit * 100) / 100,
+         (Math.floor(costPerUnit * 100) / 100) * qty, salesFeeId]
       );
 
-      res.json({ success: true, costPerUnit, totalCost: costPerUnit * qty });
+      const flooredCost = Math.floor(costPerUnit * 100) / 100;
+      res.json({ success: true, costPerUnit: flooredCost, totalCost: flooredCost * qty });
     } catch (err) {
       console.error('❌ manual-match:', err);
       res.status(500).json({ error: 'Failed to save manual match' });

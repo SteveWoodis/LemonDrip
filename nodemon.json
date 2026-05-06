@@ -1,0 +1,5 @@
+{
+  "watch": ["server.js", "recipes.js", "square_locations.js", "frontend/"],
+  "ignore": ["*.json", "node_modules/", "frontend/Safe place/", "logs/"],
+  "ext": "js,html"
+}
