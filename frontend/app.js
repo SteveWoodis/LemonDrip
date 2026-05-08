@@ -127,7 +127,7 @@ async function checkSession() {
 // ---------------------------
 async function showAuthenticatedUI() {
   document.getElementById("authSection").classList.add("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnSettings, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRestock, #btnRecipes, #btnSettings, #btnLogout")
     .forEach(b => { if (b) b.style.display = ""; });
 
   // Fetch the user's plan from the server
@@ -174,7 +174,7 @@ function showUnauthenticatedUI() {
   document.querySelectorAll(".app-shell > section")
     .forEach(sec => sec.classList.add("hidden"));
   document.getElementById("authSection").classList.remove("hidden");
-  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRecipes, #btnSettings, #btnLogout")
+  document.querySelectorAll("#btnAdd, #btnCompany, #btnDesign, #btnManage, #btnInventory, #btnRestock, #btnRecipes, #btnSettings, #btnLogout")
     .forEach(b => { if (b) b.style.display = "none"; });
   document.getElementById("btnAdmin")?.classList.add("hidden");
   document.getElementById("btnAlerts")?.classList.add("hidden");
@@ -4063,6 +4063,421 @@ async function deleteAdditionalFee(id) {
   reloadEventDashboard();
 }
 
+// ============================================================
+// 🚚 Truck Inventory (per-event) — Phase 2
+// ============================================================
+// Renders the per-event "truck" inventory card on the event
+// dashboard. Backed by /api/events/:eventID/inventory and its
+// siblings. Lets the operator deliver items to the event,
+// see live usage, restock mid-event, or undeliver remaining
+// stock back to the warehouse.
+
+let _eventInventoryCache  = [];
+let _warehouseCache       = [];
+
+// ---------------------------
+// renderTruckInventoryCard | Date: 2026-05-08
+// Purpose: Returns a collapsible card containing the truck inventory table
+//          plus a manual-add row for delivering items from the warehouse.
+// ---------------------------
+function renderTruckInventoryCard() {
+  const html = `
+    <div class="truck-inv-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <span class="truck-inv-summary" id="truckInvSummary" style="color:#666;font-size:0.9rem;"></span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-secondary" onclick="openUsageReport()">📊 Usage Report</button>
+        <button class="btn-secondary" onclick="loadTruckInventory()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div id="truckInvTableWrap">
+      <p class="empty-state-inline"><span class="empty-state-icon">🚚</span> Loading…</p>
+    </div>
+
+    <hr style="margin:14px 0;">
+
+    <div style="font-weight:600;margin-bottom:6px;">Deliver an item to this event:</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <select id="truckInvNewItem" style="flex:2;min-width:160px;">
+        <option value="">— select item —</option>
+      </select>
+      <input id="truckInvNewQty" type="number" step="1" min="0" placeholder="Delivered qty" style="flex:1;min-width:110px;">
+      <input id="truckInvNewThreshold" type="number" step="1" min="0" placeholder="Reorder at" style="flex:1;min-width:110px;" title="Mid-event alert threshold (optional)">
+      <button class="btn-primary" onclick="deliverToEventInventory()">📦 Deliver</button>
+    </div>
+    <div style="font-size:0.78rem;color:#666;margin-top:4px;">Delivery decrements warehouse stock by the delivered quantity.</div>
+  `;
+  return createCollapsibleCard("🚚 Truck Inventory", html);
+}
+
+// ---------------------------
+// loadTruckInventory | Date: 2026-05-08
+// Purpose: Loads the event's inventory rows and the warehouse catalog,
+//          renders the table, and populates the "Deliver an item" dropdown.
+// ---------------------------
+async function loadTruckInventory() {
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+
+  const wrap = document.getElementById("truckInvTableWrap");
+  if (wrap) wrap.innerHTML = '<p class="empty-state-inline">Loading…</p>';
+
+  try {
+    const [eiRes, whRes] = await Promise.all([
+      fetch(`${API_BASE}/api/events/${eventID}/inventory`),
+      fetch(`${API_BASE}/api/inventory`)
+    ]);
+    if (!eiRes.ok || !whRes.ok) throw new Error("fetch failed");
+    _eventInventoryCache = await eiRes.json();
+    _warehouseCache      = await whRes.json();
+    renderTruckInventoryTable(_eventInventoryCache);
+    populateTruckInventoryItemDropdown(_warehouseCache, _eventInventoryCache);
+  } catch (err) {
+    console.error("❌ loadTruckInventory:", err);
+    if (wrap) wrap.innerHTML = '<p class="empty-state-inline">Failed to load truck inventory.</p>';
+  }
+}
+
+// ---------------------------
+// renderTruckInventoryTable | Date: 2026-05-08
+// Purpose: Renders an interactive table of the event's truck items: delivered
+//          (startingQty), on-hand, used, % used, plus per-row Restock and
+//          Remove actions. Highlights rows below per-event reorderThreshold.
+// ---------------------------
+function renderTruckInventoryTable(items) {
+  const wrap = document.getElementById("truckInvTableWrap");
+  const summary = document.getElementById("truckInvSummary");
+  if (!wrap) return;
+
+  if (!items.length) {
+    wrap.innerHTML = '<p class="empty-state-inline"><span class="empty-state-icon">🚚</span> No items delivered to this event yet — use the form below.</p>';
+    if (summary) summary.textContent = "";
+    return;
+  }
+
+  if (summary) {
+    const totalUsed = items.reduce((s, r) => s + Number(r.qtyUsed || 0), 0);
+    summary.textContent = `${items.length} item${items.length === 1 ? "" : "s"} on truck · ${totalUsed} unit${totalUsed === 1 ? "" : "s"} used`;
+  }
+
+  const rows = items.map(r => {
+    const start  = Number(r.startingQty);
+    const onHand = Number(r.quantityOnHand);
+    const used   = Number(r.qtyUsed || Math.max(0, start - onHand));
+    const pct    = start > 0 ? Math.round((used / start) * 100) : 0;
+    const thresh = Number(r.reorderThreshold || 0);
+    const isLow  = thresh > 0 && onHand <= thresh;
+    return `
+    <tr class="truck-row${isLow ? ' truck-row-low' : ''}" data-ei-id="${r.id}">
+      <td><strong>${escInv(r.itemName)}</strong></td>
+      <td class="num">${start}</td>
+      <td class="num">${onHand}</td>
+      <td class="num">${used}</td>
+      <td class="num">${pct}%</td>
+      <td class="num">${thresh || '—'}</td>
+      <td>
+        <button class="inv-restock-btn" onclick="restockEventInventory(${r.id}, ${start - onHand})" title="Refill the truck and decrement warehouse">📦 Restock</button>
+        <button class="inv-restock-btn" onclick="removeEventInventory(${r.id})" title="Return remaining stock to warehouse">🗑</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  wrap.innerHTML = `
+    <table class="inv-table truck-inv-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="num">Delivered</th>
+          <th class="num">On Hand</th>
+          <th class="num">Used</th>
+          <th class="num">%</th>
+          <th class="num">Reorder At</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+// ---------------------------
+// populateTruckInventoryItemDropdown | Date: 2026-05-08
+// Purpose: Fills the "deliver an item" select with warehouse items not yet
+//          delivered to this event. Items already on the truck are filtered
+//          out so the operator doesn't accidentally re-deliver and double-count.
+// ---------------------------
+function populateTruckInventoryItemDropdown(warehouse, eiItems) {
+  const sel = document.getElementById("truckInvNewItem");
+  if (!sel) return;
+  const onTruck = new Set(eiItems.map(i => Number(i.inventoryId)));
+  const available = warehouse.filter(w => !onTruck.has(Number(w.id)));
+  const opts = ['<option value="">— select item —</option>']
+    .concat(available.map(w => `<option value="${w.id}">${escInv(w.itemName)} (warehouse: ${Number(w.quantityOnHand) || 0})</option>`));
+  sel.innerHTML = opts.join("");
+}
+
+// ---------------------------
+// deliverToEventInventory | Date: 2026-05-08
+// Purpose: POSTs a delivery to the event. Decrements warehouse stock and
+//          creates the EventInventory row.
+// ---------------------------
+async function deliverToEventInventory() {
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+  if (window.activeEvent?.isFinalized === 1) {
+    showToast("This event is finalized — inventory locked.", "warning");
+    return;
+  }
+
+  const inventoryId = Number(document.getElementById("truckInvNewItem").value);
+  const startingQty = Number(document.getElementById("truckInvNewQty").value);
+  const reorderThreshold = Number(document.getElementById("truckInvNewThreshold").value) || 0;
+
+  if (!Number.isFinite(inventoryId) || inventoryId <= 0) { showToast("Pick an item.", "warning"); return; }
+  if (!Number.isFinite(startingQty) || startingQty < 0) { showToast("Enter a valid quantity.", "warning"); return; }
+
+  const res = await fetch(`${API_BASE}/api/events/${eventID}/inventory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inventoryId, startingQty, reorderThreshold })
+  });
+  const json = await res.json();
+  if (!res.ok) { showToast(json.error || "Delivery failed.", "error"); return; }
+
+  showToast(`Delivered ${startingQty} ${json.itemName} to event.`, "success");
+  document.getElementById("truckInvNewQty").value = "";
+  document.getElementById("truckInvNewThreshold").value = "";
+  await loadTruckInventory();
+}
+
+// ---------------------------
+// restockEventInventory | Date: 2026-05-08
+// Purpose: Mid-event refill. Prompts for the qty to add (defaulted to the
+//          amount used so the truck returns to its delivered level), PUTs
+//          to the restock endpoint, and refreshes the table.
+// ---------------------------
+async function restockEventInventory(eiId, suggestedQty) {
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+  const def = String(Math.max(1, Math.round(Number(suggestedQty) || 0)));
+  const qtyStr = prompt("How much to add to the truck (decremented from warehouse)?", def);
+  if (qtyStr === null) return;
+  const qty = Number(qtyStr);
+  if (!Number.isFinite(qty) || qty <= 0) { showToast("Invalid quantity.", "warning"); return; }
+
+  const res = await fetch(`${API_BASE}/api/events/${eventID}/inventory/${eiId}/restock`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ qtyAdded: qty })
+  });
+  const json = await res.json();
+  if (!res.ok) { showToast(json.error || "Restock failed.", "error"); return; }
+
+  showToast(`Restocked +${qty} ${json.itemName}.`, "success");
+  await loadTruckInventory();
+  await loadInventoryAlerts();
+}
+
+// ============================================================
+// 📊 End-of-Night Usage Report (Phase 3)
+// ============================================================
+// A modal report opened from the Truck Inventory card. Pulls
+// per-item usage from /api/events/:eventID/inventory/usage and
+// renders a printable / copyable / CSV-exportable summary the
+// operator can hand off to the restock crew.
+
+let _usageReportRows  = [];
+let _usageReportEvent = null;
+
+// ---------------------------
+// openUsageReport | Date: 2026-05-08
+// Purpose: Fetches the usage report for the current event and shows it
+//          in a modal overlay. Adds class to <body> so print CSS scopes
+//          to the report only.
+// ---------------------------
+async function openUsageReport() {
+  const eventID = window.currentEventId;
+  if (!eventID) { showToast("Open an event first.", "warning"); return; }
+
+  const overlay = document.getElementById("usageReportOverlay");
+  const body    = document.getElementById("usageReportBody");
+  const title   = document.getElementById("usageReportTitle");
+  const meta    = document.getElementById("usageReportMeta");
+  if (!overlay || !body) return;
+
+  _usageReportEvent = window.activeEvent || null;
+  if (title) title.textContent = "End-of-Night Usage Report";
+  if (meta) {
+    const ev = _usageReportEvent || {};
+    const name = ev.eventName || `Event #${eventID}`;
+    const date = ev.eventDate || "";
+    meta.textContent = `${name}${date ? " · " + date : ""}`;
+  }
+  body.innerHTML = '<p class="empty-state-inline">Loading…</p>';
+  overlay.classList.add("open");
+  document.body.classList.add("printing-usage");
+
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/inventory/usage`);
+    if (!res.ok) throw new Error("usage fetch failed");
+    _usageReportRows = await res.json();
+    renderUsageReport(_usageReportRows);
+  } catch (err) {
+    console.error("❌ openUsageReport:", err);
+    body.innerHTML = '<p class="empty-state-inline">Failed to load usage report.</p>';
+  }
+}
+
+// ---------------------------
+// closeUsageReport | Date: 2026-05-08
+// ---------------------------
+function closeUsageReport() {
+  document.getElementById("usageReportOverlay")?.classList.remove("open");
+  document.body.classList.remove("printing-usage");
+}
+
+// ---------------------------
+// renderUsageReport | Date: 2026-05-08
+// Purpose: Renders the usage table inside the modal. Header rows shows
+//          totals across all items.
+// ---------------------------
+function renderUsageReport(rows) {
+  const body = document.getElementById("usageReportBody");
+  if (!body) return;
+
+  if (!rows || rows.length === 0) {
+    body.innerHTML = '<p class="empty-state-inline"><span class="empty-state-icon">📦</span> No truck inventory recorded for this event.</p>';
+    return;
+  }
+
+  const totalItems   = rows.length;
+  const totalUsed    = rows.reduce((s, r) => s + Number(r.qtyUsed || 0), 0);
+  const itemsTouched = rows.filter(r => Number(r.qtyUsed) > 0).length;
+
+  const tbody = rows.map(r => {
+    const start = Number(r.startingQty);
+    const onHand = Number(r.quantityOnHand);
+    const used   = Number(r.qtyUsed);
+    const pct    = Number(r.pctUsed);
+    const cls    = used > 0 ? "usage-row-used" : "";
+    return `
+      <tr class="${cls}">
+        <td>${escInv(r.itemName)}</td>
+        <td class="num">${start}</td>
+        <td class="num">${onHand}</td>
+        <td class="num">${used}</td>
+        <td class="num">${pct}%</td>
+      </tr>`;
+  }).join("");
+
+  body.innerHTML = `
+    <div class="usage-summary">
+      <div><span class="usage-summary-label">Items on truck</span><span class="usage-summary-val">${totalItems}</span></div>
+      <div><span class="usage-summary-label">Items used</span><span class="usage-summary-val">${itemsTouched}</span></div>
+      <div><span class="usage-summary-label">Total units used</span><span class="usage-summary-val">${totalUsed}</span></div>
+    </div>
+    <table class="usage-report-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="num">Delivered</th>
+          <th class="num">On Hand</th>
+          <th class="num">Used</th>
+          <th class="num">% Used</th>
+        </tr>
+      </thead>
+      <tbody>${tbody}</tbody>
+    </table>
+    <p class="usage-footer">Generated ${new Date().toLocaleString()}</p>
+  `;
+}
+
+// ---------------------------
+// copyUsageReport | Date: 2026-05-08
+// Purpose: Copies a tab-separated, paste-friendly version of the report
+//          to the clipboard so the operator can drop it into a text or
+//          email to the restock crew.
+// ---------------------------
+async function copyUsageReport() {
+  if (!_usageReportRows || _usageReportRows.length === 0) {
+    showToast("Nothing to copy.", "warning"); return;
+  }
+  const ev = _usageReportEvent || {};
+  const header = `End-of-Night Usage — ${ev.eventName || "Event"} · ${ev.eventDate || ""}`;
+  const lines = [
+    header,
+    ["Item", "Delivered", "On Hand", "Used", "% Used"].join("\t"),
+    ..._usageReportRows.map(r => [
+      r.itemName,
+      Number(r.startingQty),
+      Number(r.quantityOnHand),
+      Number(r.qtyUsed),
+      `${Number(r.pctUsed)}%`
+    ].join("\t"))
+  ];
+  try {
+    await navigator.clipboard.writeText(lines.join("\n"));
+    showToast("Report copied to clipboard.", "success");
+  } catch (err) {
+    console.error("clipboard:", err);
+    showToast("Copy failed — try CSV download instead.", "error");
+  }
+}
+
+// ---------------------------
+// downloadUsageCSV | Date: 2026-05-08
+// Purpose: Builds a CSV of the report and triggers a browser download.
+// ---------------------------
+function downloadUsageCSV() {
+  if (!_usageReportRows || _usageReportRows.length === 0) {
+    showToast("Nothing to export.", "warning"); return;
+  }
+  const csvLine = arr => arr.map(v => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(",");
+  const ev = _usageReportEvent || {};
+  const lines = [
+    csvLine(["Event", ev.eventName || "", ev.eventDate || ""]),
+    csvLine(["Item", "Delivered", "On Hand", "Used", "% Used"]),
+    ..._usageReportRows.map(r => csvLine([
+      r.itemName,
+      Number(r.startingQty),
+      Number(r.quantityOnHand),
+      Number(r.qtyUsed),
+      `${Number(r.pctUsed)}%`
+    ]))
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  const safeName = (ev.eventName || `event-${window.currentEventId}`).replace(/[^a-z0-9]+/gi, "_");
+  a.href = url;
+  a.download = `usage-${safeName}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------
+// removeEventInventory | Date: 2026-05-08
+// Purpose: Removes an item from the event's truck. Any remaining quantity
+//          on hand is returned to the warehouse automatically.
+// ---------------------------
+async function removeEventInventory(eiId) {
+  const eventID = window.currentEventId;
+  if (!eventID) return;
+  if (!confirm("Remove this item from the truck? Any remaining quantity will be returned to the warehouse.")) return;
+
+  const res = await fetch(`${API_BASE}/api/events/${eventID}/inventory/${eiId}`, { method: "DELETE" });
+  const json = await res.json();
+  if (!res.ok) { showToast(json.error || "Remove failed.", "error"); return; }
+
+  showToast("Item removed from truck.", "success");
+  await loadTruckInventory();
+}
+
 // ---------------------------
 // renderSupplyCostsCard | Date: 2026-03-06
 // Purpose: Renders the Supply Fees card on the event dashboard — shows all supply
@@ -4553,6 +4968,10 @@ if (report.inventorySales && report.inventorySales.length) {
   // ======================
 
   safeAppend(container, createCollapsibleCard("Inventory Sales", drinkHTML));
+  // Truck Inventory (Phase 2): per-event physical stock with delivery + restock
+  safeAppend(container, renderTruckInventoryCard());
+  // Defer initial load until after the card is in the DOM
+  setTimeout(loadTruckInventory, 0);
   safeAppend(container, renderManualSalesEntryCard(report));
   safeAppend(container, createCollapsibleCard("Discounts", buildDiscountsEditor(report)));
   // Labor Card (editable, Pull Square Labor button lives inside)
@@ -5814,6 +6233,7 @@ window.navigateTo = function(sectionId) {
   }
   _origNavigateTo(sectionId);
   if (sectionId === "inventorySection") loadInventorySection();
+  if (sectionId === "restockSection")   loadRestockList();
   if (sectionId === "adminSection")     loadAdminSection();
   if (sectionId === "manageSection")    loadManageKpis();
   if (sectionId === "recipesSection")   loadRecipesSection();
@@ -6389,6 +6809,172 @@ async function quickRestock(itemId) {
   const idx = _inventoryCache.findIndex(i => i.id === itemId);
   if (idx !== -1) _inventoryCache[idx] = json;
   await loadInventorySection();
+  await loadInventoryAlerts();
+}
+
+// ============================================================
+// 🔄 Restock List Module
+// ============================================================
+//
+// Phone-friendly card view of items at or below their reorder threshold.
+// Backed by GET /api/inventory/low-stock (already exists in server.js).
+// "Mark Restocked" hits PUT /api/inventory/:id/stock — same endpoint as
+// the existing quickRestock flow.
+
+let _restockCache = [];
+let _restockEvents = [];
+
+// ---------------------------
+// loadRestockList | Date: 2026-05-08
+// Purpose: Loads the active-event picker (if not yet populated), then loads
+//          the selected event's low-stock list. Phone-friendly cards each
+//          have a "Mark Restocked" button that hits the per-event restock
+//          endpoint (refills truck, decrements warehouse).
+// ---------------------------
+async function loadRestockList() {
+  const container = document.getElementById("restockListContainer");
+  const picker    = document.getElementById("restockEventPicker");
+  if (!container || !picker) return;
+
+  // Populate event picker once per session
+  if (_restockEvents.length === 0) {
+    try {
+      const res = await fetch(`${API_BASE}/api/events?limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        // /api/events returns { Events: [...], page, limit, total, totalPages }
+        const events = Array.isArray(data) ? data : (data.Events || data.events || []);
+        // Server already orders by eventDate DESC, but sort defensively in case.
+        _restockEvents = events.sort((a, b) =>
+          String(b.eventDate || "").localeCompare(String(a.eventDate || ""))
+        );
+        const opts = ['<option value="">— select event —</option>']
+          .concat(_restockEvents.map(e =>
+            `<option value="${e.eventID}">${escInv(e.eventName || ("Event #" + e.eventID))} · ${escInv(e.eventDate || "")}</option>`
+          ));
+        picker.innerHTML = opts.join("");
+      }
+    } catch (err) {
+      console.error("❌ loadRestockList event picker:", err);
+    }
+  }
+
+  const eventID = Number(picker.value);
+  if (!Number.isFinite(eventID) || eventID <= 0) {
+    container.innerHTML = '<p class="inv-empty">Pick an event above to see its restock list.</p>';
+    document.getElementById("restockCount").textContent = "";
+    return;
+  }
+
+  container.innerHTML = '<p class="inv-empty">Loading…</p>';
+  try {
+    const res = await fetch(`${API_BASE}/api/events/${eventID}/inventory/low-stock`);
+    if (!res.ok) throw new Error("low-stock fetch failed");
+    const items = await res.json();
+    _restockCache = items;
+    renderRestockList(items);
+  } catch (err) {
+    console.error("❌ loadRestockList:", err);
+    container.innerHTML = '<p class="inv-empty">Failed to load restock list.</p>';
+  }
+}
+
+// ---------------------------
+// renderRestockList | Date: 2026-05-08
+// Purpose: Renders the array of low-stock items as a stack of cards optimized
+//          for phone use. Each card shows on-hand vs threshold and exposes
+//          a Mark Restocked action.
+// ---------------------------
+function renderRestockList(items) {
+  const container = document.getElementById("restockListContainer");
+  const countEl   = document.getElementById("restockCount");
+  if (!container) return;
+
+  if (!items || items.length === 0) {
+    container.innerHTML = '<p class="restock-empty">✅ All stock levels healthy. Nothing to restock right now.</p>';
+    if (countEl) countEl.textContent = "";
+    return;
+  }
+
+  if (countEl) {
+    countEl.textContent = `${items.length} item${items.length === 1 ? "" : "s"} need${items.length === 1 ? "s" : ""} restocking`;
+  }
+
+  const cards = items.map(item => {
+    const start    = Number(item.startingQty ?? 0);
+    const onHand   = Number(item.quantityOnHand ?? 0);
+    const used     = Number(item.qtyUsed ?? Math.max(0, start - onHand));
+    const suggested = used > 0 ? used : Number(item.reorderQty ?? 0);
+
+    return `
+      <div class="restock-card" data-ei-id="${item.id}">
+        <div class="restock-card-head">
+          <div class="restock-card-name">${escInv(item.itemName)}</div>
+          ${item.category ? `<div class="restock-card-cat">${escInv(item.category)}</div>` : ""}
+        </div>
+        <div class="restock-card-stats">
+          <div class="restock-stat">
+            <div class="restock-stat-label">Delivered</div>
+            <div class="restock-stat-value">${start}</div>
+          </div>
+          <div class="restock-stat restock-stat-low">
+            <div class="restock-stat-label">On Hand</div>
+            <div class="restock-stat-value">${onHand}</div>
+          </div>
+          <div class="restock-stat">
+            <div class="restock-stat-label">Suggest +</div>
+            <div class="restock-stat-value">${suggested > 0 ? `+${suggested}` : "—"}</div>
+          </div>
+        </div>
+        <div class="restock-card-actions">
+          <button class="btn-primary restock-card-btn"
+                  onclick="markRestockedAtItem(${item.id}, ${suggested})">
+            ✓ Mark Restocked
+          </button>
+        </div>
+      </div>`;
+  }).join("");
+
+  container.innerHTML = cards;
+}
+
+// ---------------------------
+// markRestockedAtItem | Date: 2026-05-08
+// Purpose: Prompts the worker for the qty to add to the truck (defaulted
+//          to qtyUsed so the truck returns to its delivered level), then
+//          PUTs to the per-event restock endpoint. Truck up, warehouse
+//          down, ledger row, alert auto-clears if threshold cleared.
+//          eiId is the EventInventory.id (not VendorInventory.id).
+// ---------------------------
+async function markRestockedAtItem(eiId, suggested) {
+  const picker = document.getElementById("restockEventPicker");
+  const eventID = Number(picker?.value);
+  if (!Number.isFinite(eventID) || eventID <= 0) {
+    showToast("Pick an event first.", "warning");
+    return;
+  }
+  const def  = String(Number.isFinite(suggested) && suggested > 0 ? suggested : "");
+  const qtyStr = prompt("How much to add to the truck (decremented from warehouse)?", def);
+  if (qtyStr === null) return;
+  const qty = Number(qtyStr);
+  if (!Number.isFinite(qty) || qty <= 0) {
+    showToast("Invalid quantity.", "warning");
+    return;
+  }
+
+  const res = await fetch(`${API_BASE}/api/events/${eventID}/inventory/${eiId}/restock`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ qtyAdded: qty })
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    showToast(json.error || "Restock failed.", "error");
+    return;
+  }
+
+  showToast(`Restocked +${qty} ${json.itemName}.`, "success");
+  await loadRestockList();
   await loadInventoryAlerts();
 }
 

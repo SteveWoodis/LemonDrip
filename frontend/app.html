@@ -120,6 +120,7 @@
         <button id="btnCompany"   class="nav-link" onclick="closeMobileNav(); navigateTo('companySection')">Register Company</button>
         <button id="btnManage"    class="nav-link" onclick="closeMobileNav(); navigateTo('manageSection')">Manage Events</button>
         <button id="btnInventory" class="nav-link" style="display:none" onclick="closeMobileNav(); navigateTo('inventorySection')">My Inventory</button>
+        <button id="btnRestock"   class="nav-link" style="display:none" onclick="closeMobileNav(); navigateTo('restockSection')">🔄 Restock</button>
         <button id="btnRecipes"   class="nav-link" onclick="closeMobileNav(); navigateTo('recipesSection')">Recipes</button>
         <button id="btnSettings"  class="nav-link" onclick="closeMobileNav(); navigateTo('settingsSection')">Settings</button>
         <button id="btnAdmin"     class="nav-link hidden" onclick="closeMobileNav(); navigateTo('adminSection')">Admin</button>
@@ -405,6 +406,44 @@
 
       <div id="inventoryTableContainer" class="inv-table-wrap">
         <p class="inv-empty">No inventory items yet — upload a CSV or items will appear here.</p>
+      </div>
+    </section>
+
+    <!-- 📊 End-of-Night Usage Report Modal -->
+    <div class="modal-overlay" id="usageReportOverlay">
+      <div class="usage-report-modal" id="usageReportModal">
+        <div class="usage-report-header">
+          <div>
+            <h3 id="usageReportTitle">End-of-Night Usage Report</h3>
+            <div id="usageReportMeta" class="usage-report-meta"></div>
+          </div>
+          <button class="modal-close" onclick="closeUsageReport()" aria-label="Close">✕</button>
+        </div>
+        <div id="usageReportBody" class="usage-report-body">
+          <p class="empty-state-inline">Loading…</p>
+        </div>
+        <div class="usage-report-actions no-print">
+          <button class="btn-secondary" onclick="copyUsageReport()">📋 Copy</button>
+          <button class="btn-secondary" onclick="downloadUsageCSV()">⬇ CSV</button>
+          <button class="btn-primary"   onclick="window.print()">🖨 Print</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🔄 Restock List Section (phone-friendly, per-event) -->
+    <section id="restockSection" class="card hidden">
+      <div class="restock-header">
+        <h2>🔄 Restock List</h2>
+        <p class="restock-subtitle">Pick an event, then tap "Mark Restocked" after refilling each item. Restocking decrements warehouse stock.</p>
+        <div class="restock-toolbar">
+          <label for="restockEventPicker" style="font-weight:600;">Event:</label>
+          <select id="restockEventPicker" onchange="loadRestockList()" style="flex:1;min-width:180px;"></select>
+          <button class="btn-secondary" onclick="loadRestockList()">↻ Refresh</button>
+          <span id="restockCount" class="restock-count"></span>
+        </div>
+      </div>
+      <div id="restockListContainer" class="restock-list">
+        <p class="inv-empty">Pick an event above to see its restock list.</p>
       </div>
     </section>
 

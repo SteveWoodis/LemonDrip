@@ -120,42 +120,52 @@ async function _postMovement(client, {
   return res.rows.length > 0;
 }
 
-async function _applyOnHandAndAlert(client, userId, inventoryId, qtyChange) {
-  // Apply delta to live counter (floor at 0 for sale-style decrements)
-  await client.query(
-    `UPDATE "VendorInventory"
+// Apply a stock delta to a SPECIFIC EVENT'S inventory (the truck).
+// Returns true if EventInventory had a row for (eventID, inventoryId), false
+// otherwise (caller should treat false as "skip — event isn't seeded for
+// this item"). Warehouse stock (VendorInventory.quantityOnHand) is NOT
+// touched here — that's the warehouse's role; the truck has its own counter.
+async function _applyOnHandAndAlert(client, userId, eventID, inventoryId, qtyChange) {
+  // 1. Try to update the event's inventory row.
+  const upd = await client.query(
+    `UPDATE "EventInventory"
         SET "quantityOnHand" = GREATEST(0, "quantityOnHand" + $1),
             "updatedAt" = NOW()
-      WHERE "id" = $2 AND "userId" = $3`,
-    [qtyChange, inventoryId, userId]
+      WHERE "eventID" = $2 AND "inventoryId" = $3
+      RETURNING "quantityOnHand", "reorderThreshold"`,
+    [qtyChange, eventID, inventoryId]
   );
+  if (upd.rowCount === 0) return false; // no truck row — caller skips
 
-  // Threshold check + alert (only fire when going negative through threshold)
+  // 2. Threshold check + alert (per-event threshold).
   if (qtyChange < 0) {
-    const item = await _get(
-      `SELECT * FROM "VendorInventory" WHERE "id" = $1`,
-      [inventoryId]
-    );
-    if (item && Number(item.reorderThreshold) > 0
-        && Number(item.quantityOnHand) <= Number(item.reorderThreshold)) {
-      const open = await _get(
-        `SELECT "id" FROM "InventoryAlerts"
-          WHERE "itemId" = $1 AND "isRead" = FALSE`,
+    const row = upd.rows[0];
+    const onHand = Number(row.quantityOnHand);
+    const thresh = Number(row.reorderThreshold);
+    if (thresh > 0 && onHand <= thresh) {
+      const item = await _get(
+        `SELECT "id","itemName" FROM "VendorInventory" WHERE "id" = $1`,
         [inventoryId]
       );
-      if (!open) {
-        const msg = `${item.itemName} is low — ${item.quantityOnHand} on hand `
-                  + `(reorder at ${item.reorderThreshold}`
-                  + (item.reorderQty ? `, suggest ${item.reorderQty}` : '')
-                  + `).`;
-        await client.query(
-          `INSERT INTO "InventoryAlerts" ("userId","itemId","itemName","message")
-           VALUES ($1,$2,$3,$4)`,
-          [userId, inventoryId, item.itemName, msg]
+      if (item) {
+        const open = await _get(
+          `SELECT "id" FROM "InventoryAlerts"
+            WHERE "itemId" = $1 AND "isRead" = FALSE`,
+          [inventoryId]
         );
+        if (!open) {
+          const msg = `${item.itemName} is low at event ${eventID} — `
+                    + `${onHand} on hand (reorder at ${thresh}).`;
+          await client.query(
+            `INSERT INTO "InventoryAlerts" ("userId","itemId","itemName","message")
+             VALUES ($1,$2,$3,$4)`,
+            [userId, inventoryId, item.itemName, msg]
+          );
+        }
       }
     }
   }
+  return true;
 }
 
 // ── public: apply a single Square order's line items ─────────
@@ -184,6 +194,16 @@ async function applyOrderToStock(userId, eventID, order) {
         const totalQty = qty * d.qtyPerUnit;
         if (totalQty <= 0) continue;
 
+        // Pre-check: only proceed if this event has an EventInventory row
+        // for this item. If not, skip both the ledger row and the on-hand
+        // update — the event simply isn't tracking this item.
+        const eiCheck = await client.query(
+          `SELECT 1 FROM "EventInventory"
+            WHERE "eventID" = $1 AND "inventoryId" = $2`,
+          [eventID, d.inventoryId]
+        );
+        if (eiCheck.rowCount === 0) continue;
+
         const inserted = await _postMovement(client, {
           userId,
           inventoryId: d.inventoryId,
@@ -196,7 +216,7 @@ async function applyOrderToStock(userId, eventID, order) {
         });
 
         if (inserted) {
-          await _applyOnHandAndAlert(client, userId, d.inventoryId, -totalQty);
+          await _applyOnHandAndAlert(client, userId, eventID, d.inventoryId, -totalQty);
           applied++;
         }
       }
@@ -224,18 +244,59 @@ async function applyOrdersToStock(userId, eventID, orders) {
   return { applied, skipped };
 }
 
-// ── public: manual restock — wraps the same ledger ───────────
-async function recordRestock(userId, inventoryId, qtyAdded, note = null) {
+// ── public: manual restock for a SPECIFIC EVENT ─────────────
+// Refills the truck (EventInventory.quantityOnHand) by qtyAdded and
+// (atomically) decrements the warehouse (VendorInventory.quantityOnHand)
+// by the same amount. Posts a 'restock' row to InventoryMovements so
+// the ledger remains a complete audit trail.
+async function recordRestock(userId, eventID, inventoryId, qtyAdded, note = null) {
   if (qtyAdded <= 0) throw new Error('qtyAdded must be > 0');
   const client = await _pool.connect();
   try {
     await client.query('BEGIN');
+
+    // 1. Truck up
+    const updEI = await client.query(
+      `UPDATE "EventInventory"
+          SET "quantityOnHand" = "quantityOnHand" + $1,
+              "updatedAt" = NOW()
+        WHERE "eventID" = $2 AND "inventoryId" = $3
+        RETURNING "quantityOnHand", "reorderThreshold"`,
+      [qtyAdded, eventID, inventoryId]
+    );
+    if (updEI.rowCount === 0) {
+      throw new Error(`No EventInventory row for event ${eventID}, item ${inventoryId}`);
+    }
+
+    // 2. Warehouse down
+    await client.query(
+      `UPDATE "VendorInventory"
+          SET "quantityOnHand" = GREATEST(0, "quantityOnHand" - $1),
+              "updatedAt" = NOW()
+        WHERE "id" = $2 AND "userId" = $3`,
+      [qtyAdded, inventoryId, userId]
+    );
+
+    // 3. Ledger row (event-scoped restock)
     await _postMovement(client, {
-      userId, inventoryId, eventID: null,
+      userId, inventoryId, eventID,
       qtyChange: +qtyAdded, reason: 'restock',
-      squareOrderId: null, squareLineUid: null, note
+      squareOrderId: null, squareLineUid: null,
+      note: note || `Restocked +${qtyAdded}`
     });
-    await _applyOnHandAndAlert(client, userId, inventoryId, +qtyAdded);
+
+    // 4. Clear any open low-stock alert if we crossed back above threshold
+    const onHand = Number(updEI.rows[0].quantityOnHand);
+    const thresh = Number(updEI.rows[0].reorderThreshold);
+    if (thresh > 0 && onHand > thresh) {
+      await client.query(
+        `UPDATE "InventoryAlerts"
+            SET "isRead" = TRUE
+          WHERE "itemId" = $1 AND "userId" = $2 AND "isRead" = FALSE`,
+        [inventoryId, userId]
+      );
+    }
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

@@ -4663,7 +4663,317 @@ app.delete("/api/inventory/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete item" });
   }
 });
- 
+
+// ============================================================
+// 🚚 Per-Event Inventory ("the truck")
+// ============================================================
+// EventInventory rows are the per-event, per-item counters that
+// the Square sync now decrements (instead of VendorInventory).
+// VendorInventory.quantityOnHand is now "warehouse stock" — a
+// delivery decrements warehouse and creates/refills the truck.
+// ------------------------------------------------------------
+
+// GET /api/events/:eventID/inventory
+// Returns this event's truck inventory joined to the master catalog.
+app.get("/api/events/:eventID/inventory", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const rows = await dbAll(
+      `SELECT ei."id", ei."eventID", ei."inventoryId",
+              ei."startingQty", ei."quantityOnHand",
+              ei."reorderThreshold", ei."reorderQty", ei."notes",
+              ei."createdAt", ei."updatedAt",
+              v."itemName", v."category", v."unitCost", v."sku",
+              GREATEST(0, ei."startingQty" - ei."quantityOnHand") AS "qtyUsed"
+         FROM "EventInventory" ei
+         JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."eventID" = $1
+        ORDER BY v."itemName"`,
+      [eventID]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Get event inventory error:", err);
+    res.status(500).json({ error: "Failed to load event inventory" });
+  }
+});
+
+// POST /api/events/:eventID/inventory
+// Add an item to the event (a "delivery"): inserts EventInventory row and
+// decrements warehouse stock by the delivered quantity.
+// Body: { inventoryId, startingQty, reorderThreshold?, reorderQty?, notes? }
+app.post("/api/events/:eventID/inventory", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const userId = req.session.getUserId();
+    const inventoryId = Number(req.body.inventoryId);
+    const startingQty = Number(req.body.startingQty);
+    const reorderThreshold = Number(req.body.reorderThreshold ?? 0);
+    const reorderQty = Number(req.body.reorderQty ?? 0);
+    const notes = (req.body.notes ?? "").toString();
+
+    if (!Number.isFinite(inventoryId) || !Number.isFinite(startingQty) || startingQty < 0) {
+      return res.status(400).json({ error: "Invalid inventoryId or startingQty" });
+    }
+
+    // Verify the inventory item belongs to this user
+    const item = await dbGet(
+      `SELECT "id","itemName" FROM "VendorInventory" WHERE "id" = $1 AND "userId" = $2`,
+      [inventoryId, userId]
+    );
+    if (!item) return res.status(404).json({ error: "Inventory item not found." });
+
+    await client.query('BEGIN');
+
+    // 1. Insert EventInventory row (or update if it already exists)
+    const ins = await client.query(
+      `INSERT INTO "EventInventory"
+         ("eventID","inventoryId","startingQty","quantityOnHand","reorderThreshold","reorderQty","notes")
+       VALUES ($1,$2,$3,$3,$4,$5,$6)
+       ON CONFLICT ("eventID","inventoryId") DO UPDATE
+         SET "startingQty"      = EXCLUDED."startingQty",
+             "quantityOnHand"   = EXCLUDED."quantityOnHand",
+             "reorderThreshold" = EXCLUDED."reorderThreshold",
+             "reorderQty"       = EXCLUDED."reorderQty",
+             "notes"            = EXCLUDED."notes",
+             "updatedAt"        = NOW()
+       RETURNING "id"`,
+      [eventID, inventoryId, startingQty, reorderThreshold, reorderQty, notes || null]
+    );
+
+    // 2. Decrement warehouse stock by the delivered amount
+    await client.query(
+      `UPDATE "VendorInventory"
+          SET "quantityOnHand" = GREATEST(0, "quantityOnHand" - $1),
+              "updatedAt" = NOW()
+        WHERE "id" = $2 AND "userId" = $3`,
+      [startingQty, inventoryId, userId]
+    );
+
+    // 3. Ledger row (delivery, qtyChange = -startingQty against warehouse)
+    await client.query(
+      `INSERT INTO "InventoryMovements"
+         ("userId","inventoryId","eventID","qtyChange","reason","note")
+       VALUES ($1,$2,$3,$4,'delivery',$5)`,
+      [userId, inventoryId, eventID, -startingQty, `Delivered ${startingQty} ${item.itemName} to event ${eventID}`]
+    );
+
+    await client.query('COMMIT');
+
+    const row = await dbGet(
+      `SELECT ei.*, v."itemName" FROM "EventInventory" ei
+        JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."id" = $1`,
+      [ins.rows[0].id]
+    );
+    res.json(row);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error("❌ Add event inventory error:", err);
+    res.status(500).json({ error: "Failed to add item to event inventory" });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/events/:eventID/inventory/:eiId
+// Update a single event-inventory row's metadata (threshold/reorderQty/notes,
+// or override startingQty/quantityOnHand for corrections — does NOT touch
+// warehouse stock; use the restock endpoint for live refills).
+app.put("/api/events/:eventID/inventory/:eiId", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    const eiId    = Number(req.params.eiId);
+    if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const fields = ["startingQty","quantityOnHand","reorderThreshold","reorderQty","notes"];
+    const sets = [], params = [];
+    fields.forEach(f => {
+      if (req.body[f] !== undefined) {
+        params.push(req.body[f]);
+        sets.push(`"${f}" = $${params.length}`);
+      }
+    });
+    if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+
+    params.push(eiId, eventID);
+    await dbRun(
+      `UPDATE "EventInventory"
+          SET ${sets.join(", ")}, "updatedAt" = NOW()
+        WHERE "id" = $${params.length - 1} AND "eventID" = $${params.length}`,
+      params
+    );
+    const row = await dbGet(
+      `SELECT ei.*, v."itemName" FROM "EventInventory" ei
+        JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."id" = $1`,
+      [eiId]
+    );
+    res.json(row);
+  } catch (err) {
+    console.error("❌ Update event inventory error:", err);
+    res.status(500).json({ error: "Failed to update event inventory" });
+  }
+});
+
+// PUT /api/events/:eventID/inventory/:eiId/restock
+// Mid-event restock: refills the truck and decrements warehouse.
+// Body: { qtyAdded, note? }
+app.put("/api/events/:eventID/inventory/:eiId/restock", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    const eiId    = Number(req.params.eiId);
+    const qtyAdded = Number(req.body.qtyAdded);
+    const note    = (req.body.note ?? "").toString() || null;
+    if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(qtyAdded) || qtyAdded <= 0) return res.status(400).json({ error: "qtyAdded must be > 0" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const userId = req.session.getUserId();
+    const ei = await dbGet(
+      `SELECT "id","inventoryId" FROM "EventInventory" WHERE "id" = $1 AND "eventID" = $2`,
+      [eiId, eventID]
+    );
+    if (!ei) return res.status(404).json({ error: "Event inventory row not found" });
+
+    await stock.recordRestock(userId, eventID, ei.inventoryId, qtyAdded, note);
+
+    const row = await dbGet(
+      `SELECT ei.*, v."itemName" FROM "EventInventory" ei
+        JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."id" = $1`,
+      [eiId]
+    );
+    res.json(row);
+  } catch (err) {
+    console.error("❌ Event restock error:", err);
+    res.status(500).json({ error: err.message || "Restock failed" });
+  }
+});
+
+// DELETE /api/events/:eventID/inventory/:eiId
+// Remove an item from the event. Returns the (current quantityOnHand, not
+// startingQty) back to the warehouse — i.e., undelivered stock comes home.
+app.delete("/api/events/:eventID/inventory/:eiId", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const eventID = Number(req.params.eventID);
+    const eiId    = Number(req.params.eiId);
+    if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) return res.status(400).json({ error: "Invalid id" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const userId = req.session.getUserId();
+    const row = await dbGet(
+      `SELECT * FROM "EventInventory" WHERE "id" = $1 AND "eventID" = $2`,
+      [eiId, eventID]
+    );
+    if (!row) return res.status(404).json({ error: "Event inventory row not found" });
+
+    await client.query('BEGIN');
+    // Return remaining truck stock to warehouse
+    if (Number(row.quantityOnHand) > 0) {
+      await client.query(
+        `UPDATE "VendorInventory"
+            SET "quantityOnHand" = "quantityOnHand" + $1,
+                "updatedAt" = NOW()
+          WHERE "id" = $2 AND "userId" = $3`,
+        [Number(row.quantityOnHand), row.inventoryId, userId]
+      );
+      await client.query(
+        `INSERT INTO "InventoryMovements"
+           ("userId","inventoryId","eventID","qtyChange","reason","note")
+         VALUES ($1,$2,$3,$4,'return-to-warehouse',$5)`,
+        [userId, row.inventoryId, eventID, +Number(row.quantityOnHand),
+         `Returned ${row.quantityOnHand} from event ${eventID} to warehouse`]
+      );
+    }
+    await client.query(
+      `DELETE FROM "EventInventory" WHERE "id" = $1`,
+      [eiId]
+    );
+    await client.query('COMMIT');
+    res.json({ success: true, deletedId: eiId });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error("❌ Delete event inventory error:", err);
+    res.status(500).json({ error: "Failed to remove event inventory item" });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/events/:eventID/inventory/low-stock
+// End-of-night view: items where on-hand has dropped below starting (any
+// usage) OR has crossed the per-event reorderThreshold.
+app.get("/api/events/:eventID/inventory/low-stock", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const rows = await dbAll(
+      `SELECT ei."id", ei."eventID", ei."inventoryId",
+              ei."startingQty", ei."quantityOnHand",
+              ei."reorderThreshold", ei."reorderQty", ei."notes",
+              v."itemName", v."category", v."unitCost",
+              GREATEST(0, ei."startingQty" - ei."quantityOnHand") AS "qtyUsed"
+         FROM "EventInventory" ei
+         JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."eventID" = $1
+          AND (
+                ei."quantityOnHand" < ei."startingQty"          -- any usage
+             OR (ei."reorderThreshold" > 0
+                 AND ei."quantityOnHand" <= ei."reorderThreshold")
+          )
+        ORDER BY (ei."startingQty" - ei."quantityOnHand") DESC`,
+      [eventID]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Event low-stock error:", err);
+    res.status(500).json({ error: "Failed to load event low-stock list" });
+  }
+});
+
+// GET /api/events/:eventID/inventory/usage
+// End-of-day usage report — for printing/sharing with restocker.
+app.get("/api/events/:eventID/inventory/usage", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const rows = await dbAll(
+      `SELECT v."itemName", v."category",
+              ei."startingQty", ei."quantityOnHand",
+              GREATEST(0, ei."startingQty" - ei."quantityOnHand") AS "qtyUsed",
+              CASE WHEN ei."startingQty" > 0
+                   THEN ROUND(((ei."startingQty" - ei."quantityOnHand")::numeric
+                              / ei."startingQty"::numeric) * 100, 1)
+                   ELSE 0 END AS "pctUsed"
+         FROM "EventInventory" ei
+         JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."eventID" = $1
+        ORDER BY "qtyUsed" DESC`,
+      [eventID]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Event usage error:", err);
+    res.status(500).json({ error: "Failed to load usage" });
+  }
+});
+
 // ── VenView App SPA (venview.app/app and all sub-routes) ───────
 // To this:
 app.use("/app", express.static(path.join(__dirname, "frontend")));

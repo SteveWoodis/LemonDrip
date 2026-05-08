@@ -3068,6 +3068,270 @@ select:focus {
 .inv-restock-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
 
 /* ============================================================
+   🔄 Restock List (phone-friendly view)
+   ============================================================ */
+
+.restock-header {
+  margin-bottom: 16px;
+}
+.restock-subtitle {
+  color: var(--vv-muted, #666);
+  font-size: 0.9rem;
+  margin: 4px 0 12px;
+}
+.restock-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.restock-count {
+  color: var(--vv-muted, #666);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.restock-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .restock-list { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 1100px) {
+  .restock-list { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+.restock-card {
+  border: 1px solid var(--vv-border, #e0e0e0);
+  border-left: 4px solid #f59e0b;        /* warning amber */
+  border-radius: 10px;
+  background: #fff8f0;                    /* matches inv-row-low palette */
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.restock-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.restock-card-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #222);
+  line-height: 1.2;
+}
+.restock-card-cat {
+  font-size: 0.78rem;
+  color: var(--vv-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.restock-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  padding: 8px;
+}
+.restock-stat {
+  text-align: center;
+}
+.restock-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vv-muted, #666);
+  margin-bottom: 2px;
+}
+.restock-stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text, #222);
+  line-height: 1;
+}
+.restock-stat-low .restock-stat-value {
+  color: #b45309;                          /* warm amber for the urgent number */
+}
+
+.restock-card-actions {
+  display: flex;
+  gap: 8px;
+}
+.restock-card-btn {
+  flex: 1;
+  padding: 12px 14px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600;
+  min-height: 44px;                        /* WCAG-friendly tap target */
+}
+
+.restock-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--vv-muted, #666);
+  font-size: 1rem;
+  background: #f0fdf4;                     /* gentle green for "all good" */
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+/* ============================================================
+   🚚 Truck Inventory — per-event panel on the event dashboard
+   ============================================================ */
+.truck-inv-table th.num,
+.truck-inv-table td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+.truck-inv-table {
+  font-size: 0.92rem;
+}
+.truck-row-low td {
+  background: #fff8f0 !important;
+}
+.truck-row-low:hover td {
+  background: #fff0e0 !important;
+}
+.truck-inv-toolbar .truck-inv-summary {
+  font-weight: 600;
+}
+
+/* ============================================================
+   📊 End-of-Night Usage Report Modal
+   (uses the existing .modal-overlay + .open pattern)
+   ============================================================ */
+
+.usage-report-modal {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 720px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.usage-report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--vv-border, #e0e0e0);
+  gap: 12px;
+}
+.usage-report-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.usage-report-meta {
+  font-size: 0.88rem;
+  color: var(--vv-muted, #666);
+  margin-top: 4px;
+}
+
+.usage-report-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.usage-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.usage-summary > div {
+  background: #f8fafc;
+  border: 1px solid var(--vv-border, #e0e0e0);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.usage-summary-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vv-muted, #666);
+}
+.usage-summary-val {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.usage-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.93rem;
+}
+.usage-report-table th,
+.usage-report-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--vv-border, #e0e0e0);
+}
+.usage-report-table th {
+  background: #f8fafc;
+  text-align: left;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vv-muted, #666);
+}
+.usage-report-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.usage-row-used td:nth-child(4),
+.usage-row-used td:nth-child(5) {
+  font-weight: 600;
+  color: #b45309;
+}
+
+.usage-footer {
+  font-size: 0.78rem;
+  color: var(--vv-muted, #666);
+  margin: 12px 0 0;
+  text-align: right;
+}
+
+.usage-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--vv-border, #e0e0e0);
+  background: #fafafa;
+}
+
+/* Print scoping: when modal is open, hide everything except the report. */
+@media print {
+  body.printing-usage > *:not(#usageReportOverlay) { display: none !important; }
+  body.printing-usage .modal-overlay { display: flex !important; background: #fff; padding: 0; }
+  body.printing-usage .usage-report-modal {
+    box-shadow: none;
+    max-width: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+  body.printing-usage .no-print,
+  body.printing-usage .modal-close { display: none !important; }
+}
+
+/* ============================================================
    ⚙ Admin Panel
    ============================================================ */
 
