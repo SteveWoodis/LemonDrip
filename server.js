@@ -7,6 +7,7 @@ const cors = require("cors");
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
 const recipes = require('./recipes.js');
+const stock = require('./realtime_inventory/stock.js');
 const waitlistRouter = require('./backend/routes/waitlist');
 const rateLimit = require("express-rate-limit");
 
@@ -216,6 +217,9 @@ async function initDb() {
 
     recipes.init(app, pool);
     await recipes.runMigration();
+
+    // ── Real-time inventory (deducts stock on every sale) ───────
+    stock.init(pool, { findBestMatch: recipes.findBestMatch });
 
     // Initialize dependent modules with pool
     square.init(pool);
@@ -2253,6 +2257,17 @@ console.log({ grossSales, discounts, netSales, totalCollected });
       totalCollected,
       squareFees
     ]);
+
+    // ── Real-time inventory: post each Square order to the ledger ──
+    // Idempotent: re-syncing the same window will not double-deduct
+    // because InventoryMovements has UNIQUE (squareOrderId, squareLineUid, inventoryId).
+    try {
+      const stockResult = await stock.applyOrdersToStock(userId, eventID, orders);
+      console.log(`📦 Inventory: applied=${stockResult.applied} skipped=${stockResult.skipped}`);
+    } catch (e) {
+      console.warn('⚠️  Inventory deduction skipped:', e.message);
+      // non-fatal — sales summary still saves
+    }
 
     await saveInventorySales(eventID, inventoryRows);
 

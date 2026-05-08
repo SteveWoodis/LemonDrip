@@ -903,4 +903,4 @@ function registerRoutes(app) {
   console.log('✅ Recipe routes registered');
 }
 
-module.exports = { init, runMigration, calculateEventSalesFees };
+module.exports = { init, runMigration, calculateEventSalesFees, findBestMatch };

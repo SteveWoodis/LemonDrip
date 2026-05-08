@@ -1,0 +1,25 @@
+BEGIN;
+
+-- Cup-side consumables (1 per drink)
+UPDATE "VendorInventory" SET "quantityOnHand" = 500, "reorderThreshold" = 100 WHERE "id" = 103;  -- Straws
+UPDATE "VendorInventory" SET "quantityOnHand" = 500, "reorderThreshold" = 100 WHERE "id" = 104;  -- Cups & Lids
+UPDATE "VendorInventory" SET "quantityOnHand" = 500, "reorderThreshold" = 100 WHERE "id" = 105;  -- Stickers (Logo)
+UPDATE "VendorInventory" SET "quantityOnHand" = 500, "reorderThreshold" = 100 WHERE "id" = 106;  -- Stickers (Printer)
+
+-- Cup Labor isn't a physical item — set high so it doesn't trigger alerts
+UPDATE "VendorInventory" SET "quantityOnHand" = 9999, "reorderThreshold" = 0   WHERE "id" = 108;  -- Cup Labor
+
+-- Ice + water (bulk; 1 lb / 2 oz per drink)
+UPDATE "VendorInventory" SET "quantityOnHand" = 200,  "reorderThreshold" = 50  WHERE "id" = 109;  -- Ice (lbs)
+UPDATE "VendorInventory" SET "quantityOnHand" = 1000, "reorderThreshold" = 200 WHERE "id" = 110;  -- Water (oz)
+
+-- Lemon (1 per drink) and Simple Syrup (3 oz per drink)
+UPDATE "VendorInventory" SET "quantityOnHand" = 300,  "reorderThreshold" = 60  WHERE "id" = 112;  -- Lemons
+UPDATE "VendorInventory" SET "quantityOnHand" = 600,  "reorderThreshold" = 150 WHERE "id" = 114;  -- Simple Syrup (oz)
+
+SELECT "id","itemName","quantityOnHand","reorderThreshold"
+  FROM "VendorInventory"
+ WHERE "id" IN (103,104,105,106,108,109,110,112,114)
+ ORDER BY "id";
+
+COMMIT;

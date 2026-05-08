@@ -44,7 +44,37 @@ async function _all(sql, params = []) {
 // Returns an array of { inventoryId, qty } describing what to
 // subtract from VendorInventory for one unit of the sold item.
 async function _resolveDeductions(userId, posItemId, displayName) {
-  // (a) direct POS → inventory mapping
+  // (a) recipe-based BOM (preferred — full ingredient breakdown).
+  // Only considers recipes that have at least one ingredient wired to
+  // VendorInventory; unwired recipes can't produce deductions and would
+  // just steal matches from wired ones in fuzzy ties.
+  if (_findBestMatch) {
+    const recipes = await _all(
+      `SELECT DISTINCT rc."id", rc."name", rc."squareName"
+         FROM "RecipeCards" rc
+         JOIN "RecipeIngredients" ri ON ri."recipeId" = rc."id"
+        WHERE rc."userId" = $1 AND ri."inventoryId" IS NOT NULL`,
+      [userId]
+    );
+    const match = _findBestMatch(displayName, recipes);
+    if (match && match.recipe) {
+      const ings = await _all(
+        `SELECT "inventoryId", "quantityUsed"
+           FROM "RecipeIngredients"
+          WHERE "recipeId" = $1 AND "inventoryId" IS NOT NULL`,
+        [match.recipe.id]
+      );
+      if (ings.length > 0) {
+        return ings.map(i => ({
+          inventoryId: i.inventoryId,
+          qtyPerUnit: Number(i.quantityUsed) || 0
+        }));
+      }
+    }
+  }
+
+  // (b) PosItemMapping fallback — for resold goods (bottled water, etc.)
+  // or any sold item that doesn't fuzzy-match a wired recipe.
   if (posItemId) {
     const map = await _get(
       `SELECT "inventoryId" FROM "PosItemMapping"
@@ -56,26 +86,7 @@ async function _resolveDeductions(userId, posItemId, displayName) {
     }
   }
 
-  // (b) recipe-based BOM
-  if (!_findBestMatch) return [];
-
-  const recipes = await _all(
-    `SELECT "id", "name", "squareName" FROM "RecipeCards" WHERE "userId" = $1`,
-    [userId]
-  );
-  const match = _findBestMatch(displayName, recipes);
-  if (!match || !match.recipe) return [];
-
-  const ings = await _all(
-    `SELECT "inventoryId", "quantityUsed"
-       FROM "RecipeIngredients"
-      WHERE "recipeId" = $1 AND "inventoryId" IS NOT NULL`,
-    [match.recipe.id]
-  );
-  return ings.map(i => ({
-    inventoryId: i.inventoryId,
-    qtyPerUnit: Number(i.quantityUsed) || 0
-  }));
+  return [];
 }
 
 // ── ledger write + live update + low-stock alert ─────────────
@@ -92,7 +103,8 @@ async function _postMovement(client, {
       `INSERT INTO "InventoryMovements"
         ("userId","inventoryId","eventID","qtyChange","reason","squareOrderId","squareLineUid","note")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT ("squareOrderId","squareLineUid","inventoryId") DO NOTHING
+       ON CONFLICT ("squareOrderId","squareLineUid","inventoryId")
+         WHERE "squareOrderId" IS NOT NULL DO NOTHING
        RETURNING "id"`,
       [userId, inventoryId, eventID, qtyChange, reason, squareOrderId, squareLineUid, note || null]
     );
