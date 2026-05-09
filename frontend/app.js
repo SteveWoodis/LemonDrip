@@ -19,17 +19,37 @@ window.availableTemplates = [];
 window.USER_PLAN = "starter"; // default until server responds
 
 // ---------------------------
-// 🔐 SuperTokens Auth
+// 🔐 Supabase Auth
 // ---------------------------
-supertokens.init({
-  apiDomain: window.location.origin,
-  apiBasePath: "/auth",
-});
+const supabaseClient = window.supabase.createClient(
+  window.SUPABASE_URL,
+  window.SUPABASE_ANON_KEY
+);
+
+// Automatically attach the Supabase JWT to every /api request.
+// Handles both relative ("/api/foo") and absolute ("http://localhost:3000/api/foo")
+// URLs because callers use `${API_BASE}/api/...` where API_BASE = window.location.origin.
+const _origFetch = window.fetch.bind(window);
+window.fetch = async function(input, init = {}) {
+  const url = typeof input === "string" ? input : (input?.url || "");
+  let pathname = url;
+  try { pathname = new URL(url, window.location.origin).pathname; } catch (_) {}
+  if (pathname.startsWith("/api/")) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session?.access_token) {
+      init = {
+        ...init,
+        headers: { Authorization: `Bearer ${session.access_token}`, ...(init.headers || {}) },
+      };
+    }
+  }
+  return _origFetch(input, init);
+};
 
 let authMode = "signin"; // "signin" or "signup"
 
 // ---------------------------
-// 🔐 SuperTokens Auth Mode
+// 🔐 Auth Mode Toggle
 // Allows user to toggle between Sign in and Sign Up
 // ---------------------------
 function toggleAuthMode(e) {
@@ -51,8 +71,7 @@ function toggleAuthMode(e) {
 }
 
 // ---------------------------
-// 🔐 SuperTokens Authentication
-// Allows for passing of Username and Password
+// 🔐 Supabase Authentication
 // ---------------------------
 async function handleAuth(e) {
   e.preventDefault();
@@ -62,29 +81,14 @@ async function handleAuth(e) {
   errorEl.textContent = "";
 
   try {
-    const url = authMode === "signup"
-      ? "/auth/signup"
-      : "/auth/signin";
+    const { error } = authMode === "signup"
+      ? await supabaseClient.auth.signUp({ email, password })
+      : await supabaseClient.auth.signInWithPassword({ email, password });
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ formFields: [
-        { id: "email", value: email },
-        { id: "password", value: password },
-      ]}),
-    });
-
-    const data = await res.json();
-
-    if (data.status === "OK") {
-      showAuthenticatedUI();
-    } else if (data.status === "FIELD_ERROR") {
-      errorEl.textContent = data.formFields.map(f => f.error).join(". ");
-    } else if (data.status === "WRONG_CREDENTIALS_ERROR") {
-      errorEl.textContent = "Incorrect email or password.";
+    if (error) {
+      errorEl.textContent = error.message || "Authentication failed.";
     } else {
-      errorEl.textContent = data.message || "Authentication failed.";
+      showAuthenticatedUI();
     }
   } catch (err) {
     console.error("Auth error:", err);
@@ -93,11 +97,11 @@ async function handleAuth(e) {
 }
 
 // ---------------------------
-// 🔐 SuperTokens Auth - Logout
+// 🔐 Supabase Auth - Logout
 // ---------------------------
 async function handleLogout() {
   try {
-    await fetch("/auth/signout", { method: "POST" });
+    await supabaseClient.auth.signOut();
   } catch (err) {
     console.warn("Logout request failed:", err);
   }
@@ -107,12 +111,12 @@ async function handleLogout() {
 
 // ---------------------------
 // checkSession | Date: 2026-03-06
-// Purpose: On page load, checks whether a SuperTokens session already exists.
+// Purpose: On page load, checks whether a Supabase session already exists.
 //          Routes to authenticated or unauthenticated UI accordingly.
 // ---------------------------
 async function checkSession() {
-  const exists = await supertokens.doesSessionExist();
-  if (exists) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
     showAuthenticatedUI();
   } else {
     showUnauthenticatedUI();
@@ -5776,21 +5780,20 @@ async function uploadEventPermits(eventID) {
 
 
 window.addEventListener("DOMContentLoaded", async () => {
-  const exists = await supertokens.doesSessionExist();
-  if (exists){
-  try {
-    const res = await fetch(`${API_BASE}/api/me`);
-    if (res.ok) {
-      const data = await res.json();
-      window.USER_PLAN = data.plan || "starter";
-      window.USER_ID = data.userId || "";
-      console.log("📋 Plan loaded:", window.USER_PLAN);
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
+    try {
+      const res = await fetch(`${API_BASE}/api/me`);
+      if (res.ok) {
+        const data = await res.json();
+        window.USER_PLAN = data.plan || "starter";
+        window.USER_ID = data.userId || "";
+        console.log("📋 Plan loaded:", window.USER_PLAN);
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to fetch plan, defaulting to starter");
     }
-  } catch (err) {
-    console.warn("⚠️ Failed to fetch plan, defaulting to starter");
   }
-
-}
 });
 
 

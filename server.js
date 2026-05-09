@@ -44,37 +44,24 @@ const apiLimiter = rateLimit({
 // ────────────────────────────────────────────────────────────────
  
 // -------------------------------
-// 🔐 SuperTokens Auth
+// 🔐 Supabase Auth
 // -------------------------------
-const supertokens = require("supertokens-node");
-const Session = require("supertokens-node/recipe/session");
-const Dashboard = require("supertokens-node/recipe/dashboard");
-const EmailPassword = require("supertokens-node/recipe/emailpassword");
-const { middleware: stMiddleware, errorHandler: stErrorHandler } = require("supertokens-node/framework/express");
-const { verifySession } = require("supertokens-node/recipe/session/framework/express");
+const { supabaseAdmin } = require("./backend/supabase");
 
-const ST_PORT = process.env.PORT || 8080;
-supertokens.init({
-  framework: "express",
-  supertokens: {
-    connectionURI: process.env.SUPERTOKENS_CONNECTION_URI || "https://venview.aws.supertokens.io",
-    apiKey: process.env.SUPERTOKENS_API_KEY,
-  },
-  appInfo: {
-    appName: "VenView Events",
-    apiDomain: process.env.API_DOMAIN || `http://localhost:${ST_PORT}`,
-    websiteDomain: process.env.WEBSITE_DOMAIN || `http://localhost:${ST_PORT}`,
-    apiBasePath: "/auth",
-    websiteBasePath: "/auth",
-  },
-  recipeList: [
-    EmailPassword.init(),
-    Session.init(),
-    Dashboard.init(),
-  ],
-});
-
-console.log("SuperToken URI", supertokens.connectionURI);
+// Verifies the Supabase JWT from the Authorization header and populates req.user
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  req.user = user;
+  next();
+}
 
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
@@ -94,12 +81,7 @@ const pool = new Pool({
 // 🔐 Plan Enforcement
 
 async function getUserPlan(req) {
-  const payload = req.session.getAccessTokenPayload();
-  if (payload?.plan === "starter" || payload?.plan === "pro") {
-    return payload.plan;
-  }
-
-  const userId = req.session.getUserId();
+  const userId = req.user.id;
   const { rows } = await pool.query(
     `SELECT "plan" FROM "UserPlan" WHERE "userId" = $1`,
     [userId]
@@ -115,12 +97,11 @@ async function getUserPlan(req) {
     );
   }
 
-  await req.session.mergeIntoAccessTokenPayload({ plan });
   return plan;
 }
 
 async function assertOwnsEvent(req, eventID) {
-  const userId = req.session.getUserId();
+  const userId = req.user.id;
   const row = await dbGet(
     `SELECT 1 FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
     [eventID, userId]
@@ -658,26 +639,10 @@ app.use((req, res, next) => {
 
 
 app.use(cors({
-  origin: process.env.WEBSITE_DOMAIN || `http://localhost:${ST_PORT}`,
-  allowedHeaders: ["content-type", ...supertokens.getAllCORSHeaders()],
+  origin: process.env.WEBSITE_DOMAIN || `http://localhost:${process.env.PORT || 8080}`,
+  allowedHeaders: ["content-type", "authorization"],
   credentials: true,
 }));
-
-// Explicit session refresh route — must be before stMiddleware
-app.post("/auth/session/refresh", async (req, res, next) => {
-  try {
-    await Session.refreshSession(req, res);
-    res.status(200).json({ status: "OK" });
-  } catch (err) {
-    if (err.type === Session.Error.UNAUTHORISED) {
-      res.status(401).json({ status: "UNAUTHORISED" });
-    } else {
-      next(err);
-    }
-  }
-});
-
-app.use(stMiddleware());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -685,8 +650,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // ── Marketing landing page (venview.app/) ──────────────────────
 app.use(express.static(path.join(__dirname, "public")));
 app.use('/api', waitlistRouter);   // public, no auth needed
-// OAuth callback must be outside the verifySession gate — Square's redirect
-// carries no session cookie. Authentication is via the state→userId DB lookup.
+// OAuth callback must be outside the requireAuth gate — Square's redirect
+// carries no auth header. Authentication is via the state→userId DB lookup.
 app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
@@ -751,7 +716,7 @@ app.get("/api/square/oauth/callback", squareLimiter, async (req, res) => {
   }
 });
 
-app.use("/api", verifySession());           // gates everything else under /api
+app.use("/api", requireAuth);               // gates everything else under /api
 
 // -------------------------------
 // 📂 Multer storage for permits
@@ -852,9 +817,8 @@ console.log("🔐 ADMIN_EMAILS loaded:", ADMIN_EMAILS.length ? ADMIN_EMAILS : "(
 app.get("/api/me", async (req, res) => {
   try {
     const plan    = await getUserPlan(req);
-    const userId  = req.session.getUserId();
-    const userInfo = await supertokens.getUser(userId);
-    const email   = userInfo?.emails?.[0] || "";
+    const userId  = req.user.id;
+    const email   = req.user.email || "";
     const isAdmin = ADMIN_EMAILS.includes(email.toLowerCase());
     console.log(`🔍 /api/me — email: "${email}", isAdmin: ${isAdmin}`);
     res.json({ userId, plan, isAdmin });
@@ -870,10 +834,7 @@ app.get("/api/me", async (req, res) => {
 
 app.put("/api/admin/plan", async (req, res) => {
   try {
-    const adminUserId = req.session.getUserId();
-    const adminInfo = await supertokens.getUser(adminUserId);
-    const adminEmail = adminInfo?.emails?.[0] || "";
-
+    const adminEmail = req.user.email || "";
     if (!ADMIN_EMAILS.includes(adminEmail.toLowerCase())) {
       return res.status(403).json({ error: "Not authorized" });
     }
@@ -890,9 +851,6 @@ app.put("/api/admin/plan", async (req, res) => {
       [userId, plan]
     );
 
-    // Revoke sessions so the user picks up the new plan on next request
-    await Session.revokeAllSessionsForUser(userId);
-
     res.json({ success: true, userId, plan });
   } catch (err) {
     console.error("❌ Admin plan update error:", err);
@@ -903,37 +861,24 @@ app.put("/api/admin/plan", async (req, res) => {
 // -------------------------------
 // 🔐 Admin: List all users with plans
 // -------------------------------
-app.get("/api/admin/users", verifySession(), async (req, res) => {
+app.get("/api/admin/users", async (req, res) => {
   try {
-    const adminUserId = req.session.getUserId();
-    const adminInfo = await supertokens.getUser(adminUserId);
-    const adminEmail = adminInfo?.emails?.[0] || "";
-
+    const adminEmail = req.user.email || "";
     if (!ADMIN_EMAILS.includes(adminEmail.toLowerCase())) {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // Fetch all users from SuperTokens (paginate through all)
-    const users = [];
-    let paginationToken;
-    do {
-      const result = await supertokens.getUsersNewestFirst({
-        limit: 100,
-        paginationToken,
-      });
-      users.push(...result.users);
-      paginationToken = result.nextPaginationToken;
-    } while (paginationToken);
+    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    if (error) throw error;
 
-    // Fetch all plans from DB
     const { rows: planRows } = await pool.query(`SELECT "userId", "plan" FROM "UserPlan"`);
     const planMap = Object.fromEntries(planRows.map(r => [r.userId, r.plan]));
 
     const userList = users.map(u => ({
       userId: u.id,
-      email: u.emails?.[0] || "",
+      email: u.email || "",
       plan: planMap[u.id] || "starter",
-      timeJoined: u.timeJoined,
+      timeJoined: u.created_at,
     }));
 
     res.json({ users: userList });
@@ -975,7 +920,7 @@ const NET_PROFIT_SQL = `
 // -------------------------------
 app.get("/api/events", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const { name, date, id } = req.query;
 
     let where = `WHERE e."userId" = $1`;
@@ -1030,7 +975,7 @@ app.get("/api/events", async (req, res) => {
 // -------------------------------
 app.get("/api/events/kpi", searchLimiter, async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
 
     const [stats] = await dbAll(`
       SELECT
@@ -1072,7 +1017,7 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
 // -------------------------------
 app.get("/api/events/trend", searchLimiter, async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const rows = await dbAll(`
       SELECT
         e."eventName",
@@ -1101,7 +1046,7 @@ app.get("/api/events/trend", searchLimiter, async (req, res) => {
 // -------------------------------
 app.get("/api/events/export/csv", searchLimiter, async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const rows = await dbAll(`
       SELECT
         e."eventID", e."eventName", e."eventDate", e."eventType",
@@ -1145,9 +1090,9 @@ app.get("/api/events/export/csv", searchLimiter, async (req, res) => {
 });
 
 
-// Start OAuth flow — requires session; callback is above the verifySession gate
-app.get("/api/square/oauth/start", squareLimiter, verifySession(), async (req, res) => {
-  const userId = req.session.getUserId();
+// Start OAuth flow — requires auth; callback is above the requireAuth gate
+app.get("/api/square/oauth/start", squareLimiter, async (req, res) => {
+  const userId = req.user.id;
   const state  = crypto.randomBytes(24).toString("hex");
 
   // Purge expired states, then persist state → userId
@@ -1179,7 +1124,7 @@ app.get("/api/square/oauth/start", squareLimiter, verifySession(), async (req, r
 // Square connection status (used by Settings UI)
 app.get("/api/square/status", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const [sq, prefs] = await Promise.all([
       dbGet(
         `SELECT "merchantId", "expiresAt", "status" FROM "SquareConnection" WHERE "userId" = $1`,
@@ -1205,7 +1150,7 @@ app.get("/api/square/status", async (req, res) => {
 // Disconnect Square (deletes the user's SquareConnection row)
 app.delete("/api/square/disconnect", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     await dbRun(`DELETE FROM "SquareConnection" WHERE "userId" = $1`, [userId]);
     res.json({ ok: true });
   } catch (err) {
@@ -1217,7 +1162,7 @@ app.delete("/api/square/disconnect", async (req, res) => {
 // Persist user preferences (currently: banner dismiss)
 app.patch("/api/user/prefs", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const { squareBannerDismissed } = req.body;
     await dbRun(
       `INSERT INTO "UserPlan" ("userId", "plan", "squareBannerDismissed")
@@ -1242,7 +1187,7 @@ app.get("/api/events/search", searchLimiter, async (req, res) => {
   if (!q) return res.json([]);
 
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const like = `%${q}%`;
 
     // Query information_schema for column names (replaces PRAGMA table_info)
@@ -1344,7 +1289,7 @@ app.get("/api/events/:eventID/permits", async (req, res) => {
 // -------------------------------
 app.get("/api/events/:id", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const id = req.params.id;
     const row = await dbGet(
       `SELECT * FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
@@ -1480,7 +1425,7 @@ app.post("/api/formTemplates", async (req, res) => {
 // -------------------------------
 app.get("/api/square/locations", squareLimiter, async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const token = await getSquareToken(userId);
     const url = `${getSquareBaseUrl()}/v2/locations`;
     const response = await fetch(url, {
@@ -1623,7 +1568,7 @@ app.post("/api/events",
   handleValidationErrors,
   async (req, res) => {
   try {
-   const userId = req.session.getUserId();
+   const userId = req.user.id;
    const e = coerceEvent(req.body);
 
    const sql = `
@@ -1755,7 +1700,7 @@ app.put("/api/events/:id",
   handleValidationErrors,
   async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const id = req.params.id;
     const e = coerceEvent(req.body);
 
@@ -1894,7 +1839,7 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
       return res.status(400).json({ error: "Event has no Square Location ID." });
     }
 
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const token = await getSquareToken(userId);
 
     // ─────────────────────────────────────────────
@@ -2380,7 +2325,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
 // -------------------------------
 app.put("/api/events/:id/finalize", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const eventID = Number(req.params.id);
     if (!Number.isFinite(eventID)) {
       return res.status(400).json({ error: "Invalid event id." });
@@ -2669,7 +2614,7 @@ app.delete("/api/events/:eventID/employees/:shiftID", async (req, res) => {
 // DELETE /api/events/:id
 // -------------------------------
 app.delete("/api/events/:id", async (req, res) => {
-  const userId = req.session.getUserId();
+  const userId = req.user.id;
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid eventID" });
@@ -2717,7 +2662,7 @@ app.delete("/api/events/:id", async (req, res) => {
 app.get("/api/events/:id/report", async (req, res) => {
   try {
     const eventID = req.params.id;
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const owns = await assertOwnsEvent(req, Number(eventID));
     if (!owns) return res.status(404).json({ error: "Event not found." });
 
@@ -3010,7 +2955,7 @@ app.post("/api/events/:eventID/supplies", async (req, res) => {
     if (invId && Number.isFinite(invId)) {
       const plan = await getUserPlan(req);
       if (plan === "pro") {
-        const userId = req.session.getUserId();
+        const userId = req.user.id;
         await deductStockAndAlert(userId, invId, qty);
       }
     }
@@ -3202,7 +3147,7 @@ app.put("/api/events/:eventID/labor", async (req, res) => {
     }
 
     // 1️⃣ Fetch Square timecards
-    const timecards = await fetchSquareTimecardsForEvent(eventID, req.session.getUserId());
+    const timecards = await fetchSquareTimecardsForEvent(eventID, req.user.id);
 
     // 2️⃣ Normalize → labor rows
     const laborList = timecards.map(tc => ({
@@ -3257,7 +3202,7 @@ app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
     }
 
     // 2️⃣ Fetch Square timecards (your existing helper)
-    const timecards = await fetchSquareTimecardsForEvent(eventID, req.session.getUserId());
+    const timecards = await fetchSquareTimecardsForEvent(eventID, req.user.id);
 
     // 3️⃣ Build laborRows from Square data
     const laborRows = timecards.map(tc => ({
@@ -3333,9 +3278,9 @@ app.put("/api/square/labor/:eventID", squareLimiter, async (req, res) => {
 // GET /api/square/catalog
 // Returns the vendor's Square catalog as a flat list of variations.
 // Used to populate the left column of the mapping setup screen.
-app.get("/api/square/catalog", squareLimiter, verifySession(), async (req, res) => {
+app.get("/api/square/catalog", squareLimiter, async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const token  = await getSquareToken(userId);
     const baseUrl = getSquareBaseUrl();
 
@@ -3387,9 +3332,9 @@ app.get("/api/square/catalog", squareLimiter, verifySession(), async (req, res) 
 
 // GET /api/pos-mappings
 // Returns all saved POS→inventory mappings for the current user.
-app.get("/api/pos-mappings", verifySession(), async (req, res) => {
+app.get("/api/pos-mappings", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const rows = await dbAll(
       `SELECT m.id, m."posSystem", m."posItemId", m."posItemName", m."variationName",
               m."inventoryId", v."itemName" AS "inventoryItemName", v."unitCost"
@@ -3410,9 +3355,9 @@ app.get("/api/pos-mappings", verifySession(), async (req, res) => {
 // Saves (upserts) an array of POS→inventory mappings.
 // Body: [{ posSystem, posItemId, posItemName, variationName, inventoryId }, ...]
 // Pass inventoryId: null to mark an item as "not in my menu" (skips cost calc).
-app.post("/api/pos-mappings", verifySession(), async (req, res) => {
+app.post("/api/pos-mappings", async (req, res) => {
   try {
-    const userId   = req.session.getUserId();
+    const userId   = req.user.id;
     const mappings = req.body;
 
     if (!Array.isArray(mappings) || mappings.length === 0) {
@@ -3467,6 +3412,17 @@ app.get("/api/config", async (req, res) => {
 });
 
 
+// /env.js — inject the public Supabase URL + anon key into window globals BEFORE
+// app.js loads. Both values are safe to expose to the browser; the anon key is
+// a public RLS-gated token by design.
+app.get("/env.js", (_req, res) => {
+  const url     = process.env.SUPABASE_URL || process.env.SUPABASE_PUBLIC_URL || "";
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(`window.SUPABASE_URL = ${JSON.stringify(url)};\nwindow.SUPABASE_ANON_KEY = ${JSON.stringify(anonKey)};\n`);
+});
+
 const frontendPath = path.join(__dirname, "frontend");
 app.use(express.static(frontendPath, {
   setHeaders: (res, filePath) => {
@@ -3490,7 +3446,7 @@ app.get("/api/inventory/template", (_req, res) => {
 // Get all inventory items for the current user
 app.get("/api/inventory", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const rows = await dbAll(
       `SELECT * FROM "VendorInventory" WHERE "userId" = $1 ORDER BY "category" NULLS LAST, "itemName"`,
       [userId]
@@ -3508,7 +3464,7 @@ app.get("/api/inventory", async (req, res) => {
 // GET unread alerts for the current user
 app.get("/api/inventory/alerts", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const rows = await dbAll(
       `SELECT * FROM "InventoryAlerts"
        WHERE "userId" = $1 AND "isRead" = FALSE
@@ -3525,7 +3481,7 @@ app.get("/api/inventory/alerts", async (req, res) => {
 // GET items at or below reorder threshold
 app.get("/api/inventory/low-stock", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const rows = await dbAll(
       `SELECT * FROM "VendorInventory"
        WHERE "userId" = $1
@@ -4428,7 +4384,7 @@ async function saveInventorySales(eventID, rows) {
 // Upload CSV and insert/update items
 app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
 
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -4515,7 +4471,7 @@ app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => 
 // Update a single inventory item
 app.put("/api/inventory/:id", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Invalid id" });
@@ -4562,7 +4518,7 @@ app.put("/api/inventory/:id", async (req, res) => {
 // Clear ALL inventory items for the current user
 app.delete("/api/inventory", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const result = await dbRun(
       `DELETE FROM "VendorInventory" WHERE "userId" = $1`,
       [userId]
@@ -4577,7 +4533,7 @@ app.delete("/api/inventory", async (req, res) => {
 // Pro: mark a single alert as read
 app.put("/api/inventory/alerts/:id/read", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     await dbRun(
@@ -4594,7 +4550,7 @@ app.put("/api/inventory/alerts/:id/read", async (req, res) => {
 // Pro: mark ALL alerts as read for this user
 app.put("/api/inventory/alerts/read-all", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     await dbRun(
       `UPDATE "InventoryAlerts" SET "isRead" = TRUE WHERE "userId" = $1`,
       [userId]
@@ -4609,7 +4565,7 @@ app.put("/api/inventory/alerts/read-all", async (req, res) => {
 // Pro: restock — update quantityOnHand and clear open alerts for that item
 app.put("/api/inventory/:id/stock", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const id  = Number(req.params.id);
     const qty = Number(req.body.quantityOnHand);
     if (!Number.isFinite(id))  return res.status(400).json({ error: "Invalid id" });
@@ -4642,7 +4598,7 @@ app.put("/api/inventory/:id/stock", async (req, res) => {
 // Delete a single inventory item
 app.delete("/api/inventory/:id", async (req, res) => {
   try {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Invalid id" });
@@ -4712,7 +4668,7 @@ app.post("/api/events/:eventID/inventory", async (req, res) => {
     if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
     if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
 
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const inventoryId = Number(req.body.inventoryId);
     const startingQty = Number(req.body.startingQty);
     const reorderThreshold = Number(req.body.reorderThreshold ?? 0);
@@ -4839,7 +4795,7 @@ app.put("/api/events/:eventID/inventory/:eiId/restock", async (req, res) => {
     if (!Number.isFinite(qtyAdded) || qtyAdded <= 0) return res.status(400).json({ error: "qtyAdded must be > 0" });
     if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
 
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const ei = await dbGet(
       `SELECT "id","inventoryId" FROM "EventInventory" WHERE "id" = $1 AND "eventID" = $2`,
       [eiId, eventID]
@@ -4872,7 +4828,7 @@ app.delete("/api/events/:eventID/inventory/:eiId", async (req, res) => {
     if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) return res.status(400).json({ error: "Invalid id" });
     if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
 
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const row = await dbGet(
       `SELECT * FROM "EventInventory" WHERE "id" = $1 AND "eventID" = $2`,
       [eiId, eventID]
@@ -4974,14 +4930,20 @@ app.get("/api/events/:eventID/inventory/usage", async (req, res) => {
   }
 });
 
+// Serves public Supabase config to the frontend without requiring auth
+app.get("/env.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+  res.send(
+    `window.SUPABASE_URL=${JSON.stringify(process.env.SUPABASE_PUBLIC_URL||"")};` +
+    `window.SUPABASE_ANON_KEY=${JSON.stringify(process.env.SUPABASE_PUBLISHABLE_KEY||"")};`
+  );
+});
+
 // ── VenView App SPA (venview.app/app and all sub-routes) ───────
-// To this:
 app.use("/app", express.static(path.join(__dirname, "frontend")));
 app.get("/app/*", (req, res) => {
   res.sendFile(path.join(__dirname, "frontend", "app.html"));
 });
-// SuperTokens error handler (must be after all routes)
-app.use(stErrorHandler());
 
 (async () => {
   try {

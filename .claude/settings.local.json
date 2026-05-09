@@ -6,7 +6,22 @@
       "Bash(\"c:/LemonDrip/frontend/styles.css\":*)",
       "Bash(git -C c:/LemonDrip diff --name-only HEAD)",
       "Bash(git -C c:/LemonDrip diff --name-only)",
-      "Bash(git -C c:/LemonDrip status --short)"
+      "Bash(git -C c:/LemonDrip status --short)",
+      "Bash(doppler whoami *)",
+      "Bash(doppler projects *)",
+      "Bash(doppler secrets *)",
+      "Bash(npm list *)",
+      "Bash(npm install *)",
+      "Bash(dir /b /a-d)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\" -Force | Select-Object -Property Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\backend\" -Recurse -Force | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Substring\\(\"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\\".Length\\) })",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\frontend\" -Recurse -Force | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Substring\\(\"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\\".Length\\) } | head -50)",
+      "Bash(npm uninstall *)",
+      "Bash(rm c:/Users/TSWOO/LemonDrip/.git/index.lock && echo \"Deleted successfully\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\TSWOO\\.claude",
+      "c:\\Users\\TSWOO\\LemonDrip\\.git"
     ]
   }
 }
