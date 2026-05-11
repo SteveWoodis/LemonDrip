@@ -7282,8 +7282,16 @@ function syncSquareFormState() {
   select.classList.toggle("hidden", !connected);
 }
 
-function startSquareOAuth() {
-  window.location.href = `${API_BASE}/api/square/oauth/start`;
+async function startSquareOAuth() {
+  try {
+    const res = await fetch(`${API_BASE}/api/square/oauth/start`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { url } = await res.json();
+    window.location.href = url;
+  } catch (err) {
+    console.error("❌ Square OAuth start failed:", err);
+    showToast("Couldn't start Square authorization. Please try again.", "error");
+  }
 }
 
 async function disconnectSquare() {

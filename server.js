@@ -1118,7 +1118,10 @@ app.get("/api/square/oauth/start", squareLimiter, async (req, res) => {
     response_type: "code"
   });
 
-  res.redirect(`${getSquareBaseUrl()}/oauth2/authorize?${params.toString()}`);
+  // Return URL as JSON instead of redirecting. /api/* routes require Bearer
+  // auth, which browsers don't send on top-level navigations — so the frontend
+  // does an authenticated fetch here, then navigates the window to the URL.
+  res.json({ url: `${getSquareBaseUrl()}/oauth2/authorize?${params.toString()}` });
 });
 
 // Square connection status (used by Settings UI)
