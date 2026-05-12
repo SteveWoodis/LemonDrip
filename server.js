@@ -631,6 +631,10 @@ async function initDb() {
 
 
 const app = express();
+// Trust the first proxy in front of us (Fly.io edge). Without this,
+// express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and rate
+// limits get keyed off the proxy IP instead of the real client.
+app.set('trust proxy', 1);
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.url);
   next();

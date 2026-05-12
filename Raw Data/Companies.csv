@@ -1,0 +1,6 @@
+CompanyID,companyName,contactName,phone,email,notes,vendorCategory
+1,LemonDrip HQ,Steve Woodis,555-123-4567,info@lemondrip.com,Head office and testing tenant,
+2,Buzz Kills,Fred,801-111-1123,fred@buzzkills.com,,Service
+3,Coyote And Sons,Wiley,1-800-328-2473,eatbirds@wiley.com,,Bird Removal
+4,Zapper,Steve,801-636-3320,abc@gmail.com,,Pests
+5,Bull Pucky,Steve,802-636-3456,steve@bullpucky.com,,Food
