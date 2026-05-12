@@ -1345,7 +1345,7 @@ app.get("/api/company", async (req, res) => {
     const params = [];
 
     if (id) {
-      sql += ` WHERE "companyID" = $1`;
+      sql += ` WHERE "CompanyID" = $1`;
       params.push(id);
     }
 
@@ -1481,7 +1481,7 @@ app.post("/api/company",
       `INSERT INTO "Companies"
        ("companyName", "phone", "contactName", "vendorCategory", "email")
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING "companyID"`,
+       RETURNING "CompanyID"`,
       [
         c.companyName,
         c.phone || null,
@@ -1493,7 +1493,7 @@ app.post("/api/company",
 
     res.json({
       success: true,
-      companyID: result.rows[0].companyID
+      companyID: result.rows[0].CompanyID
     });
   } catch (err) {
     console.error("❌ Error inserting Company", err);
