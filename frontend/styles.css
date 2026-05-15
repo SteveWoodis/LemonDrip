@@ -1448,8 +1448,7 @@ select:focus {
   padding: 0.75rem 0.9rem 0.9rem;
   background: #fff;
   color: #222;
-  max-height: 600px;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 /* Info list inside cards */
@@ -1747,7 +1746,7 @@ select:focus {
 }
 
 .sheet-content.expanded {
-  max-height: 1000px;   /* enough for large lists */
+  max-height: 4000px;
   opacity: 1;
   padding: 16px 20px 24px;
 }

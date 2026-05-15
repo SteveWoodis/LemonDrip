@@ -4187,20 +4187,22 @@ function renderTruckInventoryTable(items) {
   }).join("");
 
   wrap.innerHTML = `
-    <table class="inv-table truck-inv-table">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th class="num">Delivered</th>
-          <th class="num">On Hand</th>
-          <th class="num">Used</th>
-          <th class="num">%</th>
-          <th class="num">Reorder At</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div style="overflow-x:auto;">
+      <table class="inv-table truck-inv-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="num">Delivered</th>
+            <th class="num">On Hand</th>
+            <th class="num">Used</th>
+            <th class="num">%</th>
+            <th class="num">Reorder At</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 }
 
