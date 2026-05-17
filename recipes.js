@@ -430,7 +430,7 @@ function registerRoutes(app) {
 
   // ── Helper: assert recipe ownership ──────────────────────────
   async function assertOwnsRecipe(req, recipeId) {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const row = await dbGet(
       `SELECT 1 FROM "RecipeCards" WHERE "id" = $1 AND "userId" = $2`,
       [recipeId, userId]
@@ -440,7 +440,7 @@ function registerRoutes(app) {
 
   // ── Helper: assert event ownership ───────────────────────────
   async function assertOwnsEvent(req, eventID) {
-    const userId = req.session.getUserId();
+    const userId = req.user.id;
     const row = await dbGet(
       `SELECT 1 FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
       [eventID, userId]
@@ -466,7 +466,7 @@ function registerRoutes(app) {
   // GET /api/recipes — list all recipe cards for current user
   app.get('/api/recipes', async (req, res) => {
     try {
-      const userId = req.session.getUserId();
+      const userId = req.user.id;
       const cards = await dbAll(
         `SELECT rc.*,
           COUNT(ri."id")::int AS "ingredientCount",
@@ -510,7 +510,7 @@ function registerRoutes(app) {
   // POST /api/recipes — create a new (empty) recipe card
   app.post('/api/recipes', async (req, res) => {
     try {
-      const userId = req.session.getUserId();
+      const userId = req.user.id;
       const { name, squareName } = req.body;
       if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
 
@@ -662,7 +662,7 @@ function registerRoutes(app) {
   // POST /api/recipes/upload — bulk import from CSV
   app.post('/api/recipes/upload', uploadCsv.single('file'), async (req, res) => {
     try {
-      const userId = req.session.getUserId();
+      const userId = req.user.id;
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
       const text = req.file.buffer.toString('utf8');
