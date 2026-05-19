@@ -17,7 +17,9 @@
       "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\backend\" -Recurse -Force | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Substring\\(\"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\\".Length\\) })",
       "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\frontend\" -Recurse -Force | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Substring\\(\"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\\".Length\\) } | head -50)",
       "Bash(npm uninstall *)",
-      "Bash(rm c:/Users/TSWOO/LemonDrip/.git/index.lock && echo \"Deleted successfully\")"
+      "Bash(rm c:/Users/TSWOO/LemonDrip/.git/index.lock && echo \"Deleted successfully\")",
+      "Bash(node -e \"console.log\\(process.version\\)\")",
+      "Bash(node -e \"const f = require\\('node-fetch'\\); console.log\\(typeof f, typeof f.default\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\TSWOO\\.claude",

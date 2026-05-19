@@ -912,9 +912,12 @@ const NET_PROFIT_SQL = `
   - COALESCE(x."employeeBonus", 0)
   - COALESCE(x."coordinatorFee", 0)
   - COALESCE(x."laborFees", 0)
-  - CASE WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
-      THEN COALESCE(s."squareFees", 0)
-      ELSE COALESCE(x."posFee", 0)
+  - CASE
+      WHEN COALESCE(x."posFee", 0) > 0
+        THEN x."posFee"
+      WHEN e."squareLocationId" IS NOT NULL AND e."squareLocationId" != ''
+        THEN COALESCE(s."squareFees", 0)
+      ELSE 0
     END
 `.trim();
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1899,34 +1902,33 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
     console.log("orderEnd",   orderEndISO);
 
     // ─────────────────────────────────────────────
-    // 2️⃣ ORDERS (ITEMIZED SALES)
+    // 2️⃣ ORDERS + 3️⃣ PAYMENTS — fetched in parallel
     // ─────────────────────────────────────────────
-
-     let grossSales = 0;
+    let grossSales = 0;
     let netSales = 0;
-    try {
-      let orderCursor = null;
-      do {
-        const orderBody = {
-          location_ids: [ev.squareLocationId],
-          return_entries: false,
-          query: {
-            filter: {
-              state_filter: { states: ["COMPLETED"] },
-              date_time_filter: {
-                closed_at: {
-                  start_at: orderStartISO,
-                  end_at: orderEndISO
+    let squareFees = 0;
+
+    const [fetchedOrders, fetchedPayments] = await Promise.all([
+      // ── Orders (itemized sales) ──────────────────────────────
+      (async () => {
+        const allOrders = [];
+        let orderCursor = null;
+        do {
+          const orderBody = {
+            location_ids: [ev.squareLocationId],
+            return_entries: false,
+            query: {
+              filter: {
+                state_filter: { states: ["COMPLETED"] },
+                date_time_filter: {
+                  closed_at: { start_at: orderStartISO, end_at: orderEndISO }
                 }
               }
             }
-          }
-        };
-        if (orderCursor) orderBody.cursor = orderCursor;
+          };
+          if (orderCursor) orderBody.cursor = orderCursor;
 
-        const orderRes = await fetch(
-          `${getSquareBaseUrl()}/v2/orders/search`,
-          {
+          const orderRes = await fetch(`${getSquareBaseUrl()}/v2/orders/search`, {
             method: "POST",
             headers: {
               "Square-Version": "2025-01-15",
@@ -1934,246 +1936,134 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
               "Content-Type": "application/json"
             },
             body: JSON.stringify(orderBody)
+          });
+          if (!orderRes.ok) {
+            const raw = await orderRes.text();
+            throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
           }
-        );
-        if (!orderRes.ok) {
-          const raw = await orderRes.text();
-          throw new Error(`Square Orders API ${orderRes.status}: ${raw}`);
-        }
-        const orderJson = await orderRes.json();
-        const pageOrders = orderJson.orders || [];
-        orders.push(...pageOrders);
-        orderCursor = orderJson.cursor || null;
-        console.log(`📦 Orders page: ${pageOrders.length} orders, cursor: ${orderCursor ? "yes" : "none"}`);
-      } while (orderCursor);
+          const orderJson = await orderRes.json();
+          const pageOrders = orderJson.orders || [];
+          allOrders.push(...pageOrders);
+          orderCursor = orderJson.cursor || null;
+          console.log(`📦 Orders page: ${pageOrders.length} orders, cursor: ${orderCursor ? "yes" : "none"}`);
+        } while (orderCursor);
+        return allOrders;
+      })(),
 
-      if (orders.length > 0) {
-        console.log("🧾 SAMPLE ORDER KEYS:", Object.keys(orders[0]));
+      // ── Payments (fees + totalCollected) ────────────────────
+      (async () => {
+        let fees = 0, collected = 0, payCursor = null;
+        do {
+          const url = new URL(`${getSquareBaseUrl()}/v2/payments`);
+          url.searchParams.set("begin_time", paymentStartISO);
+          url.searchParams.set("end_time", paymentEndISO);
+          url.searchParams.set("location_id", ev.squareLocationId);
+          url.searchParams.set("limit", "100");
+          if (payCursor) url.searchParams.set("cursor", payCursor);
+
+          const payRes = await fetch(url, {
+            headers: { "Square-Version": "2025-01-15", Authorization: `Bearer ${token}` }
+          });
+          const payJson = await payRes.json();
+          for (const pay of payJson.payments || []) {
+            collected += (pay.amount_money?.amount || 0) / 100;
+            for (const f of pay.processing_fee || []) {
+              fees += Math.abs(f.amount_money?.amount || 0) / 100;
+            }
+          }
+          payCursor = payJson.cursor || null;
+        } while (payCursor);
+        return { fees, collected };
+      })()
+    ]);
+
+    orders = fetchedOrders;
+    squareFees = fetchedPayments.fees;
+    totalCollected = fetchedPayments.collected;
+
+    ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
+    console.log(`📦 Total orders: ${orders.length}`);
+
+    // ─────────────────────────────────────────────
+    // 🥤 BUILD ITEMIZED DRINK SALES (Starter vs Pro)
+    // ─────────────────────────────────────────────
+    const drinkMap = new Map();
+    let totalDrinkCost = 0;
+
+    for (const order of orders) {
+      for (const sc of order.service_charges || []) {
+        tips += (sc.total_money?.amount || 0) / 100;
       }
-      ordersUsable = orders.some(o => Array.isArray(o.line_items) && o.line_items.length > 0);
+      refunds += (order.return_amounts?.total_money?.amount || 0) / 100;
 
-      // ── DEBUG: dump raw Square orders to file ──────────────────
-      try {
-        const debugPath = require("path").join(require("os").tmpdir(), "square_orders_debug.json");
-        const debugPayload = {
-          fetchedAt: new Date().toISOString(),
-          eventID,
-          totalOrders: orders.length,
-          orders: orders.map((o, idx) => {
-            console.log(
-              `[Square Order ${idx + 1}/${orders.length}] id=${o.id} state=${o.state}` +
-              ` line_items=${(o.line_items || []).length}` +
-              ` total=${((o.total_money?.amount || 0) / 100).toFixed(2)}`
-            );
-            (o.line_items || []).forEach((li, liIdx) => {
-              console.log(
-                `  └─ item ${liIdx + 1}: "${li.name}" qty=${li.quantity}` +
-                ` gross=$${((li.gross_sales_money?.amount || li.total_money?.amount || 0) / 100).toFixed(2)}`
-              );
-            });
-            return o;
-          }),
-        };
-        fs.writeFileSync(debugPath, JSON.stringify(debugPayload, null, 2), "utf8");
-        console.log(`📝 Square orders written to ${debugPath}`);
-      } catch (debugErr) {
-        console.warn("⚠️ Could not write square_orders_debug.json:", debugErr.message);
-      }
-      // ──────────────────────────────────────────────────────────
+      for (const li of order.line_items || []) {
+        const posItemId = li.catalog_object_id || null;
+        const qty = Number(li.quantity || 0);
+        const displayName = li.variation_name && li.variation_name.toLowerCase() !== 'regular'
+          ? `${li.name || "Unknown"} - ${li.variation_name}`
+          : (li.name || "Unknown");
+        const name = displayName;
 
-    } catch (err) {
-      console.error("❌ Orders fetch failed:", err);
-      return res.status(500).json({ error: "Orders fetch failed" });
-    }
+        const lineTotal = (li.gross_sales_money?.amount ??
+          li.total_money?.amount ??
+          (li.base_price_money?.amount || 0) * Number(li.quantity || 0)) / 100;
+        grossSales += lineTotal;
 
+        if (li.total_discount_money) discounts += li.total_discount_money.amount / 100;
 
-    // ─────────────────────────────────────────────
-    // 🥤 DRINK SALES + GROSS SALES (ORDERS PATH)
-    // ─────────────────────────────────────────────
-    // ─────────────────────────────────────────────
-// 🥤 BUILD ITEMIZED DRINK SALES (Starter vs Pro)
-// ─────────────────────────────────────────────
-const drinkMap = new Map();
-let totalDrinkCost = 0;
-
-for (const order of orders) {
-  // ── ORDER-LEVEL: tips (service charges) and refunds ──
-  // Source: Orders API is authoritative for both — avoids double-counting with Payments
-  for (const sc of order.service_charges || []) {
-    tips += (sc.total_money?.amount || 0) / 100;
-  }
-  refunds += (order.return_amounts?.total_money?.amount || 0) / 100;
-
-  for (const li of order.line_items || []) {
-    // Use catalog_object_id as the stable POS identifier per variation.
-    // Falls back to display name for custom-amount items that have no catalog entry.
-    const posItemId = li.catalog_object_id || null;
-    const qty = Number(li.quantity || 0);
-
-    // Build a human-readable display name that includes the variation when it
-    // adds meaningful context (i.e. not just "Regular").
-    const displayName = li.variation_name && li.variation_name.toLowerCase() !== 'regular'
-      ? `${li.name || "Unknown"} - ${li.variation_name}`
-      : (li.name || "Unknown");
-    const name = displayName; // kept for accounting references below
-
-    // ── SALES TOTALS (ACCOUNTING) ──
-    // Use gross_sales_money (pre-discount) so discounts are not double-subtracted.
-    // Falls back to total_money if gross_sales_money is absent.
-    const lineTotal = (li.gross_sales_money?.amount ??
-      li.total_money?.amount ??
-      (li.base_price_money?.amount || 0) * Number(li.quantity || 0)) / 100;
-    grossSales += lineTotal;
-
-    if (li.total_discount_money) {
-      discounts += li.total_discount_money.amount / 100;
-    }
-
-    // ── AGGREGATE DRINKS ──
-    // Key by catalog_object_id so each Square variation gets its own row.
-    // Falls back to display name for items without a catalog ID.
-    // Pro: unit costs come from VendorInventory via PosItemMapping (reconciled after loop).
-    const mapKey = posItemId || name;
-    if (!drinkMap.has(mapKey)) {
-      drinkMap.set(mapKey, { drinkName: name, posItemId, unitPrice: null, quantitySold: qty, rowCost: null, totalCost: null });
-    } else {
-      drinkMap.get(mapKey).quantitySold += qty;
-    }
-  }
-}
-
-
-inventoryRows = Array.from(drinkMap.values());
-
-// ── PRO COGS: reconcile quantities against VendorInventory unit costs ──────
-// Primary lookup: PosItemMapping (catalog_object_id → VendorInventory).
-// Fallback: name-based match for items not yet mapped (keeps existing users working
-// during the transition to the mapping setup flow).
-if (IS_PRO) {
-  // Primary: ID-based match via PosItemMapping table
-  const mappingRows = await dbAll(
-    `SELECT m."posItemId", v."unitCost", v."itemName"
-     FROM "PosItemMapping" m
-     JOIN "VendorInventory" v ON m."inventoryId" = v."id"
-     WHERE m."userId" = $1 AND m."posSystem" = 'square'`,
-    [userId]
-  );
-  const invByPosId = new Map(
-    mappingRows.map(r => [r.posItemId, { unitCost: Number(r.unitCost), itemName: r.itemName }])
-  );
-
-  // Fallback: name-based match (backwards compatibility)
-  const invRows = await dbAll(
-    `SELECT "itemName", "unitCost" FROM "VendorInventory" WHERE "userId" = $1`,
-    [userId]
-  );
-  const invByName = new Map(invRows.map(r => [r.itemName.toLowerCase(), Number(r.unitCost)]));
-
-  for (const item of inventoryRows) {
-    // Try ID-based match first, then fall back to name
-    const idMatch   = item.posItemId ? invByPosId.get(item.posItemId) : null;
-    const nameMatch = invByName.get(item.drinkName.toLowerCase());
-    const unitCost  = idMatch?.unitCost ?? (nameMatch !== undefined ? nameMatch : null);
-
-    item.unitPrice = unitCost;
-    if (unitCost !== null) {
-      item.rowCost   = unitCost * item.quantitySold;
-      item.totalCost = item.rowCost;
-      totalDrinkCost += item.totalCost;
-    } else {
-      item.rowCost   = null;
-      item.totalCost = null;
-      item.unmatched = true;
-    }
-  }
-
-  const unmatched = inventoryRows.filter(r => r.unmatched);
-  if (unmatched.length > 0) {
-    console.warn(
-      `⚠️  Pro COGS: ${unmatched.length} item(s) not in VendorInventory — COGS set to $0. ` +
-      `Map them in Settings → Square → Manage Mappings: ${unmatched.map(r => r.drinkName).join(', ')}`
-    );
-  }
-  console.log(`✅ Pro COGS reconciled: totalDrinkCost=$${totalDrinkCost.toFixed(2)}`);
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-console.table(
-  inventoryRows.map(d => ({
-    drink: d.drinkName,
-    qty: d.quantitySold,
-    unitCost: d.unitPrice,
-    rowCost: d.rowCost,
-    totalCost: d.totalCost,
-    unmatched: d.unmatched || false
-  }))
-);
-console.log({ grossSales, discounts, netSales, totalCollected });
-
-
-    // ─────────────────────────────────────────────
-    // 3️⃣ PAYMENTS — fees and total collected only
-    // Tips and refunds come from Orders (source of truth for Dashboard reconciliation)
-    // ─────────────────────────────────────────────
-    let squareFees = 0;
-    let cursor = null;
-
-    do {
-      const url = new URL(`${getSquareBaseUrl()}/v2/payments`);
-      url.searchParams.set("begin_time", paymentStartISO);
-      url.searchParams.set("end_time", paymentEndISO);
-      url.searchParams.set("location_id", ev.squareLocationId);
-      url.searchParams.set("limit", "100");
-      if (cursor) url.searchParams.set("cursor", cursor);
-
-      const payRes = await fetch(url, {
-        headers: {
-          "Square-Version": "2025-01-15",
-          Authorization: `Bearer ${token}`
+        const mapKey = posItemId || name;
+        if (!drinkMap.has(mapKey)) {
+          drinkMap.set(mapKey, { drinkName: name, posItemId, unitPrice: null, quantitySold: qty, rowCost: null, totalCost: null });
+        } else {
+          drinkMap.get(mapKey).quantitySold += qty;
         }
-      });
+      }
+    }
 
-     //const rawP = await payRes.text();
-     //console.log("Response",rawP);
+    inventoryRows = Array.from(drinkMap.values());
 
+    // ── PRO COGS: reconcile quantities against VendorInventory unit costs ──
+    if (IS_PRO) {
+      const [mappingRows, invRows] = await Promise.all([
+        dbAll(
+          `SELECT m."posItemId", v."unitCost", v."itemName"
+           FROM "PosItemMapping" m
+           JOIN "VendorInventory" v ON m."inventoryId" = v."id"
+           WHERE m."userId" = $1 AND m."posSystem" = 'square'`,
+          [userId]
+        ),
+        dbAll(`SELECT "itemName", "unitCost" FROM "VendorInventory" WHERE "userId" = $1`, [userId])
+      ]);
 
-      const payJson = await payRes.json();
+      const invByPosId = new Map(mappingRows.map(r => [r.posItemId, { unitCost: Number(r.unitCost), itemName: r.itemName }]));
+      const invByName  = new Map(invRows.map(r => [r.itemName.toLowerCase(), Number(r.unitCost)]));
 
-
-      const payments = payJson.payments || [];
-
-      for (const pay of payments) {
-        totalCollected += (pay.amount_money?.amount || 0) / 100;
-
-        for (const f of pay.processing_fee || []) {
-          // Square reports processing fees as negative integers; Math.abs() ensures
-          // squareFees is always a positive number so subtracting it reduces profit.
-          squareFees += Math.abs(f.amount_money?.amount || 0) / 100;
+      for (const item of inventoryRows) {
+        const idMatch   = item.posItemId ? invByPosId.get(item.posItemId) : null;
+        const nameMatch = invByName.get(item.drinkName.toLowerCase());
+        const unitCost  = idMatch?.unitCost ?? (nameMatch !== undefined ? nameMatch : null);
+        item.unitPrice = unitCost;
+        if (unitCost !== null) {
+          item.rowCost = item.totalCost = unitCost * item.quantitySold;
+          totalDrinkCost += item.totalCost;
+        } else {
+          item.rowCost = item.totalCost = null;
+          item.unmatched = true;
         }
       }
 
-      cursor = payJson.cursor || null;
-    } while (cursor);
+      const unmatched = inventoryRows.filter(r => r.unmatched);
+      if (unmatched.length > 0) {
+        console.warn(`⚠️  Pro COGS: ${unmatched.length} item(s) not matched — COGS $0: ${unmatched.map(r => r.drinkName).join(', ')}`);
+      }
+      console.log(`✅ Pro COGS reconciled: $${totalDrinkCost.toFixed(2)}`);
+    }
 
-    // ─────────────────────────────────────────────
-    // 4️⃣ FALLBACK GROSS SALES
-    // ─────────────────────────────────────────────
-   
     netSales = grossSales - discounts - refunds;
-
-   console.log({
-      ordersLength: orders.length,
-      ordersUsable,
-      grossSales,
-      discounts,
-      refunds,
-      tips,
-      netSales,
-      totalCollected,
-    });
+    console.log({ orders: orders.length, grossSales, discounts, refunds, tips, netSales, totalCollected, squareFees });
 
     // ─────────────────────────────────────────────
-    // 5️⃣ SAVE SUMMARY
+    // 4️⃣ SAVE SUMMARY
     // ─────────────────────────────────────────────
   const salesSql = `
   INSERT INTO "SalesSummary" (
@@ -2733,6 +2623,23 @@ app.put("/api/events/:eventID/expenses", async (req, res) => {
   } catch (err) {
     console.error("❌ Expense update error:", err);
     res.status(500).json({ error: "Failed to update expenses" });
+  }
+});
+
+// PUT /api/events/:eventID/tax-override — save a manual tax rate (decimal, e.g. 0.08 for 8%)
+app.put("/api/events/:eventID/tax-override", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found" });
+
+    const raw = req.body.taxOverride;
+    const rate = raw !== undefined && raw !== null && raw !== "" ? Number(raw) : null;
+    await dbRun(`UPDATE "EventInfo" SET "taxOverride" = $1 WHERE "eventID" = $2`, [rate, eventID]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Tax override update error:", err);
+    res.status(500).json({ error: "Failed to update tax override" });
   }
 });
 
@@ -4263,12 +4170,25 @@ async function buildPostEventReport(eventID) {
     };
    
    // -------------------------------------------
-   // 🏛️ SALES TAX CALCULATION (via zip-tax.com)
+   // 🏛️ SALES TAX CALCULATION
+   // Priority: taxOverride (manual) → zip-tax.com API (auto)
    // -------------------------------------------
-   const zipCode = event.zipCode || null;
-   console.log("🏛️ Tax lookup:", { zipCode, hasApiKey: !!ZIP_TAX_API_KEY });
-   const taxData = await fetchSalesTaxRate(zipCode);
-   console.log("🏛️ Tax result:", { rate: taxData.rate, state: taxData.detail?.state });
+   const zipCode     = event.zipCode || null;
+   const taxOverride = Number(event.taxOverride || 0);
+
+   let taxData;
+   if (taxOverride > 0) {
+     // User-supplied rate takes priority over the API lookup
+     taxData = { rate: taxOverride, detail: null };
+     console.log("🏛️ Tax: using manual override rate", taxOverride);
+   } else if (!ZIP_TAX_API_KEY) {
+     console.warn("⚠️ ZIP_TAX_API_KEY is not set — tax rate defaults to 0. Set the env var or enter a Tax Override on the event.");
+     taxData = { rate: 0, detail: null };
+   } else {
+     console.log("🏛️ Tax lookup:", { zipCode, hasApiKey: true });
+     taxData = await fetchSalesTaxRate(zipCode);
+     console.log("🏛️ Tax result:", { rate: taxData.rate, state: taxData.detail?.state });
+   }
 
    const totalCollected = Number(report.sales?.totalCollected || 0);
    const squareTips     = Number(report.sales?.tips || 0);
@@ -4284,6 +4204,7 @@ async function buildPostEventReport(eventID) {
    report.taxes = {
     zipCode,
     stateRate: taxData.rate,
+    usingOverride: taxOverride > 0,
     stateFoodTax,          // informational — remit to state, do not deduct from profit
     taxDetail: taxData.detail,
    };
@@ -4296,9 +4217,12 @@ async function buildPostEventReport(eventID) {
    const netSales = Number(report.sales?.netSales || 0);
 
    const isSquare = !!event.squareLocationId;
-   const posFees = isSquare
-     ? Number(report.sales?.squareFees || 0)
-     : Number(expenses?.posFee || 0);
+   // Manual override: a non-zero expenses.posFee always wins.
+   // Zero means "trust Square" (for Square-linked events) or "no POS fee" otherwise.
+   const manualPosFee = Number(expenses?.posFee || 0);
+   const posFees = manualPosFee > 0
+     ? manualPosFee
+     : (isSquare ? Number(report.sales?.squareFees || 0) : 0);
 
    const exp = expensesWithLabor;
    // totalExpenses = legitimate business costs only.

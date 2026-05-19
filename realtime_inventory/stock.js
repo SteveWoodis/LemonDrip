@@ -40,14 +40,71 @@ async function _all(sql, params = []) {
   return r.rows;
 }
 
+// ── preload all catalog data for a user in 3 parallel queries ─
+// Returns a catalog object used by _resolveDeductionsFromCatalog,
+// eliminating per-line-item DB round trips during batch processing.
+async function _preloadCatalog(userId) {
+  const [recipeRows, ingredientRows, posRows] = await Promise.all([
+    _all(
+      `SELECT DISTINCT rc."id", rc."name", rc."squareName"
+         FROM "RecipeCards" rc
+         JOIN "RecipeIngredients" ri ON ri."recipeId" = rc."id"
+        WHERE rc."userId" = $1 AND ri."inventoryId" IS NOT NULL`,
+      [userId]
+    ),
+    _all(
+      `SELECT ri."recipeId", ri."inventoryId", ri."quantityUsed"
+         FROM "RecipeIngredients" ri
+         JOIN "RecipeCards" rc ON rc."id" = ri."recipeId"
+        WHERE rc."userId" = $1 AND ri."inventoryId" IS NOT NULL`,
+      [userId]
+    ),
+    _all(
+      `SELECT "posItemId", "inventoryId"
+         FROM "PosItemMapping"
+        WHERE "userId" = $1 AND "posSystem" = 'square'`,
+      [userId]
+    )
+  ]);
+
+  const ingsByRecipe = new Map();
+  for (const ing of ingredientRows) {
+    if (!ingsByRecipe.has(ing.recipeId)) ingsByRecipe.set(ing.recipeId, []);
+    ingsByRecipe.get(ing.recipeId).push({
+      inventoryId: ing.inventoryId,
+      qtyPerUnit: Number(ing.quantityUsed) || 0
+    });
+  }
+
+  const recipes = recipeRows.map(rc => ({
+    ...rc,
+    ingredients: ingsByRecipe.get(rc.id) || []
+  }));
+
+  return {
+    recipes,
+    posMapById: new Map(posRows.map(r => [r.posItemId, r.inventoryId]))
+  };
+}
+
+// ── synchronous resolver using pre-loaded catalog ────────────
+function _resolveDeductionsFromCatalog(displayName, posItemId, catalog) {
+  if (_findBestMatch && catalog.recipes.length > 0) {
+    const match = _findBestMatch(displayName, catalog.recipes);
+    if (match?.recipe?.ingredients?.length > 0) {
+      return match.recipe.ingredients;
+    }
+  }
+  if (posItemId) {
+    const inventoryId = catalog.posMapById.get(posItemId);
+    if (inventoryId) return [{ inventoryId, qtyPerUnit: 1 }];
+  }
+  return [];
+}
+
 // ── core: decompose a sold line into inventory deductions ────
-// Returns an array of { inventoryId, qty } describing what to
-// subtract from VendorInventory for one unit of the sold item.
+// Legacy per-call version — only used when no pre-loaded catalog is available.
 async function _resolveDeductions(userId, posItemId, displayName) {
-  // (a) recipe-based BOM (preferred — full ingredient breakdown).
-  // Only considers recipes that have at least one ingredient wired to
-  // VendorInventory; unwired recipes can't produce deductions and would
-  // just steal matches from wired ones in fuzzy ties.
   if (_findBestMatch) {
     const recipes = await _all(
       `SELECT DISTINCT rc."id", rc."name", rc."squareName"
@@ -72,9 +129,6 @@ async function _resolveDeductions(userId, posItemId, displayName) {
       }
     }
   }
-
-  // (b) PosItemMapping fallback — for resold goods (bottled water, etc.)
-  // or any sold item that doesn't fuzzy-match a wired recipe.
   if (posItemId) {
     const map = await _get(
       `SELECT "inventoryId" FROM "PosItemMapping"
@@ -85,7 +139,6 @@ async function _resolveDeductions(userId, posItemId, displayName) {
       return [{ inventoryId: map.inventoryId, qtyPerUnit: 1 }];
     }
   }
-
   return [];
 }
 
@@ -171,7 +224,7 @@ async function _applyOnHandAndAlert(client, userId, eventID, inventoryId, qtyCha
 // ── public: apply a single Square order's line items ─────────
 // `order` is the raw Square order object as returned by /v2/orders.
 // All deductions for an order happen in one transaction.
-async function applyOrderToStock(userId, eventID, order) {
+async function applyOrderToStock(userId, eventID, order, catalog = null) {
   if (!order || !order.id) return { applied: 0, skipped: 0 };
   const client = await _pool.connect();
   let applied = 0, skipped = 0;
@@ -187,7 +240,9 @@ async function applyOrderToStock(userId, eventID, order) {
         ? `${li.name || 'Unknown'} - ${li.variation_name}`
         : (li.name || 'Unknown');
 
-      const deductions = await _resolveDeductions(userId, posItemId, displayName);
+      const deductions = catalog
+        ? _resolveDeductionsFromCatalog(displayName, posItemId, catalog)
+        : await _resolveDeductions(userId, posItemId, displayName);
       if (deductions.length === 0) { skipped++; continue; }
 
       for (const d of deductions) {
@@ -234,12 +289,24 @@ async function applyOrderToStock(userId, eventID, order) {
 }
 
 // ── public: bulk apply a list of orders (used by sync + cron) ─
+// Preloads catalog once, then processes orders in concurrent batches
+// instead of one-at-a-time to eliminate N×round-trip overhead.
 async function applyOrdersToStock(userId, eventID, orders) {
+  if (!orders?.length) return { applied: 0, skipped: 0 };
+
+  const catalog = await _preloadCatalog(userId);
+
+  const CONCURRENCY = 8;
   let applied = 0, skipped = 0;
-  for (const o of orders || []) {
-    const r = await applyOrderToStock(userId, eventID, o);
-    applied += r.applied;
-    skipped += r.skipped;
+  for (let i = 0; i < orders.length; i += CONCURRENCY) {
+    const batch = orders.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(o => applyOrderToStock(userId, eventID, o, catalog))
+    );
+    for (const r of results) {
+      applied += r.applied;
+      skipped += r.skipped;
+    }
   }
   return { applied, skipped };
 }

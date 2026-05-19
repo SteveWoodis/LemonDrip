@@ -3581,9 +3581,12 @@ function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
 
   const event = window.activeEvent?.event || window.activeEvent || {};
   const isSquare = !!event.squareLocationId;
-  const posFees = isSquare
-    ? Number(sales.squareFees || 0)
-    : Number(expenses.posFee || 0);
+  // Manual override: a non-zero expenses.posFee always wins.
+  // Zero means "trust Square" (for Square-linked events) or "no POS fee" otherwise.
+  const manualPosFee = Number(expenses.posFee || 0);
+  const posFees = manualPosFee > 0
+    ? manualPosFee
+    : (isSquare ? Number(sales.squareFees || 0) : 0);
 
   const stateFoodTax = Number(taxes.stateFoodTax || 0);
 
@@ -3614,7 +3617,7 @@ function renderExpensesViewMode(expenses, sales = {}, taxes = {}) {
       Labor Fees (auto):
       <span class="auto-labor-fees">${fmtMoney(expenses.laborFees)}</span>
     </div>
-    <div>State Food Tax (auto): ${fmtMoney(stateFoodTax)}</div>
+    <div>State Food Tax (auto): ${fmtMoney(stateFoodTax)}${(() => { const r = Number(window.activeEvent?.taxOverride || 0); return r > 0 ? ` <small style="color:#666;">(override: ${(r*100).toFixed(2)}%)</small>` : ''; })()}</div>
     <hr>
     <strong>
       Total Expenses:
@@ -3661,6 +3664,11 @@ function renderExpensesEditMode(expenses) {
       <label>POS Fees</label>
       <input type="number" step="0.01" data-field="posFee"
         value="${expenses.posFee ?? 0}">
+
+      <label>Tax Rate Override (%) <small style="font-weight:400;color:#666;">— leave blank to auto-lookup by zip code</small></label>
+      <input type="number" step="0.001" min="0" max="25" id="taxOverrideInput"
+        placeholder="e.g. 8.25"
+        value="${(() => { const r = Number(window.activeEvent?.taxOverride || 0); return r > 0 ? (r * 100).toFixed(3).replace(/\.?0+$/, '') : ''; })()}">
       <hr>
 
       <button class="btn-primary" onclick="withSpinner(this, saveExpenses)">💾 Save</button>
@@ -3952,18 +3960,39 @@ async function saveExpenses() {
 
   console.log("Payload length", payload);
 
-  if (Object.keys(payload).length === 0) {
+  // Tax override is on EventInfo, not EventExpenses — handle separately
+  const taxOverrideRaw = document.getElementById("taxOverrideInput")?.value.trim();
+  const taxOverrideDecimal = taxOverrideRaw !== "" && taxOverrideRaw !== undefined
+    ? Number(taxOverrideRaw) / 100
+    : null;
+
+  if (Object.keys(payload).length === 0 && taxOverrideRaw === undefined) {
     showToast("No changes to save.", "info");
     return;
   }
 
   try {
-    await fetch(`${API_BASE}/api/events/${window.currentEventId}/expenses`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    const saves = [];
+    if (Object.keys(payload).length > 0) {
+      saves.push(fetch(`${API_BASE}/api/events/${window.currentEventId}/expenses`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }));
+    }
+    if (taxOverrideRaw !== undefined) {
+      saves.push(fetch(`${API_BASE}/api/events/${window.currentEventId}/tax-override`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taxOverride: taxOverrideDecimal })
+      }));
+    }
+    await Promise.all(saves);
     expensesEditMode = false;
+    // Keep in-memory event in sync so view mode shows correct override immediately
+    if (taxOverrideRaw !== undefined && window.activeEvent) {
+      window.activeEvent.taxOverride = taxOverrideDecimal;
+    }
     await reloadEventDashboard();
 
   } catch (err) {
