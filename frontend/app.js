@@ -2230,6 +2230,13 @@ function renderFormPreview() {
     }
 
     if (field.required) input.required = true;
+    if (field.placeholder && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
+      input.placeholder = field.placeholder;
+    }
+    if (field.readonly && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
+      input.readOnly = true;
+      input.classList.add("readonly-field");
+    }
     labelEl.appendChild(input);
     preview.appendChild(labelEl);
   });
@@ -2609,6 +2616,13 @@ console.log("✅ fields resolved:", fields);
       }
 
       if (field.required) input.required = true;
+      if (field.placeholder && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
+        input.placeholder = field.placeholder;
+      }
+      if (field.readonly && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
+        input.readOnly = true;
+        input.classList.add("readonly-field");
+      }
 
       // ✅ Consistent ID pattern (no hardcoded fields)
       const safeLabel = String(field.label)

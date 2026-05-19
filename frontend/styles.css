@@ -3671,3 +3671,21 @@ select:focus {
   .sq-connected-stats { grid-template-columns: 1fr; }
 }
 /* ─────────────────────────────────────────────────────────────────────────── */
+
+/* Read-only template field — informational box the user is not meant to edit */
+.readonly-field {
+  background-color: #f3f5fa;
+  color: #555;
+  cursor: not-allowed;
+  border: 1px dashed #c7ccd6;
+  font-style: italic;
+}
+.readonly-field::placeholder {
+  color: #555;
+  opacity: 1;
+  font-style: italic;
+}
+.readonly-field:focus {
+  outline: none;
+  box-shadow: none;
+}

@@ -43,8 +43,10 @@
       },
       {
         "label": "Event Fee",
-        "type": "number",
-        "required": true
+        "type": "text",
+        "required": false,
+        "readonly": true,
+        "placeholder": "Event Fees will be input after the Event is completed. Enter Fee in the Expenses card and then Save."
       },
       {
         "label": "Event Location",
