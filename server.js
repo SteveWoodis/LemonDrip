@@ -623,6 +623,52 @@ async function initDb() {
       console.warn('⚠️ Could not patch Default Template time field:', err.message);
     }
 
+    // Data migration: convert "eventFee" field on Default Template into a
+    // read-only informational text box. Fees are entered later via the
+    // Expenses card, so this field is no longer a required numeric input.
+    try {
+      const tplRes = await pool.query(
+        `SELECT "TemplateID", "Fields" FROM "FormTemplate" WHERE "TemplateName" = 'Default Template' LIMIT 1`
+      );
+      if (tplRes.rows.length > 0) {
+        const row = tplRes.rows[0];
+        let fields = typeof row.Fields === 'string' ? JSON.parse(row.Fields) : row.Fields;
+        let changed = false;
+        const FEE_PLACEHOLDER = "Event Fees will be input after the Event is completed. Enter Fee in the Expenses card and then Save.";
+        fields = fields.map(f => {
+          // Match by label (handles both "eventFee" and "Event Fee" forms).
+          const normalizedLabel = (f.label || "").toLowerCase().replace(/\s+/g, "");
+          if (normalizedLabel === "eventfee") {
+            const needsUpdate =
+              f.type !== "text" ||
+              f.required !== false ||
+              f.readonly !== true ||
+              f.placeholder !== FEE_PLACEHOLDER;
+            if (needsUpdate) {
+              changed = true;
+              return {
+                ...f,
+                type: "text",
+                required: false,
+                readonly: true,
+                placeholder: FEE_PLACEHOLDER
+              };
+            }
+          }
+          return f;
+        });
+        if (changed) {
+          await pool.query(
+            `UPDATE "FormTemplate" SET "Fields" = $1 WHERE "TemplateID" = $2`,
+            [JSON.stringify(fields), row.TemplateID]
+          );
+          console.log('✅ Converted "eventFee" field on Default Template to read-only informational text box');
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not patch Default Template eventFee field:', err.message);
+    }
+
   } catch (err) {
     console.error("❌ PostgreSQL init failed:", err);
     throw err;
