@@ -1524,7 +1524,7 @@ async function editEvent(eventData) {
   window.isEditing = true;
 
   // Show Add/Edit form (awaited so templates are loaded before we use them)
-  await openAddEventForUser();
+  await openAddEventForUser({ editing: true });
 
   // openAddEventForUser already rebuilt the form with Default Template;
   // re-find it to pre-fill values below
@@ -1834,6 +1834,13 @@ function coerceForApi(obj) {
 async function submitEvent(e) {
   if (e) e.preventDefault();
 
+  // Quick Create: the "Create & add details" button carries data-mode="details"
+  // and opts into opening the full edit form once the event is saved.
+  const wantsDetails = !!(
+    e && e.submitter && e.submitter.dataset &&
+    e.submitter.dataset.mode === "details"
+  );
+
   const submitBtn = document.querySelector('#eventForm button[type="submit"]');
   if (submitBtn?.disabled) return;
 
@@ -2081,6 +2088,13 @@ console.log("🧪 CANONICAL BEFORE VALIDATION:", canonical);
 
   const eventFormEl = document.getElementById("eventForm");
   if (eventFormEl) eventFormEl.innerHTML = "";
+
+  // Quick Create -> "Create & add details": jump straight into the full edit
+  // form for the event we just created so the user can fill in the rest.
+  if (!isEditing && wantsDetails && eventID) {
+    await editEvent({ eventID });
+    return;
+  }
 
   navigateTo("manageSection");
   await loadAllEvents();
@@ -2346,12 +2360,27 @@ async function waitForTemplates(timeout = 3000) {
 //          and auto-selects the default template for Starter users.
 //          Also initializes Square location dropdown and the Number of Days field.
 // ---------------------------
-async function openAddEventForUser() {
+async function openAddEventForUser(opts = {}) {
+  // Only editEvent() passes { editing: true }. Every other caller
+  // ("+ Add Event", welcome modal, etc.) is creating a brand-new event.
+  const editing = opts.editing === true;
+
   navigateTo("addSection");
 
-  // Always refresh templates to ensure Default Template fields load
+  // Always refresh templates: submitEvent() and the full edit form both
+  // rely on window.availableTemplates being populated.
   await populateTemplateDropdown();
 
+  // -- NEW EVENT -> streamlined Quick Create form ------------------------
+  if (!editing) {
+    window.isEditing = false;
+    window.activeeventID = null;
+    window.activeEvent = null;
+    renderQuickCreateEventForm();
+    return;
+  }
+
+  // -- EDIT / DUPLICATE -> full template-driven form ---------------------
   const templates = window.availableTemplates;
   if (!Array.isArray(templates) || templates.length === 0) {
     document.getElementById("eventForm").innerHTML =
@@ -2547,6 +2576,206 @@ function activateTemplate() {
   rebuildAddEventForm(stripEventColorFromTemplate(tpl));
   initNumDaysField();
   showToast(`"${tpl.TemplateName}" activated!`, "success");
+}
+
+// ---------------------------
+// renderQuickCreateEventForm | Quick Create (new event)
+// Purpose: Renders the streamlined "Add an event" form — five essential fields
+//          (event name, start date, number of days, venue, ZIP). Uses form_*
+//          input IDs so the existing submitEvent() pipeline handles it unchanged.
+//          A hidden #eventDaysContainer + form_Number_of_Days keep multi-day
+//          EventDays records working. "Create & add details" saves, then opens
+//          the full edit form for the new event (see submitEvent()).
+// ---------------------------
+function renderQuickCreateEventForm() {
+  const formEl = document.getElementById("eventForm");
+  if (!formEl) return;
+
+  // Quick Create hides the permit-upload / Square-location block — those live
+  // in the full edit form, reached via "Create & add details".
+  const proFields = document.getElementById("proAddEventFields");
+  if (proFields) proFields.style.display = "none";
+
+  const titleEl = document.getElementById("formTitle");
+  if (titleEl) titleEl.textContent = "Add an event";
+
+  formEl.innerHTML = `
+    <div class="qc-wrap">
+      <p class="qc-lead">Just the essentials. You can fill in everything else later.</p>
+
+      <div class="qc-steplabel">Step 1 of 2 &middot; Essentials</div>
+      <div class="qc-stepbar"><div class="qc-seg now"></div><div class="qc-seg"></div></div>
+
+      <div class="qc-field">
+        <label for="form_eventName">Event name <span class="qc-req">Required</span></label>
+        <input type="text" id="form_eventName" placeholder="e.g., Rocky Mountain Baseball" autocomplete="off" required>
+        <div class="qc-err" id="qcerr_eventName" role="alert"></div>
+      </div>
+
+      <div class="qc-grid2">
+        <div class="qc-field">
+          <label for="form_eventDate">Start date <span class="qc-req">Required</span></label>
+          <input type="date" id="form_eventDate" required>
+          <div class="qc-err" id="qcerr_eventDate" role="alert"></div>
+        </div>
+        <div class="qc-field">
+          <label for="qcDayVal">How many days? <span class="qc-req">Required</span></label>
+          <div class="qc-stepper">
+            <button type="button" id="qcDayMinus" aria-label="Fewer days">&minus;</button>
+            <div class="qc-dayval" id="qcDayVal" aria-live="polite">1</div>
+            <button type="button" id="qcDayPlus" aria-label="More days">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="qc-daterange" id="qcDateRange"></div>
+
+      <div class="qc-field">
+        <label for="form_eventLocation">Venue name <span class="qc-req">Required</span></label>
+        <input type="text" id="form_eventLocation" placeholder="e.g., Patriot Park" autocomplete="off" required>
+        <div class="qc-err" id="qcerr_eventLocation" role="alert"></div>
+      </div>
+
+      <div class="qc-field">
+        <label for="form_zipCode">ZIP code <span class="qc-req">Required</span></label>
+        <input type="text" id="form_zipCode" inputmode="numeric" maxlength="5" placeholder="84043" required>
+        <div class="qc-hint">We use this to auto-look-up your sales tax rate.</div>
+        <div class="qc-err" id="qcerr_zipCode" role="alert"></div>
+      </div>
+
+      <input type="number" id="form_Number_of_Days" value="1" min="1" max="30" style="display:none">
+      <div id="eventDaysContainer" style="display:none"></div>
+
+      <div class="qc-callout">
+        <strong>Almost done.</strong> After this you can add host, coordinator, permits and notes &mdash; or skip and add them anytime from the event page.
+      </div>
+
+      <div class="qc-actions">
+        <button type="button" class="qc-btn qc-ghost" onclick="qcCancel()">Cancel</button>
+        <div class="qc-actions-right">
+          <button type="submit" class="qc-btn" data-mode="details">Create &amp; add details</button>
+          <button type="submit" class="qc-btn qc-primary" data-mode="create">Create event</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const MAX_DAYS = 30, MIN_DAYS = 1;
+  const ndInput  = document.getElementById("form_Number_of_Days");
+  const dayValEl = document.getElementById("qcDayVal");
+  const minusBtn = document.getElementById("qcDayMinus");
+  const plusBtn  = document.getElementById("qcDayPlus");
+  const dateEl   = document.getElementById("form_eventDate");
+  const rangeEl  = document.getElementById("qcDateRange");
+  const zipEl    = document.getElementById("form_zipCode");
+
+  // Pretty, human-readable date range from start date + day count.
+  function qcRange(startStr, n) {
+    if (!startStr) return null;
+    const start = new Date(startStr + "T00:00:00");
+    if (isNaN(start.getTime())) return null;
+    const end = new Date(start);
+    end.setDate(end.getDate() + n - 1);
+    const optMD = { month: "short", day: "numeric" };
+    if (n <= 1) {
+      return start.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+    const sameMonth = start.getMonth() === end.getMonth()
+      && start.getFullYear() === end.getFullYear();
+    const a = start.toLocaleDateString("en-US", optMD);
+    const b = sameMonth
+      ? end.toLocaleDateString("en-US", { day: "numeric" })
+      : end.toLocaleDateString("en-US", optMD);
+    return a + "–" + b + ", " + end.getFullYear();
+  }
+  function refreshRange() {
+    const n = Number(ndInput.value) || 1;
+    const r = qcRange(dateEl.value, n);
+    if (r) {
+      rangeEl.textContent = "Runs " + r + "  ·  " + n + (n === 1 ? " day" : " days");
+      rangeEl.classList.add("show");
+    } else {
+      rangeEl.classList.remove("show");
+    }
+  }
+  function setDays(n) {
+    n = Math.max(MIN_DAYS, Math.min(MAX_DAYS, n));
+    ndInput.value = String(n);
+    dayValEl.textContent = String(n);
+    minusBtn.disabled = (n <= MIN_DAYS);
+    plusBtn.disabled  = (n >= MAX_DAYS);
+    ndInput.dispatchEvent(new Event("input")); // re-render hidden day rows
+    refreshRange();
+  }
+
+  minusBtn.addEventListener("click", () => setDays((Number(ndInput.value) || 1) - 1));
+  plusBtn.addEventListener("click",  () => setDays((Number(ndInput.value) || 1) + 1));
+  dateEl.addEventListener("change", refreshRange);
+  dateEl.addEventListener("input",  refreshRange);
+  zipEl.addEventListener("input", () => {
+    zipEl.value = zipEl.value.replace(/[^0-9]/g, "").slice(0, 5);
+  });
+
+  ["form_eventName", "form_eventDate", "form_eventLocation", "form_zipCode"]
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("input", () => qcClearError(id));
+    });
+
+  // Wire numDays + hidden day rows (auto-dates consecutively from the start date)
+  initNumDaysField(1, []);
+
+  // Inline validation runs before the shared submitEvent() pipeline.
+  formEl.onsubmit = function (ev) {
+    ev.preventDefault();
+    if (!validateQuickCreate()) return false;
+    return submitEvent(ev);
+  };
+
+  setDays(1);
+  setTimeout(() => document.getElementById("form_eventName")?.focus(), 60);
+}
+
+// Quick Create — inline error helpers
+function qcClearError(id) {
+  const el  = document.getElementById(id);
+  const err = document.getElementById("qcerr_" + id.replace(/^form_/, ""));
+  if (el)  el.classList.remove("qc-invalid");
+  if (err) { err.classList.remove("show"); err.textContent = ""; }
+}
+function qcShowError(id, msg) {
+  const el  = document.getElementById(id);
+  const err = document.getElementById("qcerr_" + id.replace(/^form_/, ""));
+  if (el)  el.classList.add("qc-invalid");
+  if (err) { err.textContent = msg; err.classList.add("show"); }
+}
+function validateQuickCreate() {
+  let ok = true, firstBad = null;
+  function check(id, isValid, msg) {
+    const el  = document.getElementById(id);
+    const val = ((el && el.value) || "").trim();
+    if (!isValid(val)) {
+      qcShowError(id, msg);
+      if (!firstBad) firstBad = el;
+      ok = false;
+    } else {
+      qcClearError(id);
+    }
+  }
+  check("form_eventName",     v => v.length > 0, "Enter an event name.");
+  check("form_eventDate",     v => v.length > 0, "Choose a start date.");
+  check("form_eventLocation", v => v.length > 0, "Enter the venue name.");
+  const zip = ((document.getElementById("form_zipCode") || {}).value || "").trim();
+  if (!zip) check("form_zipCode", () => false, "Enter a ZIP code.");
+  else      check("form_zipCode", () => /^\d{5}$/.test(zip), "ZIP code must be 5 digits.");
+  if (firstBad) firstBad.focus();
+  return ok;
+}
+
+// Quick Create — Cancel: leave the Add Event screen without saving.
+function qcCancel() {
+  if (typeof clearDirty === "function") clearDirty();
+  navigateTo("manageSection");
 }
 
 // ---------------------------

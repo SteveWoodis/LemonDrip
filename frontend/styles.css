@@ -3689,3 +3689,196 @@ select:focus {
   outline: none;
   box-shadow: none;
 }
+
+/* ==================================================
+   Quick Create — streamlined Add Event form
+   ================================================== */
+.qc-wrap { display: flex; flex-direction: column; }
+
+.qc-lead {
+  margin: 0 0 1rem;
+  color: var(--vv-muted, #5B6B7C);
+  font-size: 0.95rem;
+}
+
+.qc-steplabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vv-muted, #5B6B7C);
+  margin-bottom: 0.4rem;
+}
+.qc-stepbar { display: flex; gap: 6px; margin-bottom: 1.25rem; }
+.qc-seg { flex: 1; height: 6px; border-radius: 999px; background: #e4e9f0; }
+.qc-seg.now { background: var(--vv-green, #19B37A); }
+
+.qc-field { margin-bottom: 0.95rem; }
+.qc-field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--vv-ink, #0B1B2B);
+  margin-bottom: 0.32rem;
+}
+.qc-req {
+  color: #c0392b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: 5px;
+  vertical-align: 1px;
+}
+
+/* Inputs — scoped to #eventForm so they override generic form styling */
+#eventForm .qc-field input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #c2ccd8;
+  border-radius: 9px;
+  font-size: 16px; /* 16px keeps iOS Safari from zooming on focus */
+  font-family: inherit;
+  color: var(--vv-ink, #0B1B2B);
+  background: #fff;
+  transition: border-color .12s, box-shadow .12s;
+}
+#eventForm .qc-field input::placeholder { color: #9aa6b4; }
+#eventForm .qc-field input:focus {
+  outline: none;
+  border-color: var(--vv-green, #19B37A);
+  box-shadow: 0 0 0 3px rgba(25, 179, 122, 0.16);
+}
+#eventForm .qc-field input.qc-invalid {
+  border-color: #c0392b;
+  background: #fdeceb;
+}
+
+.qc-hint {
+  font-size: 0.74rem;
+  color: var(--vv-muted, #5B6B7C);
+  margin-top: 0.3rem;
+}
+.qc-err {
+  display: none;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #c0392b;
+  margin-top: 0.3rem;
+}
+.qc-err.show { display: block; }
+
+.qc-grid2 {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.9rem;
+}
+
+/* Day stepper */
+.qc-stepper {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  border: 1px solid #c2ccd8;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fff;
+}
+.qc-stepper button {
+  width: 46px;
+  height: 100%;
+  border: 0;
+  background: #f3f6f9;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--vv-ink, #0B1B2B);
+  cursor: pointer;
+}
+.qc-stepper button:hover:not(:disabled) {
+  background: #e3f6ee;
+  color: var(--vv-green-2, #0F8F63);
+}
+.qc-stepper button:disabled { color: #b6c0cc; cursor: not-allowed; }
+.qc-dayval {
+  min-width: 52px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1rem;
+  border-left: 1px solid #dde3ec;
+  border-right: 1px solid #dde3ec;
+}
+
+.qc-daterange {
+  display: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--vv-green-2, #0F8F63);
+  background: #e7f7f0;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  margin: 0 0 0.95rem;
+}
+.qc-daterange.show { display: block; }
+
+.qc-callout {
+  background: #eef4fb;
+  border-left: 3px solid #2c5d9b;
+  color: #284f80;
+  border-radius: 0 6px 6px 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0.3rem 0 1.1rem;
+}
+
+.qc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--vv-border, rgba(11, 42, 74, 0.12));
+}
+.qc-actions-right { display: flex; gap: 0.5rem; }
+.qc-btn {
+  height: 44px;
+  padding: 0 1.1rem;
+  border-radius: 9px;
+  border: 1px solid #c2ccd8;
+  background: #fff;
+  color: var(--vv-ink, #0B1B2B);
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .12s, transform .04s;
+}
+.qc-btn:hover { background: #f1f4f8; }
+.qc-btn:active { transform: scale(0.985); }
+.qc-btn.qc-primary {
+  background: var(--vv-green, #19B37A);
+  border-color: var(--vv-green, #19B37A);
+  color: #fff;
+}
+.qc-btn.qc-primary:hover { background: var(--vv-green-2, #0F8F63); }
+.qc-btn.qc-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--vv-muted, #5B6B7C);
+}
+.qc-btn.qc-ghost:hover { background: #eef1f5; }
+
+/* Mobile — single column, full-width touch targets (iPhone 14 / Android) */
+@media (max-width: 600px) {
+  .qc-grid2 { grid-template-columns: 1fr; }
+  .qc-stepper { width: 100%; }
+  .qc-dayval { flex: 1; }
+  .qc-actions { flex-direction: column-reverse; align-items: stretch; }
+  .qc-actions-right { flex-direction: column; }
+  .qc-btn { width: 100%; height: 48px; }
+  .qc-btn.qc-ghost { order: 1; }
+}
