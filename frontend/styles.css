@@ -3882,3 +3882,55 @@ select:focus {
   .qc-btn { width: 100%; height: 48px; }
   .qc-btn.qc-ghost { order: 1; }
 }
+
+/* ===== Add / Edit Event — sectioned full form (UX audit redesign) ===== */
+.ef-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.1rem 0 0.3rem;
+  border-top: 1px solid var(--vv-border, rgba(11, 42, 74, 0.12));
+}
+.ef-section:first-of-type { border-top: 0; padding-top: 0; }
+.ef-section-title {
+  margin: 0 0 0.1rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--vv-green-2, #0F8F63);
+}
+.ef-field { display: flex; flex-direction: column; gap: 0.3rem; margin: 0; }
+.ef-field-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--vv-ink, #0B1B2B);
+}
+#eventForm .ef-field input,
+#eventForm .ef-field select,
+#eventForm .ef-field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #c2ccd8;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--vv-ink, #0B1B2B);
+  background: #fff;
+}
+#eventForm .ef-field textarea { min-height: 64px; resize: vertical; }
+#eventForm .ef-field input:focus,
+#eventForm .ef-field select:focus,
+#eventForm .ef-field textarea:focus {
+  outline: none;
+  border-color: var(--vv-green, #19B37A);
+  box-shadow: 0 0 0 3px rgba(25, 179, 122, 0.16);
+}
+#eventForm .ef-field input.readonly-field {
+  background: #f3f5f8;
+  color: var(--vv-muted, #5B6B7C);
+}
+.ef-numdays { gap: 0.4rem; }
+
+@media (max-width: 600px) {
+  #eventForm .ef-numdays .qc-stepper { width: 100%; }
+  #eventForm .ef-numdays .qc-dayval { flex: 1; }
+}

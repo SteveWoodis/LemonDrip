@@ -669,6 +669,52 @@ async function initDb() {
       console.warn('⚠️ Could not patch Default Template eventFee field:', err.message);
     }
 
+    // Data migration: redesign the Default Template per the UX audit — plain-
+    // English labels grouped into 4 sections (basics / when / where / team),
+    // with deprecated fields removed (Event Color, Event Time, Event Fee,
+    // Event Status, Finalized Date). The previous version is preserved as
+    // "Default Template (pre-redesign backup)" so this is fully reversible.
+    // Runs once — guarded by the existence of the backup row.
+    try {
+      const REDESIGNED_DEFAULT_FIELDS = [
+        { label: "Event Name",       type: "text",     required: true,  section: "basics", placeholder: "e.g., Rocky Mountain Baseball" },
+        { label: "Event Type",       type: "text",     required: false, section: "basics", placeholder: "e.g., Baseball tournament" },
+        { label: "Event Rating",     type: "select",   required: false, section: "basics", options: [" ", "Family", "Mature", "Drill", "Catering"] },
+        { label: "Event Date",       type: "date",     required: true,  section: "when" },
+        { label: "Application Date", type: "date",     required: false, section: "when" },
+        { label: "Event Location",   type: "text",     required: true,  section: "where", placeholder: "Venue name and address" },
+        { label: "Zip Code",         type: "text",     required: true,  section: "where", placeholder: "5-digit ZIP" },
+        { label: "Permits",          type: "textarea", required: false, section: "where", placeholder: "e.g., Health permit submitted 04/01, awaiting approval" },
+        { label: "Event Host",       type: "text",     required: false, section: "team",  placeholder: "Host name and contact" },
+        { label: "Coordinator",      type: "text",     required: false, section: "team" },
+        { label: "Employees",        type: "number",   required: false, section: "team",  placeholder: "Expected staff on site" },
+        { label: "Notes",            type: "textarea", required: false, section: "team",  placeholder: "Internal notes for your team" }
+      ];
+      const dtRes = await pool.query(
+        `SELECT "TemplateID", "Fields" FROM "FormTemplate" WHERE "TemplateName" = 'Default Template' LIMIT 1`
+      );
+      const dtBackup = await pool.query(
+        `SELECT 1 FROM "FormTemplate" WHERE "TemplateName" = 'Default Template (pre-redesign backup)' LIMIT 1`
+      );
+      if (dtRes.rows.length > 0 && dtBackup.rows.length === 0) {
+        const dtRow = dtRes.rows[0];
+        const dtOldFields = typeof dtRow.Fields === 'string'
+          ? dtRow.Fields
+          : JSON.stringify(dtRow.Fields);
+        await pool.query(
+          `INSERT INTO "FormTemplate" ("TemplateName", "Fields") VALUES ($1, $2)`,
+          ['Default Template (pre-redesign backup)', dtOldFields]
+        );
+        await pool.query(
+          `UPDATE "FormTemplate" SET "Fields" = $1 WHERE "TemplateID" = $2`,
+          [JSON.stringify(REDESIGNED_DEFAULT_FIELDS), dtRow.TemplateID]
+        );
+        console.log('✅ Redesigned Default Template (previous version saved as "Default Template (pre-redesign backup)")');
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not redesign Default Template:', err.message);
+    }
+
   } catch (err) {
     console.error("❌ PostgreSQL init failed:", err);
     throw err;

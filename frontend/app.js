@@ -344,7 +344,9 @@ const CANONICAL_LABEL_TO_DBKEY = {
   "Permits": "permits",
   "Finalized Date": "finalizedDate",
   "Time": "time",
-  "Square Location": "squareLocationId"
+  "Square Location": "squareLocationId",
+  "Zip Code": "zipCode",
+  "ZIP Code": "zipCode"
 };
 
 
@@ -1426,6 +1428,9 @@ function initNumDaysField(existingNumDays, existingDays = []) {
 
   input.value = existingNumDays || 1;
 
+  const stepDisplay = document.getElementById("numDaysStepperValue");
+  if (stepDisplay) stepDisplay.textContent = String(input.value);
+
   // Render initial day rows
   renderEventDayRows(existingDays);
 
@@ -1480,6 +1485,10 @@ async function loadSquareLocationsIntoForm() {
       opt.textContent = loc.name;
       dropdown.appendChild(opt);
     });
+
+    if (locations.length === 1) {
+      dropdown.value = locations[0].id;
+    }
   } catch (err) {
     console.error("❌ Failed loading Square locations:", err);
   }
@@ -2786,176 +2795,175 @@ function qcCancel() {
 // ---------------------------
 function rebuildAddEventForm(template) {
   const formContainer = document.getElementById("eventForm");
-  
-  // 🧠 Keep existing event data if present
+
+  // 🧠 Keep existing event data if present (used to pre-fill when editing)
   const existing = window.activeEvent || {};
 
-  // Only clear the form if we’re not editing an event
   formContainer.innerHTML = "";
   const fields = template?.fields ?? template?.Fields ?? template?.FIELDS ?? null;
-console.log("✅ fields resolved:", fields);
 
-
-  console.log("WHAT IS TEMPLATE VALUE: ", template);
-  console.log(" The Fields of Template:", fields);
-
-  if (
-    !template || !Array.isArray(fields)) {
+  if (!template || !Array.isArray(fields)) {
     console.error("❌ Invalid template structure:", template);
     formContainer.innerHTML = "<p>Template could not be loaded.</p>";
     return;
   }
 
-  (fields[0]?.fields || fields).forEach(
-    (field) => {
-      // Skip deprecated "Event Color" and "Number of Days" (injected outside template)
-      if (
-        field &&
-        typeof field.label === "string" &&
-        (/^event\s*color$/i.test(field.label) || /^number\s*of\s*days$/i.test(field.label))
-      ) {
-        return;
-      }
+  const flatFields = (fields[0]?.fields || fields);
 
-      // Create label
-      const labelEl = document.createElement("label");
-      labelEl.textContent =
-        field.label + (field.required ? " *" : "");
+  // Section grouping (UX audit). Each field carries an optional "section" key;
+  // anything without a recognised section falls into "More details" so custom
+  // templates built in Design Event Form still render cleanly.
+  const SECTION_TITLES = {
+    basics: "The basics",
+    when:   "When",
+    where:  "Where & permits",
+    team:   "Who's running it",
+    more:   "More details",
+  };
+  const SECTION_ORDER = ["basics", "when", "where", "team", "more"];
 
-      // Create input
-      let input;
-      switch (field.type) {
-        case "select":
-        case "multiselect":
-          input = document.createElement("select");
-          if (field.type === "multiselect") input.multiple = true;
-          (field.options || []).forEach((optVal) => {
-            const opt = document.createElement("option");
-            opt.value = optVal;
-            opt.textContent = optVal;
-            input.appendChild(opt);
-          });
-          break;
-        case "textarea":
-          input = document.createElement("textarea");
-          break;
-        default:
-          input = document.createElement("input");
-          input.type = field.type || "text";
-      }
+  // Builds one labelled control (input / select / textarea). Returns a <label>.
+  function buildField(field) {
+    const labelEl = document.createElement("label");
+    labelEl.className = "ef-field";
 
-      if (field.required) input.required = true;
-      if (field.placeholder && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
-        input.placeholder = field.placeholder;
-      }
-      if (field.readonly && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
-        input.readOnly = true;
-        input.classList.add("readonly-field");
-      }
+    const caption = document.createElement("span");
+    caption.className = "ef-field-label";
+    caption.textContent = field.label + (field.required ? " *" : "");
+    labelEl.appendChild(caption);
 
-      // ✅ Consistent ID pattern (no hardcoded fields)
-      const safeLabel = String(field.label)
-        .replace(/\s+/g, "_")
-        .replace(/[^a-zA-Z0-9_]/g, "");
-      input.id = "form_" + safeLabel;
+    let input;
+    switch (field.type) {
+      case "select":
+      case "multiselect":
+        input = document.createElement("select");
+        if (field.type === "multiselect") input.multiple = true;
+        (field.options || []).forEach((optVal) => {
+          const opt = document.createElement("option");
+          opt.value = optVal;
+          opt.textContent = optVal;
+          input.appendChild(opt);
+        });
+        break;
+      case "textarea":
+        input = document.createElement("textarea");
+        break;
+      default:
+        input = document.createElement("input");
+        input.type = field.type || "text";
+    }
 
-      // Employees dropdown special case
-      if (
-        /^employees$/i.test(field.label) &&
-        field.type === "select"
-      ) {
-        // dynamically populate from EmployeeTracker
-        populateEmployeeDropdown(input);
-        // Add Hours Worked field linked to this employee dropdown
-        const hoursInput = document.createElement("input");
-        hoursInput.type = "number";
-        hoursInput.min = "0";
-        hoursInput.step = "0.25";
-        hoursInput.placeholder = "Hours Worked";
-        hoursInput.classList.add("hours-worked");
-        hoursInput.setAttribute(
-          "data-employee-hours",
-          input.id
-        );
+    if (field.required) input.required = true;
+    if (field.placeholder && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
+      input.placeholder = field.placeholder;
+    }
+    if (field.readonly && (input.tagName === "INPUT" || input.tagName === "TEXTAREA")) {
+      input.readOnly = true;
+      input.classList.add("readonly-field");
+    }
 
-        formContainer.appendChild(hoursInput);
-      }
+    // Consistent ID pattern so submitEvent() / editEvent() can find the field.
+    const safeLabel = String(field.label)
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_]/g, "");
+    input.id = "form_" + safeLabel;
 
-      const lbl =
-        typeof field.label === "string" ? field.label : "";
+    // Employees dropdown special case (legacy templates that use a select).
+    if (/^employees$/i.test(field.label) && field.type === "select") {
+      populateEmployeeDropdown(input);
+      const hoursInput = document.createElement("input");
+      hoursInput.type = "number";
+      hoursInput.min = "0";
+      hoursInput.step = "0.25";
+      hoursInput.placeholder = "Hours Worked";
+      hoursInput.classList.add("hours-worked");
+      hoursInput.setAttribute("data-employee-hours", input.id);
+      labelEl.appendChild(hoursInput);
+    }
 
-      // ✅ Pre-fill input with existing data if available
-      const savedVal =
-        existing[lbl] ||
-        existing[lbl.replaceAll(" ", "_")] ||
-        existing[lbl.toLowerCase()] ||
-        null;
+    // Pre-fill input with existing event data when editing.
+    const lbl = typeof field.label === "string" ? field.label : "";
+    const savedVal =
+      existing[lbl] ||
+      existing[lbl.replaceAll(" ", "_")] ||
+      existing[lbl.toLowerCase()] ||
+      null;
 
-      if (savedVal !== null && savedVal !== undefined) {
-        if (input.tagName === "SELECT" && input.multiple) {
-          // Handle multiselect arrays or comma-delimited strings
-          const values = Array.isArray(savedVal)
-            ? savedVal
-            : savedVal
-                .toString()
-                .split(",")
-                .map((v) => v.trim());
-          for (const opt of input.options) {
-            if (values.includes(opt.value)) opt.selected = true;
-          }
-        } else if (input.tagName === "SELECT") {
-          input.value = savedVal;
-        } else if (
-          input.tagName === "TEXTAREA" ||
-          input.tagName === "INPUT"
-        ) {
-          input.value = savedVal;
+    if (savedVal !== null && savedVal !== undefined) {
+      if (input.tagName === "SELECT" && input.multiple) {
+        const values = Array.isArray(savedVal)
+          ? savedVal
+          : savedVal.toString().split(",").map((v) => v.trim());
+        for (const opt of input.options) {
+          if (values.includes(opt.value)) opt.selected = true;
         }
-      }
-
-      // Inject Number of Days + day rows BEFORE Event Date
-      if (/^event\s*date$/i.test(field.label)) {
-        const ndLabel = document.createElement("label");
-        ndLabel.textContent = "Number of Days";
-        const ndInput = document.createElement("input");
-        ndInput.type = "number";
-        ndInput.id = "form_Number_of_Days";
-        ndInput.value = existing.numDays || existing.Number_of_Days || 1;
-        ndInput.min = "1";
-        ndInput.max = "30";
-        ndLabel.appendChild(ndInput);
-        formContainer.appendChild(ndLabel);
-      }
-
-      labelEl.appendChild(input);
-      formContainer.appendChild(labelEl);
-
-      // Inject day rows container immediately after Event Date
-      if (/^event\s*date$/i.test(field.label)) {
-        const container = document.createElement("div");
-        container.id = "eventDaysContainer";
-        formContainer.appendChild(container);
+      } else {
+        input.value = savedVal;
       }
     }
-  );
 
-  // Wire numDays + render initial day rows for new events
+    labelEl.appendChild(input);
+    return labelEl;
+  }
+
+  // Group fields by section, preserving template order within each group.
+  const groups = {};
+  flatFields.forEach((field) => {
+    if (!field || typeof field.label !== "string") return;
+    // Skip deprecated "Event Color" and "Number of Days" (injected separately).
+    if (/^event\s*color$/i.test(field.label) || /^number\s*of\s*days$/i.test(field.label)) {
+      return;
+    }
+    const sec = SECTION_TITLES[field.section] ? field.section : "more";
+    (groups[sec] = groups[sec] || []).push(field);
+  });
+
+  // Render each non-empty section in order.
+  SECTION_ORDER.forEach((secKey) => {
+    const secFields = groups[secKey];
+    if (!secFields || secFields.length === 0) return;
+
+    const section = document.createElement("div");
+    section.className = "ef-section";
+
+    const head = document.createElement("h3");
+    head.className = "ef-section-title";
+    head.textContent = SECTION_TITLES[secKey];
+    section.appendChild(head);
+
+    secFields.forEach((field) => {
+      section.appendChild(buildField(field));
+
+      // Inject the "How many days?" stepper + day-rows container after Event Date.
+      if (/^event\s*date$/i.test(field.label)) {
+        section.appendChild(
+          buildNumDaysStepper(existing.numDays || existing.Number_of_Days || 1)
+        );
+        const container = document.createElement("div");
+        container.id = "eventDaysContainer";
+        section.appendChild(container);
+      }
+    });
+
+    formContainer.appendChild(section);
+  });
+
+  // Safety net: if the template has no Event Date field, still provide the
+  // numDays control so multi-day logic and submitEvent() keep working.
+  if (!document.getElementById("form_Number_of_Days")) {
+    const fallback = document.createElement("div");
+    fallback.className = "ef-section";
+    fallback.appendChild(buildNumDaysStepper(existing.numDays || 1));
+    const container = document.createElement("div");
+    container.id = "eventDaysContainer";
+    fallback.appendChild(container);
+    formContainer.appendChild(fallback);
+  }
+
+  // Wire numDays + render initial day rows.
   initNumDaysField(existing.numDays || 1, []);
 
-  // ── Supply / Ingredient Cost (lump sum) ─────────────────────────────────
-  // Starter fast path: single field so vendors can get a profit number in
-  // under 2 minutes without filling out per-item inventory.
-  // Maps to EventExpenses.supplyFees. Saved after the event POST/PUT.
-  const supplyWrapper = document.createElement("label");
-  supplyWrapper.innerHTML = `Supply / Ingredient Cost
-    <input type="number" id="form_supplyFees" name="supplyFees"
-           min="0" step="0.01" placeholder="0.00"
-           style="display:block;width:100%;margin-top:4px;"
-           title="Total you spent on ingredients and supplies for this event">`;
-  formContainer.appendChild(supplyWrapper);
-  // ────────────────────────────────────────────────────────────────────────
-
-  // Add buttons — labels depend on context (new vs edit vs duplicate)
+  // Buttons — labels depend on context (new vs edit vs duplicate).
   const btnContainer = document.createElement("div");
   btnContainer.classList.add("form-buttons");
   const isEditMode = window.isEditing === true;
@@ -2964,11 +2972,72 @@ console.log("✅ fields resolved:", fields);
     ${isEditMode ? `<button type="button" onclick="duplicateAsNew()">📋 Duplicate as New Event</button>` : ""}
     <button type="button" onclick="clearEventForm()">⬅️ Cancel</button>
   `;
-
   formContainer.appendChild(btnContainer);
   formContainer.onsubmit = submitEvent;
-  console.log("Form information", formContainer);
 }
+
+// ---------------------------
+// buildNumDaysStepper | Date: 2026-05-23
+// Purpose: Builds the "How many days?" stepper used by the full Add/Edit Event
+//          form. The visible +/- buttons drive a hidden #form_Number_of_Days
+//          input that initNumDaysField(), renderEventDayRows() and submitEvent()
+//          all read — so the rest of the multi-day pipeline is unchanged.
+// ---------------------------
+function buildNumDaysStepper(value) {
+  const wrap = document.createElement("label");
+  wrap.className = "ef-field ef-numdays";
+
+  const caption = document.createElement("span");
+  caption.className = "ef-field-label";
+  caption.textContent = "How many days?";
+  wrap.appendChild(caption);
+
+  const stepper = document.createElement("div");
+  stepper.className = "qc-stepper";
+
+  const minus = document.createElement("button");
+  minus.type = "button";
+  minus.textContent = "−";
+  minus.setAttribute("aria-label", "Fewer days");
+
+  const valEl = document.createElement("div");
+  valEl.className = "qc-dayval";
+  valEl.id = "numDaysStepperValue";
+
+  const plus = document.createElement("button");
+  plus.type = "button";
+  plus.textContent = "+";
+  plus.setAttribute("aria-label", "More days");
+
+  const hidden = document.createElement("input");
+  hidden.type = "number";
+  hidden.id = "form_Number_of_Days";
+  hidden.min = "1";
+  hidden.max = "30";
+  hidden.style.display = "none";
+
+  function setDays(n) {
+    n = Math.max(1, Math.min(30, Number(n) || 1));
+    hidden.value = String(n);
+    valEl.textContent = String(n);
+    minus.disabled = (n <= 1);
+    plus.disabled = (n >= 30);
+    hidden.dispatchEvent(new Event("input")); // re-render day rows
+  }
+
+  minus.addEventListener("click", () => setDays((Number(hidden.value) || 1) - 1));
+  plus.addEventListener("click",  () => setDays((Number(hidden.value) || 1) + 1));
+
+  stepper.appendChild(minus);
+  stepper.appendChild(valEl);
+  stepper.appendChild(plus);
+  wrap.appendChild(stepper);
+  wrap.appendChild(hidden);
+
+  setDays(value);
+  return wrap;
+}
+
 //------------------------
 // Helper: Format event date range
 //------------------------

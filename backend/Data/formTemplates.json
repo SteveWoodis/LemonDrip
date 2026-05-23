@@ -5,81 +5,24 @@
       {
         "label": "Event Name",
         "type": "text",
-        "required": true
-      },
-      {
-        "label": "Event Date",
-        "type": "date",
-        "required": true
-      },
-      {
-        "label": "Application Date",
-        "type": "date",
-        "required": true
-      },
-      {
-        "label": "Event Color",
-        "type": "select",
         "required": true,
-        "options": [
-          " ",
-          "Blue",
-          "Yellow",
-          "Green",
-          "Pink",
-          "Runner"
-        ]
+        "section": "basics",
+        "placeholder": "e.g., Rocky Mountain Baseball"
       },
       {
-        "label": "Event Coordinator",
-        "type": "select",
-        "required": true,
-        "options": [
-          " ",
-          "Melanie",
-          "Ben",
-          "Ciera"
-        ]
-      },
-      {
-        "label": "Event Fee",
+        "label": "Event Type",
         "type": "text",
         "required": false,
-        "readonly": true,
-        "placeholder": "Event Fees will be input after the Event is completed. Enter Fee in the Expenses card and then Save."
-      },
-      {
-        "label": "Event Location",
-        "type": "text",
-        "required": true
-      },
-      {
-        "label": "Event Time",
-        "type": "text",
-        "required": true
-      },
-      {
-        "label": "Event Permits",
-        "type": "textarea",
-        "required": true
-      },
-      {
-        "label": "Event Employees",
-        "type": "select",
-        "required": true,
-        "options": [
-          " ",
-          "Nadia",
-          "Hannah",
-          "Amanda",
-          "Beth"
-        ]
+        "section": "basics",
+        "placeholder": "e.g., Baseball tournament"
       },
       {
         "label": "Event Rating",
         "type": "select",
-        "required": true,
+        "required": false,
+        "section": "basics",
         "options": [
+          " ",
           "Family",
           "Mature",
           "Drill",
@@ -87,26 +30,64 @@
         ]
       },
       {
-        "label": "Event Host",
-        "type": "textarea",
-        "required": true
-      },
-      {
-        "label": "Event Notes",
-        "type": "textarea",
-        "required": true
-      },
-      {
-        "label": "Event Status",
-        "type": "select",
+        "label": "Event Date",
+        "type": "date",
         "required": true,
-        "options": [
-          " ",
-          "Planned",
-          "Scheduled",
-          "Completed",
-          "Cancelled"
-        ]
+        "section": "when"
+      },
+      {
+        "label": "Application Date",
+        "type": "date",
+        "required": false,
+        "section": "when"
+      },
+      {
+        "label": "Event Location",
+        "type": "text",
+        "required": true,
+        "section": "where",
+        "placeholder": "Venue name and address"
+      },
+      {
+        "label": "Zip Code",
+        "type": "text",
+        "required": true,
+        "section": "where",
+        "placeholder": "5-digit ZIP"
+      },
+      {
+        "label": "Permits",
+        "type": "textarea",
+        "required": false,
+        "section": "where",
+        "placeholder": "e.g., Health permit submitted 04/01, awaiting approval"
+      },
+      {
+        "label": "Event Host",
+        "type": "text",
+        "required": false,
+        "section": "team",
+        "placeholder": "Host name and contact"
+      },
+      {
+        "label": "Coordinator",
+        "type": "text",
+        "required": false,
+        "section": "team"
+      },
+      {
+        "label": "Employees",
+        "type": "number",
+        "required": false,
+        "section": "team",
+        "placeholder": "Expected staff on site"
+      },
+      {
+        "label": "Notes",
+        "type": "textarea",
+        "required": false,
+        "section": "team",
+        "placeholder": "Internal notes for your team"
       }
     ]
   },
