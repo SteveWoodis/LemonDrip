@@ -6679,6 +6679,7 @@ window.navigateTo = function(sectionId) {
   if (sectionId === "adminSection")     loadAdminSection();
   if (sectionId === "manageSection")    loadManageKpis();
   if (sectionId === "recipesSection")   loadRecipesSection();
+  if (sectionId === "settingsSection")  loadOrgPanel();
 };
 
 // Wire up the CSV file input label
@@ -8115,4 +8116,166 @@ window.openPosMappingScreen  = openPosMappingScreen;
 window.closePosMappingModal  = closePosMappingModal;
 window.savePosMappings       = savePosMappings;
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════
+// 🏢  Organization / Team Management
+// ═══════════════════════════════════════════════════════════════
+
+async function loadOrgPanel() {
+  const panel = document.getElementById("orgPanel");
+  if (!panel) return;
+
+  try {
+    const res  = await fetch(`${API_BASE}/api/org`);
+    const data = await res.json();
+
+    if (!data.org) {
+      // Not in an org — show create / join UI
+      panel.innerHTML = `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div class="card" style="flex:1;min-width:220px;padding:16px;border:1px solid var(--border);">
+            <h4 style="margin:0 0 8px;font-size:0.95rem;">Create a Team</h4>
+            <p style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;">
+              Start a new organization and invite your team with a join code.
+            </p>
+            <input id="orgCreateName" type="text" placeholder="Team name"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;box-sizing:border-box;" />
+            <button class="btn-primary" style="width:100%" onclick="orgCreate()">Create Team</button>
+          </div>
+          <div class="card" style="flex:1;min-width:220px;padding:16px;border:1px solid var(--border);">
+            <h4 style="margin:0 0 8px;font-size:0.95rem;">Join a Team</h4>
+            <p style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;">
+              Enter the join code your team owner shared with you.
+            </p>
+            <input id="orgJoinCode" type="text" placeholder="e.g. LEMON-4827"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;box-sizing:border-box;text-transform:uppercase;" />
+            <button class="btn-primary" style="width:100%" onclick="orgJoin()">Join Team</button>
+          </div>
+        </div>`;
+    } else {
+      const { org } = data;
+      const isOwner = org.myRole === 'owner';
+
+      const memberRows = org.members.map(m => {
+        const isMe = m.userId === window.USER_ID;
+        const tag  = m.role === 'owner' ? '👑 Owner' : 'Member';
+        const shortId = m.userId.slice(0, 8) + '…';
+        const removeBtn = isOwner && !isMe
+          ? `<button onclick="orgRemoveMember('${m.userId}')"
+               style="font-size:0.75rem;padding:3px 8px;border:1px solid var(--danger,#dc2626);color:var(--danger,#dc2626);background:none;border-radius:4px;cursor:pointer;">Remove</button>`
+          : '';
+        return `<tr>
+          <td style="padding:6px 8px;font-size:0.85rem;" title="${m.userId}">${shortId}${isMe ? ' <em style="color:var(--muted)">(you)</em>' : ''}</td>
+          <td style="padding:6px 8px;font-size:0.82rem;color:var(--muted);">${tag}</td>
+          <td style="padding:6px 8px;">${removeBtn}</td>
+        </tr>`;
+      }).join('');
+
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;">${escHtml(org.orgName)}</h3>
+            <p style="margin:4px 0 0;font-size:0.82rem;color:var(--muted);">Your team</p>
+          </div>
+          ${isOwner ? `<div style="background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border);border-radius:6px;padding:8px 12px;text-align:center;">
+            <p style="margin:0 0 2px;font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Join Code</p>
+            <p style="margin:0;font-size:1.1rem;font-weight:700;letter-spacing:.08em;">${org.joinCode}</p>
+            <p style="margin:4px 0 0;font-size:0.72rem;color:var(--muted);">Share this with your team</p>
+          </div>` : ''}
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;margin-bottom:14px;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="padding:6px 8px;font-size:0.78rem;text-align:left;color:var(--muted);font-weight:600;">User ID</th>
+              <th style="padding:6px 8px;font-size:0.78rem;text-align:left;color:var(--muted);font-weight:600;">Role</th>
+              <th style="padding:6px 8px;"></th>
+            </tr>
+          </thead>
+          <tbody>${memberRows}</tbody>
+        </table>
+
+        ${isOwner && org.members.length === 1
+          ? `<button onclick="orgLeave()" style="font-size:0.82rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;">Disband team</button>`
+          : `<button onclick="orgLeave()" style="font-size:0.82rem;color:var(--danger,#dc2626);background:none;border:none;cursor:pointer;padding:0;">Leave team</button>`
+        }`;
+    }
+  } catch (err) {
+    console.error("❌ loadOrgPanel:", err);
+    const panel = document.getElementById("orgPanel");
+    if (panel) panel.innerHTML = `<p style="color:var(--danger,#dc2626);font-size:0.85rem;">Failed to load team info.</p>`;
+  }
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+async function orgCreate() {
+  const name = document.getElementById("orgCreateName")?.value?.trim();
+  if (!name) { showToast("Please enter a team name.", "error"); return; }
+  try {
+    const res  = await fetch(`${API_BASE}/api/org`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgName: name })
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || "Failed to create team.", "error"); return; }
+    showToast(`Team created! Join code: ${data.joinCode}`, "success", 6000);
+    loadOrgPanel();
+  } catch (err) {
+    showToast("Failed to create team.", "error");
+  }
+}
+
+async function orgJoin() {
+  const code = document.getElementById("orgJoinCode")?.value?.trim().toUpperCase();
+  if (!code) { showToast("Please enter a join code.", "error"); return; }
+  try {
+    const res  = await fetch(`${API_BASE}/api/org/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ joinCode: code })
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || "Failed to join team.", "error"); return; }
+    showToast(`Joined team: ${data.orgName}`, "success");
+    loadOrgPanel();
+  } catch (err) {
+    showToast("Failed to join team.", "error");
+  }
+}
+
+async function orgLeave() {
+  if (!confirm("Are you sure you want to leave this team?")) return;
+  try {
+    const res  = await fetch(`${API_BASE}/api/org/leave`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || "Failed to leave team.", "error"); return; }
+    showToast("You have left the team.", "success");
+    loadOrgPanel();
+  } catch (err) {
+    showToast("Failed to leave team.", "error");
+  }
+}
+
+async function orgRemoveMember(memberId) {
+  if (!confirm("Remove this member from the team?")) return;
+  try {
+    const res  = await fetch(`${API_BASE}/api/org/members/${encodeURIComponent(memberId)}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || "Failed to remove member.", "error"); return; }
+    showToast("Member removed.", "success");
+    loadOrgPanel();
+  } catch (err) {
+    showToast("Failed to remove member.", "error");
+  }
+}
+
+window.orgCreate       = orgCreate;
+window.orgJoin         = orgJoin;
+window.orgLeave        = orgLeave;
+window.orgRemoveMember = orgRemoveMember;
+window.loadOrgPanel    = loadOrgPanel;
 

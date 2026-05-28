@@ -100,10 +100,29 @@ async function getUserPlan(req) {
   return plan;
 }
 
+// Returns the orgId for a user (null if not in any org)
+async function getUserOrgId(userId) {
+  const row = await dbGet(
+    `SELECT "orgId" FROM "OrgMembers" WHERE "userId" = $1 LIMIT 1`,
+    [userId]
+  );
+  return row?.orgId || null;
+}
+
+// SQL fragment: true when the current user owns the row OR is a member of the row's org
+// Usage: WHERE (${orgAwareOwner('e', '$N')}) — pass table alias and the $N placeholder for userId
+function orgAwareOwner(alias, userParam) {
+  const p = alias ? `${alias}.` : '';
+  return `(${p}"userId" = ${userParam} OR (${p}"orgId" IS NOT NULL AND EXISTS (
+    SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = ${p}"orgId" AND _om."userId" = ${userParam}
+  )))`;
+}
+
 async function assertOwnsEvent(req, eventID) {
   const userId = req.user.id;
   const row = await dbGet(
-    `SELECT 1 FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
+    `SELECT 1 FROM "EventInfo" e
+     WHERE e."eventID" = $1 AND ${orgAwareOwner('e', '$2')}`,
     [eventID, userId]
   );
   if (!row) return false;
@@ -583,6 +602,26 @@ async function initDb() {
       )`,
       `CREATE INDEX IF NOT EXISTS "PosItemMapping_userId_idx"
          ON "PosItemMapping" ("userId", "posSystem")`,
+
+      // ── Organizations & multi-user teams ──────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS "Organizations" (
+        "orgId"       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "orgName"     TEXT NOT NULL,
+        "joinCode"    TEXT NOT NULL UNIQUE,
+        "ownerUserId" TEXT NOT NULL,
+        "createdAt"   TIMESTAMPTZ DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS "OrgMembers" (
+        "orgId"    UUID NOT NULL REFERENCES "Organizations"("orgId") ON DELETE CASCADE,
+        "userId"   TEXT NOT NULL,
+        "role"     TEXT NOT NULL DEFAULT 'member',
+        "joinedAt" TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY ("orgId", "userId")
+      )`,
+      `CREATE INDEX IF NOT EXISTS "OrgMembers_userId_idx" ON "OrgMembers" ("userId")`,
+      `ALTER TABLE "EventInfo"       ADD COLUMN IF NOT EXISTS "orgId" UUID REFERENCES "Organizations"("orgId")`,
+      `ALTER TABLE "VendorInventory" ADD COLUMN IF NOT EXISTS "orgId" UUID REFERENCES "Organizations"("orgId")`,
+      `ALTER TABLE "PosItemMapping"  ADD COLUMN IF NOT EXISTS "orgId" UUID REFERENCES "Organizations"("orgId")`,
     ];
 
     for (const sql of migrations) {
@@ -1045,7 +1084,7 @@ app.get("/api/events", async (req, res) => {
     const userId = req.user.id;
     const { name, date, id } = req.query;
 
-    let where = `WHERE e."userId" = $1`;
+    let where = `WHERE ${orgAwareOwner('e', '$1')}`;
     const params = [userId];
     let paramIndex = 2;
 
@@ -1108,7 +1147,7 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
-      WHERE e."userId" = $1
+      WHERE ${orgAwareOwner('e', '$1')}
     `, [userId]);
 
     const [bestEvent] = await dbAll(`
@@ -1116,7 +1155,7 @@ app.get("/api/events/kpi", searchLimiter, async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
-      WHERE e."userId" = $1 AND e."isFinalized" = 1
+      WHERE ${orgAwareOwner('e', '$1')} AND e."isFinalized" = 1
       ORDER BY "netProfit" DESC
       LIMIT 1
     `, [userId]);
@@ -1148,7 +1187,7 @@ app.get("/api/events/trend", searchLimiter, async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary"  s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
-      WHERE e."userId" = $1
+      WHERE ${orgAwareOwner('e', '$1')}
       ORDER BY e."eventDate" ASC
     `, [userId]);
 
@@ -1179,7 +1218,7 @@ app.get("/api/events/export/csv", searchLimiter, async (req, res) => {
       FROM "EventInfo" e
       LEFT JOIN "SalesSummary" s ON s."eventID" = e."eventID"
       LEFT JOIN "EventExpenses" x ON x."eventID" = e."eventID"
-      WHERE e."userId" = $1
+      WHERE ${orgAwareOwner('e', '$1')}
       ORDER BY e."eventDate" DESC
     `, [userId]);
 
@@ -1334,9 +1373,9 @@ app.get("/api/events/search", searchLimiter, async (req, res) => {
     }
 
     const sql = `
-      SELECT * FROM "EventInfo"
-      WHERE "userId" = $1 AND (${conditions.join(' OR ')})
-      ORDER BY "eventDate" DESC
+      SELECT * FROM "EventInfo" e
+      WHERE ${orgAwareOwner('e', '$1')} AND (${conditions.join(' OR ')})
+      ORDER BY e."eventDate" DESC
       LIMIT 50
     `;
     const params = [userId, ...conditions.map(() => like)];
@@ -1417,7 +1456,7 @@ app.get("/api/events/:id", async (req, res) => {
     const userId = req.user.id;
     const id = req.params.id;
     const row = await dbGet(
-      `SELECT * FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
+      `SELECT * FROM "EventInfo" e WHERE e."eventID" = $1 AND ${orgAwareOwner('e', '$2')}`,
       [id, userId]
     );
     if (!row) {
@@ -1450,6 +1489,193 @@ app.get("/api/events/:id/days", async (req, res) => {
   } catch (err) {
     console.error("❌ Error fetching event days:", err);
     res.status(500).json({ error: "Failed to fetch event days." });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 🏢  Organization / Team Routes
+// ═══════════════════════════════════════════════════════════════
+
+// Generates a short human-readable join code like "LEMON-4827"
+function generateJoinCode() {
+  const words = ["LEMON","LIME","MINT","BERRY","ZEST","FIZZ","SNAP","CREW","TEAM","BASE"];
+  const word = words[Math.floor(Math.random() * words.length)];
+  const num  = Math.floor(1000 + Math.random() * 9000);
+  return `${word}-${num}`;
+}
+
+// POST /api/org — create a new organization
+app.post("/api/org", requireAuth, async (req, res) => {
+  try {
+    const userId  = req.user.id;
+    const orgName = (req.body.orgName || "").trim();
+    if (!orgName || orgName.length < 2 || orgName.length > 100) {
+      return res.status(400).json({ error: "orgName must be 2–100 characters" });
+    }
+
+    // User can't be in two orgs
+    const existing = await dbGet(
+      `SELECT "orgId" FROM "OrgMembers" WHERE "userId" = $1 LIMIT 1`, [userId]
+    );
+    if (existing) return res.status(400).json({ error: "You are already in an organization. Leave it first." });
+
+    // Generate a unique join code (retry on collision)
+    let joinCode, orgRow;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      joinCode = generateJoinCode();
+      try {
+        orgRow = await dbGet(
+          `INSERT INTO "Organizations" ("orgName","joinCode","ownerUserId")
+           VALUES ($1,$2,$3) RETURNING "orgId","joinCode"`,
+          [orgName, joinCode, userId]
+        );
+        break;
+      } catch (e) {
+        if (e.code !== '23505') throw e; // 23505 = unique violation on joinCode
+      }
+    }
+    if (!orgRow) return res.status(500).json({ error: "Could not generate unique join code" });
+
+    // Add creator as owner member
+    await dbRun(
+      `INSERT INTO "OrgMembers" ("orgId","userId","role") VALUES ($1,$2,'owner')`,
+      [orgRow.orgId, userId]
+    );
+
+    res.json({ success: true, orgId: orgRow.orgId, joinCode: orgRow.joinCode, orgName });
+  } catch (err) {
+    console.error("❌ POST /api/org:", err);
+    res.status(500).json({ error: "Failed to create organization" });
+  }
+});
+
+// POST /api/org/join — join an org by join code
+app.post("/api/org/join", requireAuth, async (req, res) => {
+  try {
+    const userId   = req.user.id;
+    const joinCode = (req.body.joinCode || "").trim().toUpperCase();
+    if (!joinCode) return res.status(400).json({ error: "joinCode is required" });
+
+    const existing = await dbGet(
+      `SELECT "orgId" FROM "OrgMembers" WHERE "userId" = $1 LIMIT 1`, [userId]
+    );
+    if (existing) return res.status(400).json({ error: "You are already in an organization. Leave it first." });
+
+    const org = await dbGet(
+      `SELECT "orgId","orgName" FROM "Organizations" WHERE "joinCode" = $1`, [joinCode]
+    );
+    if (!org) return res.status(404).json({ error: "No organization found with that join code" });
+
+    await dbRun(
+      `INSERT INTO "OrgMembers" ("orgId","userId","role") VALUES ($1,$2,'member')
+       ON CONFLICT ("orgId","userId") DO NOTHING`,
+      [org.orgId, userId]
+    );
+
+    res.json({ success: true, orgId: org.orgId, orgName: org.orgName });
+  } catch (err) {
+    console.error("❌ POST /api/org/join:", err);
+    res.status(500).json({ error: "Failed to join organization" });
+  }
+});
+
+// GET /api/org — get current user's org info + member list
+app.get("/api/org", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const membership = await dbGet(
+      `SELECT om."orgId", om."role", o."orgName", o."joinCode", o."ownerUserId"
+       FROM "OrgMembers" om
+       JOIN "Organizations" o ON o."orgId" = om."orgId"
+       WHERE om."userId" = $1 LIMIT 1`,
+      [userId]
+    );
+    if (!membership) return res.json({ org: null });
+
+    const members = await dbAll(
+      `SELECT om."userId", om."role", om."joinedAt"
+       FROM "OrgMembers" om
+       WHERE om."orgId" = $1
+       ORDER BY om."joinedAt" ASC`,
+      [membership.orgId]
+    );
+
+    res.json({
+      org: {
+        orgId:       membership.orgId,
+        orgName:     membership.orgName,
+        joinCode:    membership.joinCode,
+        ownerUserId: membership.ownerUserId,
+        myRole:      membership.role,
+        members
+      }
+    });
+  } catch (err) {
+    console.error("❌ GET /api/org:", err);
+    res.status(500).json({ error: "Failed to load organization" });
+  }
+});
+
+// DELETE /api/org/leave — leave current org
+app.delete("/api/org/leave", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const membership = await dbGet(
+      `SELECT om."orgId", om."role", o."ownerUserId"
+       FROM "OrgMembers" om JOIN "Organizations" o ON o."orgId" = om."orgId"
+       WHERE om."userId" = $1 LIMIT 1`,
+      [userId]
+    );
+    if (!membership) return res.status(404).json({ error: "You are not in an organization" });
+
+    if (membership.role === 'owner') {
+      const otherMembers = await dbAll(
+        `SELECT "userId" FROM "OrgMembers" WHERE "orgId" = $1 AND "userId" != $2`,
+        [membership.orgId, userId]
+      );
+      if (otherMembers.length > 0) {
+        return res.status(400).json({ error: "Transfer ownership or remove all members before leaving as owner" });
+      }
+      // No other members — delete the org entirely
+      await dbRun(`DELETE FROM "Organizations" WHERE "orgId" = $1`, [membership.orgId]);
+    } else {
+      await dbRun(
+        `DELETE FROM "OrgMembers" WHERE "orgId" = $1 AND "userId" = $2`,
+        [membership.orgId, userId]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ DELETE /api/org/leave:", err);
+    res.status(500).json({ error: "Failed to leave organization" });
+  }
+});
+
+// DELETE /api/org/members/:memberId — remove a member (owner only)
+app.delete("/api/org/members/:memberId", requireAuth, async (req, res) => {
+  try {
+    const userId   = req.user.id;
+    const targetId = req.params.memberId;
+
+    const myMembership = await dbGet(
+      `SELECT "orgId","role" FROM "OrgMembers" WHERE "userId" = $1 LIMIT 1`, [userId]
+    );
+    if (!myMembership || myMembership.role !== 'owner') {
+      return res.status(403).json({ error: "Only the org owner can remove members" });
+    }
+    if (targetId === userId) {
+      return res.status(400).json({ error: "Use /api/org/leave to leave the org" });
+    }
+
+    await dbRun(
+      `DELETE FROM "OrgMembers" WHERE "orgId" = $1 AND "userId" = $2`,
+      [myMembership.orgId, targetId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ DELETE /api/org/members:", err);
+    res.status(500).json({ error: "Failed to remove member" });
   }
 });
 
@@ -1694,11 +1920,12 @@ app.post("/api/events",
   async (req, res) => {
   try {
    const userId = req.user.id;
+   const orgId  = await getUserOrgId(userId);
    const e = coerceEvent(req.body);
 
    const sql = `
      INSERT INTO "EventInfo" (
-       "userId", "eventName", "eventDate", "applicationDate", "finalizedDate",
+       "userId", "orgId", "eventName", "eventDate", "applicationDate", "finalizedDate",
         "eventFee", "squareLocationId", "time", "employees",
         "eventRating", "eventHost", "notes", "status", "eventType",
         "numDays", "coordinator", "grossSales", "tips", "netSales",
@@ -1709,12 +1936,13 @@ app.post("/api/events",
         "taxOverride", "state", "zipCode", "timezone"
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
+              $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
       RETURNING "eventID"
     `;
 
     const params = [
       userId,
+      orgId,
       e.eventName,
       e.eventDate,
       e.applicationDate,
@@ -1840,7 +2068,9 @@ app.put("/api/events/:id",
         "giftCardSales"=$25,
         "cash"=$26, "card"=$27, "wallet"=$28, "Other"=$29, "cashApp"=$30,
         "taxOverride"=$31, "state"=$32, "zipCode"=$33, "timezone"=$34
-      WHERE "eventID"=$35 AND "userId"=$36
+      WHERE "eventID"=$35 AND ("userId"=$36 OR ("orgId" IS NOT NULL AND EXISTS (
+        SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = "EventInfo"."orgId" AND _om."userId" = $36
+      )))
     `;
 
     const params = [
@@ -2147,7 +2377,7 @@ app.put("/api/square/sales/:eventID", squareLimiter, async (req, res) => {
            WHERE m."userId" = $1 AND m."posSystem" = 'square'`,
           [userId]
         ),
-        dbAll(`SELECT "itemName", "unitCost" FROM "VendorInventory" WHERE "userId" = $1`, [userId])
+        dbAll(`SELECT "itemName", "unitCost" FROM "VendorInventory" v WHERE ${orgAwareOwner('v', '$1')}`, [userId])
       ]);
 
       const invByPosId = new Map(mappingRows.map(r => [r.posItemId, { unitCost: Number(r.unitCost), itemName: r.itemName }]));
@@ -2346,7 +2576,7 @@ app.put("/api/events/:id/finalize", async (req, res) => {
     // --------------------------------------------------
     // 1️⃣ Event existence check
     // --------------------------------------------------
-    const event = await dbGet(`SELECT * FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`, [eventID, userId]);
+    const event = await dbGet(`SELECT * FROM "EventInfo" e WHERE e."eventID" = $1 AND ${orgAwareOwner('e', '$2')}`, [eventID, userId]);
     if (!event) {
       return res.status(404).json({ error: "Event not found." });
     }
@@ -2403,7 +2633,9 @@ app.put("/api/events/:id/finalize", async (req, res) => {
         "eventScore" = $3,
         "isFinalized" = 1,
         "finalizedDate" = NOW()
-      WHERE "eventID" = $4 AND "userId" = $5
+      WHERE "eventID" = $4 AND ("userId" = $5 OR ("orgId" IS NOT NULL AND EXISTS (
+        SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = "EventInfo"."orgId" AND _om."userId" = $5
+      )))
       `,
       [internalScore, externalScore, eventScore, eventID, userId]
     );
@@ -2633,7 +2865,7 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 
   try {
-    const event = await dbGet(`SELECT "eventID" FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`, [id, userId]);
+    const event = await dbGet(`SELECT "eventID" FROM "EventInfo" e WHERE e."eventID" = $1 AND ${orgAwareOwner('e', '$2')}`, [id, userId]);
     if (!event) return res.status(404).json({ error: "Event not found." });
 
     const client = await pool.connect();
@@ -2650,7 +2882,7 @@ app.delete("/api/events/:id", async (req, res) => {
         await client.query(`DELETE FROM "${table}" WHERE "eventID" = $1`, [id]).catch(() => {});
       }
 
-      await client.query('DELETE FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2', [id, userId]);
+      await client.query(`DELETE FROM "EventInfo" WHERE "eventID" = $1 AND ("userId" = $2 OR ("orgId" IS NOT NULL AND EXISTS (SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = "EventInfo"."orgId" AND _om."userId" = $2)))`, [id, userId]);
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -3369,7 +3601,7 @@ app.get("/api/pos-mappings", async (req, res) => {
               m."inventoryId", v."itemName" AS "inventoryItemName", v."unitCost"
        FROM "PosItemMapping" m
        LEFT JOIN "VendorInventory" v ON m."inventoryId" = v."id"
-       WHERE m."userId" = $1
+       WHERE ${orgAwareOwner('m', '$1')}
        ORDER BY m."posItemName", m."variationName"`,
       [userId]
     );
@@ -3387,6 +3619,7 @@ app.get("/api/pos-mappings", async (req, res) => {
 app.post("/api/pos-mappings", async (req, res) => {
   try {
     const userId   = req.user.id;
+    const orgId    = await getUserOrgId(userId);
     const mappings = req.body;
 
     if (!Array.isArray(mappings) || mappings.length === 0) {
@@ -3401,13 +3634,13 @@ app.post("/api/pos-mappings", async (req, res) => {
         if (!posItemId) continue;
         await client.query(
           `INSERT INTO "PosItemMapping"
-             ("userId", "posSystem", "posItemId", "posItemName", "variationName", "inventoryId")
-           VALUES ($1, $2, $3, $4, $5, $6)
+             ("userId", "orgId", "posSystem", "posItemId", "posItemName", "variationName", "inventoryId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT ("userId", "posSystem", "posItemId") DO UPDATE SET
              "posItemName"   = EXCLUDED."posItemName",
              "variationName" = EXCLUDED."variationName",
              "inventoryId"   = EXCLUDED."inventoryId"`,
-          [userId, posSystem, posItemId, posItemName || null, variationName || null, inventoryId || null]
+          [userId, orgId, posSystem, posItemId, posItemName || null, variationName || null, inventoryId || null]
         );
       }
       await client.query("COMMIT");
@@ -3472,12 +3705,12 @@ app.get("/api/inventory/template", (_req, res) => {
   res.send("itemName,unitCost,category,sku\nExample Item,1.50,Supplies,ITEM-001\n");
 });
 
-// Get all inventory items for the current user
+// Get all inventory items for the current user (and their org)
 app.get("/api/inventory", async (req, res) => {
   try {
     const userId = req.user.id;
     const rows = await dbAll(
-      `SELECT * FROM "VendorInventory" WHERE "userId" = $1 ORDER BY "category" NULLS LAST, "itemName"`,
+      `SELECT * FROM "VendorInventory" v WHERE ${orgAwareOwner('v', '$1')} ORDER BY v."category" NULLS LAST, v."itemName"`,
       [userId]
     );
     res.json(rows);
@@ -3512,11 +3745,11 @@ app.get("/api/inventory/low-stock", async (req, res) => {
   try {
     const userId = req.user.id;
     const rows = await dbAll(
-      `SELECT * FROM "VendorInventory"
-       WHERE "userId" = $1
-         AND "reorderThreshold" > 0
-         AND "quantityOnHand" <= "reorderThreshold"
-       ORDER BY "itemName"`,
+      `SELECT * FROM "VendorInventory" v
+       WHERE ${orgAwareOwner('v', '$1')}
+         AND v."reorderThreshold" > 0
+         AND v."quantityOnHand" <= v."reorderThreshold"
+       ORDER BY v."itemName"`,
       [userId]
     );
     res.json(rows);
@@ -4431,6 +4664,7 @@ async function saveInventorySales(eventID, rows) {
 app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => {
   try {
     const userId = req.user.id;
+    const orgId  = await getUserOrgId(userId);
 
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -4478,9 +4712,9 @@ app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => 
           );
         } else {
           await dbRun(
-            `INSERT INTO "VendorInventory" ("userId","itemName","unitCost","category","sku")
-             VALUES ($1,$2,$3,$4,$5)`,
-            [userId, itemName, unitCost, category, sku]
+            `INSERT INTO "VendorInventory" ("userId","orgId","itemName","unitCost","category","sku")
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [userId, orgId, itemName, unitCost, category, sku]
           );
         }
       } else {
@@ -4498,9 +4732,9 @@ app.post("/api/inventory/upload", uploadCsv.single("file"), async (req, res) => 
           );
         } else {
           await dbRun(
-            `INSERT INTO "VendorInventory" ("userId","itemName","unitCost","category","sku")
-             VALUES ($1,$2,$3,$4,$5)`,
-            [userId, itemName, unitCost, category, null]
+            `INSERT INTO "VendorInventory" ("userId","orgId","itemName","unitCost","category","sku")
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [userId, orgId, itemName, unitCost, category, null]
           );
         }
       }
@@ -4539,7 +4773,9 @@ app.put("/api/inventory/:id", async (req, res) => {
            "reorderThreshold" = COALESCE($6, "reorderThreshold"),
            "reorderQty" = COALESCE($7, "reorderQty"),
            "updatedAt" = NOW()
-       WHERE "id" = $8 AND "userId" = $9`,
+       WHERE "id" = $8 AND ("userId" = $9 OR ("orgId" IS NOT NULL AND EXISTS (
+         SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = "VendorInventory"."orgId" AND _om."userId" = $9
+       )))`,
       [
         itemName.trim(), cost, category || null, sku || null,
         quantityOnHand != null ? Number(quantityOnHand) : null,
@@ -4620,7 +4856,9 @@ app.put("/api/inventory/:id/stock", async (req, res) => {
     const result = await dbRun(
       `UPDATE "VendorInventory"
        SET "quantityOnHand" = $1, "updatedAt" = NOW()
-       WHERE "id" = $2 AND "userId" = $3`,
+       WHERE "id" = $2 AND ("userId" = $3 OR ("orgId" IS NOT NULL AND EXISTS (
+         SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = "VendorInventory"."orgId" AND _om."userId" = $3
+       )))`,
       [qty, id, userId]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "Item not found" });
@@ -4651,7 +4889,9 @@ app.delete("/api/inventory/:id", async (req, res) => {
     }
 
     const result = await dbRun(
-      `DELETE FROM "VendorInventory" WHERE "id" = $1 AND "userId" = $2`,
+      `DELETE FROM "VendorInventory" WHERE "id" = $1 AND ("userId" = $2 OR ("orgId" IS NOT NULL AND EXISTS (
+        SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = "VendorInventory"."orgId" AND _om."userId" = $2
+      )))`,
       [id, userId]
     );
 
@@ -4727,7 +4967,7 @@ app.post("/api/events/:eventID/inventory", async (req, res) => {
 
     // Verify the inventory item belongs to this user
     const item = await dbGet(
-      `SELECT "id","itemName" FROM "VendorInventory" WHERE "id" = $1 AND "userId" = $2`,
+      `SELECT "id","itemName" FROM "VendorInventory" v WHERE v."id" = $1 AND ${orgAwareOwner('v', '$2')}`,
       [inventoryId, userId]
     );
     if (!item) return res.status(404).json({ error: "Inventory item not found." });
@@ -5020,4 +5260,244 @@ app.get("/app/*", (req, res) => {
     console.error("❌ Failed to start server:", err);
     process.exit(1);
   }
-})();
+})();  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/events/:eventID/inventory/:eiId
+// Update a single event-inventory row's metadata (threshold/reorderQty/notes,
+// or override startingQty/quantityOnHand for corrections — does NOT touch
+// warehouse stock; use the restock endpoint for live refills).
+app.put("/api/events/:eventID/inventory/:eiId", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    const eiId    = Number(req.params.eiId);
+    if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const fields = ["startingQty","quantityOnHand","reorderThreshold","reorderQty","notes"];
+    const sets = [], params = [];
+    fields.forEach(f => {
+      if (req.body[f] !== undefined) {
+        params.push(req.body[f]);
+        sets.push(`"${f}" = $${params.length}`);
+      }
+    });
+    if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+
+    params.push(eiId, eventID);
+    await dbRun(
+      `UPDATE "EventInventory"
+          SET ${sets.join(", ")}, "updatedAt" = NOW()
+        WHERE "id" = $${params.length - 1} AND "eventID" = $${params.length}`,
+      params
+    );
+    const row = await dbGet(
+      `SELECT ei.*, v."itemName" FROM "EventInventory" ei
+        JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."id" = $1`,
+      [eiId]
+    );
+    res.json(row);
+  } catch (err) {
+    console.error("❌ Update event inventory error:", err);
+    res.status(500).json({ error: "Failed to update event inventory" });
+  }
+});
+
+// PUT /api/events/:eventID/inventory/:eiId/restock
+// Mid-event restock: refills the truck and decrements warehouse.
+// Body: { qtyAdded, note? }
+app.put("/api/events/:eventID/inventory/:eiId/restock", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    const eiId    = Number(req.params.eiId);
+    const qtyAdded = Number(req.body.qtyAdded);
+    const note    = (req.body.note ?? "").toString() || null;
+    if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(qtyAdded) || qtyAdded <= 0) return res.status(400).json({ error: "qtyAdded must be > 0" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const userId = req.user.id;
+    const ei = await dbGet(
+      `SELECT "id","inventoryId" FROM "EventInventory" WHERE "id" = $1 AND "eventID" = $2`,
+      [eiId, eventID]
+    );
+    if (!ei) return res.status(404).json({ error: "Event inventory row not found" });
+
+    await stock.recordRestock(userId, eventID, ei.inventoryId, qtyAdded, note);
+
+    const row = await dbGet(
+      `SELECT ei.*, v."itemName" FROM "EventInventory" ei
+        JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."id" = $1`,
+      [eiId]
+    );
+    res.json(row);
+  } catch (err) {
+    console.error("❌ Event restock error:", err);
+    res.status(500).json({ error: err.message || "Restock failed" });
+  }
+});
+
+// DELETE /api/events/:eventID/inventory/:eiId
+// Remove an item from the event. Returns the (current quantityOnHand, not
+// startingQty) back to the warehouse — i.e., undelivered stock comes home.
+app.delete("/api/events/:eventID/inventory/:eiId", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const eventID = Number(req.params.eventID);
+    const eiId    = Number(req.params.eiId);
+    if (!Number.isFinite(eventID) || !Number.isFinite(eiId)) return res.status(400).json({ error: "Invalid id" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const userId = req.user.id;
+    const row = await dbGet(
+      `SELECT * FROM "EventInventory" WHERE "id" = $1 AND "eventID" = $2`,
+      [eiId, eventID]
+    );
+    if (!row) return res.status(404).json({ error: "Event inventory row not found" });
+
+    await client.query('BEGIN');
+    // Return remaining truck stock to warehouse
+    if (Number(row.quantityOnHand) > 0) {
+      await client.query(
+        `UPDATE "VendorInventory"
+            SET "quantityOnHand" = "quantityOnHand" + $1,
+                "updatedAt" = NOW()
+          WHERE "id" = $2 AND "userId" = $3`,
+        [Number(row.quantityOnHand), row.inventoryId, userId]
+      );
+      await client.query(
+        `INSERT INTO "InventoryMovements"
+           ("userId","inventoryId","eventID","qtyChange","reason","note")
+         VALUES ($1,$2,$3,$4,'return-to-warehouse',$5)`,
+        [userId, row.inventoryId, eventID, +Number(row.quantityOnHand),
+         `Returned ${row.quantityOnHand} from event ${eventID} to warehouse`]
+      );
+    }
+    await client.query(
+      `DELETE FROM "EventInventory" WHERE "id" = $1`,
+      [eiId]
+    );
+    await client.query('COMMIT');
+    res.json({ success: true, deletedId: eiId });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error("❌ Delete event inventory error:", err);
+    res.status(500).json({ error: "Failed to remove event inventory item" });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/events/:eventID/inventory/low-stock
+// End-of-night view: items where on-hand has dropped below starting (any
+// usage) OR has crossed the per-event reorderThreshold.
+app.get("/api/events/:eventID/inventory/low-stock", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const rows = await dbAll(
+      `SELECT ei."id", ei."eventID", ei."inventoryId",
+              ei."startingQty", ei."quantityOnHand",
+              ei."reorderThreshold", ei."reorderQty", ei."notes",
+              v."itemName", v."category", v."unitCost",
+              GREATEST(0, ei."startingQty" - ei."quantityOnHand") AS "qtyUsed"
+         FROM "EventInventory" ei
+         JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."eventID" = $1
+          AND (
+                ei."quantityOnHand" < ei."startingQty"          -- any usage
+             OR (ei."reorderThreshold" > 0
+                 AND ei."quantityOnHand" <= ei."reorderThreshold")
+          )
+        ORDER BY (ei."startingQty" - ei."quantityOnHand") DESC`,
+      [eventID]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Event low-stock error:", err);
+    res.status(500).json({ error: "Failed to load event low-stock list" });
+  }
+});
+
+// GET /api/events/:eventID/inventory/usage
+// End-of-day usage report — for printing/sharing with restocker.
+app.get("/api/events/:eventID/inventory/usage", async (req, res) => {
+  try {
+    const eventID = Number(req.params.eventID);
+    if (!Number.isFinite(eventID)) return res.status(400).json({ error: "Invalid eventID" });
+    if (!(await assertOwnsEvent(req, eventID))) return res.status(404).json({ error: "Event not found." });
+
+    const rows = await dbAll(
+      `SELECT v."itemName", v."category",
+              ei."startingQty", ei."quantityOnHand",
+              GREATEST(0, ei."startingQty" - ei."quantityOnHand") AS "qtyUsed",
+              CASE WHEN ei."startingQty" > 0
+                   THEN ROUND(((ei."startingQty" - ei."quantityOnHand")::numeric
+                              / ei."startingQty"::numeric) * 100, 1)
+                   ELSE 0 END AS "pctUsed"
+         FROM "EventInventory" ei
+         JOIN "VendorInventory" v ON v."id" = ei."inventoryId"
+        WHERE ei."eventID" = $1
+        ORDER BY "qtyUsed" DESC`,
+      [eventID]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Event usage error:", err);
+    res.status(500).json({ error: "Failed to load usage" });
+  }
+});
+
+// Serves public Supabase config to the frontend without requiring auth
+app.get("/env.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+  res.send(
+    `window.SUPABASE_URL=${JSON.stringify(process.env.SUPABASE_PUBLIC_URL||"")};` +
+    `window.SUPABASE_ANON_KEY=${JSON.stringify(process.env.SUPABASE_PUBLISHABLE_KEY||"")};`
+  );
+});
+
+// ── VenView App SPA (venview.app/app and all sub-routes) ───────
+app.use("/app", express.static(path.join(__dirname, "frontend")));
+app.get("/app/*", (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend", "app.html"));
+});
+
+(async () => {
+  try {
+    await initDb();
+
+    // ── EventSalesFees audit ─────────────────────────────────────────────────
+    // This table is populated by recipes.calculateEventSalesFees() during Square
+    // sync (recipe-based COGS). On startup we log the row count so you can confirm
+    // production data looks sane. If count is always 0 and you never use the
+    // Recipes feature, remove the EventSalesFees subquery from all netProfit
+    // formulas (list, KPI, trend, CSV) to eliminate phantom deductions.
+    pool.query(`SELECT COUNT(*) AS cnt FROM "EventSalesFees"`).then(({ rows }) => {
+      const cnt = Number(rows[0]?.cnt ?? 0);
+      if (cnt === 0) {
+        console.warn('⚠️  EventSalesFees is empty — recipe COGS = $0 for all events. ' +
+          'If you do not use the Recipes feature, this is expected.');
+      } else {
+        console.log(`✅ EventSalesFees: ${cnt} rows (recipe COGS active)`);
+      }
+    }).catch(err => console.warn('⚠️  EventSalesFees audit query failed:', err.message));
+    // ────────────────────────────────────────────────────────────────────────
+
+    const PORT = process.env.PORT || 8080;
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(`🚀 PostgreSQL backend running on port ${PORT}`)
+    );
+  } catch (err) {
+    console.error("❌ Failed to start server:", err);
+    process.exit(1);
+  }
+})();})();

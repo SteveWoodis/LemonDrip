@@ -31,6 +31,15 @@ async function dbRun(sql, params = []) {
   return { rowCount: r.rowCount, rows: r.rows };
 }
 
+// ─── Org helper ──────────────────────────────────────────────
+async function getUserOrgId(userId) {
+  const row = await dbGet(
+    `SELECT "orgId" FROM "OrgMembers" WHERE "userId" = $1 LIMIT 1`,
+    [userId]
+  );
+  return row?.orgId || null;
+}
+
 // ─── Run migration at startup ────────────────────────────────
 async function runMigration() {
   const migrations = [
@@ -68,6 +77,7 @@ async function runMigration() {
     )`,
     `CREATE INDEX IF NOT EXISTS "EventSalesFees_eventID_idx" ON "EventSalesFees" ("eventID")`,
     `ALTER TABLE "EventInfo" ADD COLUMN IF NOT EXISTS "salesFeesLocked" BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE "RecipeCards" ADD COLUMN IF NOT EXISTS "orgId" UUID REFERENCES "Organizations"("orgId")`,
   ];
 
   for (const sql of migrations) {
@@ -159,10 +169,14 @@ async function calculateEventSalesFees(eventID) {
     );
     if (!soldItems.length) return { skipped: true, reason: 'no sold items' };
 
-    // 3️⃣ Load all recipe cards for this user (with ingredients)
+    // 3️⃣ Load all recipe cards for this user/org (with ingredients)
     const userId = event.userId;
     const recipeCards = await dbAll(
-      `SELECT "id", "name", "squareName" FROM "RecipeCards" WHERE "userId" = $1`,
+      `SELECT rc."id", rc."name", rc."squareName" FROM "RecipeCards" rc
+       WHERE rc."userId" = $1
+          OR (rc."orgId" IS NOT NULL AND EXISTS (
+            SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = rc."orgId" AND _om."userId" = $1
+          ))`,
       [userId]
     );
 
@@ -428,21 +442,29 @@ function registerRoutes(app) {
     },
   });
 
-  // ── Helper: assert recipe ownership ──────────────────────────
+  // ── Helper: assert recipe ownership (org-aware) ──────────────
   async function assertOwnsRecipe(req, recipeId) {
     const userId = req.user.id;
     const row = await dbGet(
-      `SELECT 1 FROM "RecipeCards" WHERE "id" = $1 AND "userId" = $2`,
+      `SELECT 1 FROM "RecipeCards" rc WHERE rc."id" = $1 AND (
+        rc."userId" = $2 OR (rc."orgId" IS NOT NULL AND EXISTS (
+          SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = rc."orgId" AND _om."userId" = $2
+        ))
+      )`,
       [recipeId, userId]
     );
     return !!row;
   }
 
-  // ── Helper: assert event ownership ───────────────────────────
+  // ── Helper: assert event ownership (org-aware) ───────────────
   async function assertOwnsEvent(req, eventID) {
     const userId = req.user.id;
     const row = await dbGet(
-      `SELECT 1 FROM "EventInfo" WHERE "eventID" = $1 AND "userId" = $2`,
+      `SELECT 1 FROM "EventInfo" e WHERE e."eventID" = $1 AND (
+        e."userId" = $2 OR (e."orgId" IS NOT NULL AND EXISTS (
+          SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = e."orgId" AND _om."userId" = $2
+        ))
+      )`,
       [eventID, userId]
     );
     return !!row;
@@ -474,6 +496,9 @@ function registerRoutes(app) {
          FROM "RecipeCards" rc
          LEFT JOIN "RecipeIngredients" ri ON ri."recipeId" = rc."id"
          WHERE rc."userId" = $1
+            OR (rc."orgId" IS NOT NULL AND EXISTS (
+              SELECT 1 FROM "OrgMembers" _om WHERE _om."orgId" = rc."orgId" AND _om."userId" = $1
+            ))
          GROUP BY rc."id"
          ORDER BY rc."name" ASC`,
         [userId]
@@ -511,13 +536,14 @@ function registerRoutes(app) {
   app.post('/api/recipes', async (req, res) => {
     try {
       const userId = req.user.id;
+      const orgId  = await getUserOrgId(userId);
       const { name, squareName } = req.body;
       if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
 
       const result = await dbRun(
-        `INSERT INTO "RecipeCards" ("userId","name","squareName")
-         VALUES ($1,$2,$3) RETURNING "id"`,
-        [userId, name.trim(), squareName?.trim() || null]
+        `INSERT INTO "RecipeCards" ("userId","orgId","name","squareName")
+         VALUES ($1,$2,$3,$4) RETURNING "id"`,
+        [userId, orgId, name.trim(), squareName?.trim() || null]
       );
       res.json({ success: true, id: result.rows[0].id });
     } catch (err) {
@@ -663,6 +689,7 @@ function registerRoutes(app) {
   app.post('/api/recipes/upload', uploadCsv.single('file'), async (req, res) => {
     try {
       const userId = req.user.id;
+      const orgId  = await getUserOrgId(userId);
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
       const text = req.file.buffer.toString('utf8');
@@ -688,8 +715,8 @@ function registerRoutes(app) {
 
           if (!card) {
             const r = await client.query(
-              `INSERT INTO "RecipeCards" ("userId","name") VALUES ($1,$2) RETURNING "id"`,
-              [userId, recipeName]
+              `INSERT INTO "RecipeCards" ("userId","orgId","name") VALUES ($1,$2,$3) RETURNING "id"`,
+              [userId, orgId, recipeName]
             );
             card = r.rows[0];
             created++;
@@ -904,3 +931,35 @@ function registerRoutes(app) {
 }
 
 module.exports = { init, runMigration, calculateEventSalesFees, findBestMatch };
+         WHERE "id"=$5`,
+        [recipeId, recipe.name, Math.floor(costPerUnit * 100) / 100,
+         (Math.floor(costPerUnit * 100) / 100) * qty, salesFeeId]
+      );
+
+      const flooredCost = Math.floor(costPerUnit * 100) / 100;
+      res.json({ success: true, costPerUnit: flooredCost, totalCost: flooredCost * qty });
+    } catch (err) {
+      console.error('❌ manual-match:', err);
+      res.status(500).json({ error: 'Failed to save manual match' });
+    }
+  });
+
+  // GET /api/recipes/template — download blank CSV template
+  app.get('/api/recipes/template', (_req, res) => {
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="recipes_template.csv"');
+    res.send(
+      'recipeName,ingredientName,quantityUsed,unitType,unitCost\n' +
+      'Regular Lemonade,Straw,1,Per Cup,0.01\n' +
+      'Regular Lemonade,Cup & Lid,1,Per Cup,0.21\n' +
+      'Regular Lemonade,Lemon,1,Per Cup,0.28\n' +
+      'Regular Lemonade,Simple Syrup,3,Per Oz,0.03\n' +
+      'Regular Lemonade,Ice,1,per lb,0.19\n'
+    );
+  });
+
+  console.log('✅ Recipe routes registered');
+}
+
+module.exports = { init, runMigration, calculateEventSalesFees, findBestMatch };
+s, findBestMatch };
