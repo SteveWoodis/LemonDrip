@@ -925,6 +925,29 @@ app.get("/api/me", async (req, res) => {
 });
 
 // -------------------------------
+// 🔧 POST /api/events/claim-unowned
+// One-shot recovery: assigns events with NULL userId to the authenticated user.
+// Safe to call multiple times — only affects rows where userId IS NULL.
+// Use after a password reset that accidentally created a new account, or to
+// recover events created before the userId column was added to the schema.
+// -------------------------------
+app.post("/api/events/claim-unowned", async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await pool.query(
+      `UPDATE "EventInfo" SET "userId" = $1 WHERE "userId" IS NULL RETURNING "eventID", "eventName"`,
+      [userId]
+    );
+    const claimed = result.rows;
+    console.log(`✅ /api/events/claim-unowned — user ${userId} claimed ${claimed.length} events`);
+    res.json({ claimed: claimed.length, events: claimed });
+  } catch (err) {
+    console.error("❌ /api/events/claim-unowned error:", err);
+    res.status(500).json({ error: "Failed to claim unowned events" });
+  }
+});
+
+// -------------------------------
 // 🔐 Admin: Update user plan
 // -------------------------------
 

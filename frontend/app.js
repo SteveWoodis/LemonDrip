@@ -49,6 +49,102 @@ window.fetch = async function(input, init = {}) {
 let authMode = "signin"; // "signin" or "signup"
 
 // ---------------------------
+// 🔐 Supabase Auth State Change Listener
+// Catches PASSWORD_RECOVERY events when a user clicks a reset link in their email.
+// Without this, the recovery token is silently consumed and the user never gets
+// a chance to set a new password — which can lead to a broken or duplicate session.
+// ---------------------------
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (event === "PASSWORD_RECOVERY") {
+    // Hide the main app (in case session auto-loaded it) and show the set-password modal
+    document.getElementById("authSection")?.classList.add("hidden");
+    document.getElementById("setNewPasswordModal")?.classList.remove("hidden");
+  }
+});
+
+// ---------------------------
+// 🔐 Forgot Password — show modal
+// ---------------------------
+function showForgotPassword(e) {
+  e.preventDefault();
+  // Only relevant when in sign-in mode
+  document.getElementById("resetEmail").value = document.getElementById("authEmail")?.value || "";
+  document.getElementById("resetError").textContent = "";
+  document.getElementById("resetSuccess").style.display = "none";
+  document.getElementById("resetSuccess").textContent = "";
+  document.getElementById("forgotPasswordForm").classList.remove("hidden");
+  document.getElementById("forgotPasswordModal").classList.remove("hidden");
+}
+
+// ---------------------------
+// 🔐 Send Password Reset Email
+// ---------------------------
+async function sendPasswordReset(e) {
+  e.preventDefault();
+  const email = document.getElementById("resetEmail").value.trim();
+  const errorEl = document.getElementById("resetError");
+  const successEl = document.getElementById("resetSuccess");
+  const btn = document.getElementById("resetSubmitBtn");
+
+  errorEl.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  try {
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      errorEl.textContent = error.message;
+    } else {
+      document.getElementById("forgotPasswordForm").classList.add("hidden");
+      successEl.textContent = "Reset link sent! Check your email — click the link, then come back here to set your new password.";
+      successEl.style.display = "block";
+    }
+  } catch (err) {
+    errorEl.textContent = "Could not send reset email. Please try again.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Send Reset Link";
+  }
+}
+
+// ---------------------------
+// 🔐 Handle Set New Password (after clicking reset link)
+// ---------------------------
+async function handleSetNewPassword(e) {
+  e.preventDefault();
+  const password = document.getElementById("newPassword").value;
+  const confirm = document.getElementById("confirmNewPassword").value;
+  const errorEl = document.getElementById("setPasswordError");
+
+  errorEl.textContent = "";
+
+  if (password !== confirm) {
+    errorEl.textContent = "Passwords do not match.";
+    return;
+  }
+  if (password.length < 8) {
+    errorEl.textContent = "Password must be at least 8 characters.";
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if (error) {
+      errorEl.textContent = error.message;
+      return;
+    }
+    document.getElementById("setNewPasswordModal").classList.add("hidden");
+    document.getElementById("newPassword").value = "";
+    document.getElementById("confirmNewPassword").value = "";
+    // Password updated — proceed into the app normally
+    showAuthenticatedUI();
+  } catch (err) {
+    errorEl.textContent = "Failed to update password. Please try again.";
+  }
+}
+
+// ---------------------------
 // 🔐 Auth Mode Toggle
 // Allows user to toggle between Sign in and Sign Up
 // ---------------------------
