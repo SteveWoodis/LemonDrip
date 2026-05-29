@@ -5260,10 +5260,7 @@ app.get("/app/*", (req, res) => {
     console.error("❌ Failed to start server:", err);
     process.exit(1);
   }
-})();  } finally {
-    client.release();
-  }
-});
+})();
 
 // PUT /api/events/:eventID/inventory/:eiId
 // Update a single event-inventory row's metadata (threshold/reorderQty/notes,
