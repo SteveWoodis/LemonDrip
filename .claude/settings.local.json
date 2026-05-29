@@ -19,7 +19,9 @@
       "Bash(npm uninstall *)",
       "Bash(rm c:/Users/TSWOO/LemonDrip/.git/index.lock && echo \"Deleted successfully\")",
       "Bash(node -e \"console.log\\(process.version\\)\")",
-      "Bash(node -e \"const f = require\\('node-fetch'\\); console.log\\(typeof f, typeof f.default\\)\")"
+      "Bash(node -e \"const f = require\\('node-fetch'\\); console.log\\(typeof f, typeof f.default\\)\")",
+      "Bash(node --check \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\recipes.js\")",
+      "Bash(node --check \"c:\\\\Users\\\\TSWOO\\\\LemonDrip\\\\server.js\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\TSWOO\\.claude",

@@ -931,35 +931,3 @@ function registerRoutes(app) {
 }
 
 module.exports = { init, runMigration, calculateEventSalesFees, findBestMatch };
-         WHERE "id"=$5`,
-        [recipeId, recipe.name, Math.floor(costPerUnit * 100) / 100,
-         (Math.floor(costPerUnit * 100) / 100) * qty, salesFeeId]
-      );
-
-      const flooredCost = Math.floor(costPerUnit * 100) / 100;
-      res.json({ success: true, costPerUnit: flooredCost, totalCost: flooredCost * qty });
-    } catch (err) {
-      console.error('❌ manual-match:', err);
-      res.status(500).json({ error: 'Failed to save manual match' });
-    }
-  });
-
-  // GET /api/recipes/template — download blank CSV template
-  app.get('/api/recipes/template', (_req, res) => {
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="recipes_template.csv"');
-    res.send(
-      'recipeName,ingredientName,quantityUsed,unitType,unitCost\n' +
-      'Regular Lemonade,Straw,1,Per Cup,0.01\n' +
-      'Regular Lemonade,Cup & Lid,1,Per Cup,0.21\n' +
-      'Regular Lemonade,Lemon,1,Per Cup,0.28\n' +
-      'Regular Lemonade,Simple Syrup,3,Per Oz,0.03\n' +
-      'Regular Lemonade,Ice,1,per lb,0.19\n'
-    );
-  });
-
-  console.log('✅ Recipe routes registered');
-}
-
-module.exports = { init, runMigration, calculateEventSalesFees, findBestMatch };
-s, findBestMatch };
