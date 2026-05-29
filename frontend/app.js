@@ -1085,7 +1085,7 @@ function buildTableHTML(results, containerId = "searchResults") {
   }
 
   const displayColumns = [
-    { key: "eventID",   label: "Event ID",   sortable: false },
+    // { key: "eventID",   label: "Event ID",   sortable: false },
     { key: "eventName", label: "Event Name",  sortable: true  },
     { key: "eventDate", label: "Event Date",  sortable: true  },
     { key: "grossSales",label: "Gross Sales", sortable: true  },
