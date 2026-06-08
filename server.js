@@ -7,6 +7,7 @@ const cors = require("cors");
 const express = require("express");
 const { body, param, validationResult } = require('express-validator');
 const recipes = require('./recipes.js');
+const geoDelivery = require('./geo_delivery.js');
 const stock = require('./realtime_inventory/stock.js');
 const waitlistRouter = require('./backend/routes/waitlist');
 const rateLimit = require("express-rate-limit");
@@ -217,6 +218,8 @@ async function initDb() {
 
     recipes.init(app, pool);
     await recipes.runMigration();
+
+    await geoDelivery.runMigration();
 
     // ── Real-time inventory (deducts stock on every sale) ───────
     stock.init(pool, { findBestMatch: recipes.findBestMatch });
@@ -5251,6 +5254,8 @@ app.get("/app/*", (req, res) => {
       }
     }).catch(err => console.warn('⚠️  EventSalesFees audit query failed:', err.message));
     // ────────────────────────────────────────────────────────────────────────
+
+    geoDelivery.init(app, pool, requireAuth, assertOwnsEvent);
 
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, "0.0.0.0", () =>

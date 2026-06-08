@@ -5501,6 +5501,10 @@ if (report.inventorySales && report.inventorySales.length) {
     }
   }
 
+  // Geo-Delivery card
+  safeAppend(container, buildGeoDeliveryCard());
+  loadGeoDeliveryCard(eventID);
+
   window._dashboardLoading = false;
   } // end loadEventIntoDashboard cards block
 
@@ -8278,4 +8282,259 @@ window.orgJoin         = orgJoin;
 window.orgLeave        = orgLeave;
 window.orgRemoveMember = orgRemoveMember;
 window.loadOrgPanel    = loadOrgPanel;
+
+// ============================================================
+// Geo-Delivery — Vendor UI
+// ============================================================
+
+function buildGeoDeliveryCard() {
+  return createCollapsibleCard("Geo Delivery", '<div id="geoDeliveryInner">Loading…</div>');
+}
+
+async function loadGeoDeliveryCard(eventID) {
+  const inner = document.getElementById("geoDeliveryInner");
+  if (!inner) return;
+  try {
+    const res  = await fetch(`${API_BASE}/api/events/${eventID}`);
+    const data = await res.json();
+    const event = data.event || data;
+    renderGeoDeliveryPanel(eventID, event);
+  } catch (err) {
+    inner.innerHTML = '<p style="color:#dc2626">Failed to load geo-delivery settings.</p>';
+  }
+}
+
+function renderGeoDeliveryPanel(eventID, event) {
+  const inner = document.getElementById("geoDeliveryInner");
+  if (!inner) return;
+  const enabled = event.geoDeliveryEnabled || false;
+  inner.innerHTML = `
+    <div style="padding:8px 0 16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <label style="display:flex;align-items:center;cursor:pointer">
+          <input type="checkbox" id="geoToggle" ${enabled ? "checked" : ""}
+            onchange="geoToggleEnabled(${eventID}, this.checked)"
+            style="width:38px;height:20px;cursor:pointer;accent-color:var(--vv-brand,#f5a623)">
+        </label>
+        <div>
+          <div id="geoToggleLabel" style="font-weight:600;font-size:0.95rem">${enabled ? "Geo delivery ON" : "Geo delivery OFF"}</div>
+          <div style="font-size:0.78rem;color:#64748b">Buyers pay on their phone; a runner delivers to their GPS pin.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+        <button class="btn-small btn-outline" onclick="geoShowQR(${eventID})">Show QR Code</button>
+        <button class="btn-small btn-outline" onclick="geoRefreshOrders(${eventID})">Refresh Orders</button>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="font-weight:600;margin-bottom:10px;font-size:0.9rem">Menu Items</div>
+        <div id="geoMenuList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+        <button class="btn-small btn-primary" onclick="geoShowAddItem(${eventID})">+ Add Item</button>
+      </div>
+      <div>
+        <div style="font-weight:600;margin-bottom:10px;font-size:0.9rem">Live Orders</div>
+        <div id="geoOrdersList"><span style="color:#64748b;font-size:0.85rem">No orders yet.</span></div>
+      </div>
+    </div>`;
+  loadGeoMenu(eventID);
+  loadGeoOrders(eventID);
+}
+
+async function geoToggleEnabled(eventID, enabled) {
+  try {
+    await fetch(`${API_BASE}/api/events/${eventID}/geo-delivery`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    const label = document.getElementById("geoToggleLabel");
+    if (label) label.textContent = enabled ? "Geo delivery ON" : "Geo delivery OFF";
+    showToast(`Geo delivery ${enabled ? "enabled" : "disabled"}.`, "success");
+  } catch (err) {
+    showToast("Failed to update setting.", "error");
+    const toggle = document.getElementById("geoToggle");
+    if (toggle) toggle.checked = !enabled;
+  }
+}
+
+async function geoShowQR(eventID) {
+  try {
+    const res  = await fetch(`${API_BASE}/api/events/${eventID}/qr`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const img  = document.getElementById("geoQrImg");
+    const link = document.getElementById("geoQrUrl");
+    if (img)  img.src = data.qrDataUrl;
+    if (link) { link.textContent = data.orderUrl; link.href = data.orderUrl; }
+    document.getElementById("geoQrModal").classList.remove("hidden");
+  } catch (err) {
+    showToast("Failed to generate QR code.", "error");
+  }
+}
+
+async function loadGeoMenu(eventID) {
+  const list = document.getElementById("geoMenuList");
+  if (!list) return;
+  try {
+    const res   = await fetch(`${API_BASE}/api/events/${eventID}/menu`);
+    const items = await res.json();
+    if (!items.length) {
+      list.innerHTML = '<span style="color:#64748b;font-size:0.85rem">No items yet. Add one below.</span>';
+      return;
+    }
+    list.innerHTML = items.map(item => `
+      <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border-radius:8px;padding:8px 10px">
+        <div style="flex:1;min-width:0">
+          <span style="font-weight:600">${geoEsc(item.name)}</span>
+          ${item.description ? `<span style="color:#64748b;font-size:0.8rem;margin-left:6px">${geoEsc(item.description)}</span>` : ""}
+        </div>
+        <span style="font-weight:700;white-space:nowrap;margin-right:4px">$${(item.priceCents/100).toFixed(2)}</span>
+        <button class="btn-small btn-outline" style="padding:3px 10px"
+          onclick="geoEditItem(${item.id},${JSON.stringify(item.name)},${JSON.stringify(item.description||"")},${item.priceCents})">Edit</button>
+        <button class="btn-small" style="padding:3px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer"
+          onclick="geoDeleteItem(${item.id},${eventID})">✕</button>
+      </div>`).join("");
+  } catch (err) {
+    list.innerHTML = '<span style="color:#dc2626;font-size:0.85rem">Failed to load menu.</span>';
+  }
+}
+
+function geoShowAddItem(eventID) {
+  document.getElementById("geoItemModalTitle").textContent = "Add Menu Item";
+  document.getElementById("geoItemId").value      = "";
+  document.getElementById("geoItemEventId").value = eventID;
+  document.getElementById("geoItemName").value    = "";
+  document.getElementById("geoItemDesc").value    = "";
+  document.getElementById("geoItemPrice").value   = "";
+  document.getElementById("geoItemModal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("geoItemName").focus(), 50);
+}
+
+function geoEditItem(id, name, desc, priceCents) {
+  document.getElementById("geoItemModalTitle").textContent = "Edit Menu Item";
+  document.getElementById("geoItemId").value    = id;
+  document.getElementById("geoItemName").value  = name;
+  document.getElementById("geoItemDesc").value  = desc;
+  document.getElementById("geoItemPrice").value = (priceCents / 100).toFixed(2);
+  document.getElementById("geoItemModal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("geoItemName").focus(), 50);
+}
+
+async function geoSaveItem() {
+  const id      = document.getElementById("geoItemId").value;
+  const eventID = document.getElementById("geoItemEventId").value;
+  const name    = document.getElementById("geoItemName").value.trim();
+  const desc    = document.getElementById("geoItemDesc").value.trim();
+  const price   = parseFloat(document.getElementById("geoItemPrice").value);
+  if (!name)                               { showToast("Name is required.", "warning"); return; }
+  if (!Number.isFinite(price) || price < 0){ showToast("Enter a valid price.", "warning"); return; }
+  const priceCents = Math.round(price * 100);
+  try {
+    const url    = id ? `${API_BASE}/api/menu-items/${id}` : `${API_BASE}/api/events/${eventID}/menu`;
+    const method = id ? "PUT" : "POST";
+    const res    = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description: desc, priceCents }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || "Save failed");
+    document.getElementById("geoItemModal").classList.add("hidden");
+    showToast(id ? "Item updated." : "Item added.", "success");
+    loadGeoMenu(Number(eventID));
+  } catch (err) {
+    showToast(err.message || "Failed to save item.", "error");
+  }
+}
+
+async function geoDeleteItem(itemId, eventID) {
+  if (!confirm("Delete this menu item?")) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/menu-items/${itemId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error((await res.json()).error);
+    showToast("Item deleted.", "success");
+    loadGeoMenu(eventID);
+  } catch (err) {
+    showToast("Failed to delete item.", "error");
+  }
+}
+
+async function loadGeoOrders(eventID) {
+  const list = document.getElementById("geoOrdersList");
+  if (!list) return;
+  try {
+    const res    = await fetch(`${API_BASE}/api/events/${eventID}/geo-orders`);
+    const orders = await res.json();
+    if (!orders.length) {
+      list.innerHTML = '<span style="color:#64748b;font-size:0.85rem">No orders yet.</span>';
+      return;
+    }
+    list.innerHTML = orders.map(o => {
+      const items   = (typeof o.items === "string" ? JSON.parse(o.items) : o.items) || [];
+      const summary = items.map(i => `${i.qty}× ${geoEsc(i.name)}`).join(", ");
+      const total   = "$" + (o.subtotalCents / 100).toFixed(2);
+      const coords  = o.buyerLat ? `📍 ${Number(o.buyerLat).toFixed(5)}, ${Number(o.buyerLng).toFixed(5)}` : "📍 No location";
+      const mapsUrl = o.buyerLat
+        ? `https://www.google.com/maps/dir/?api=1&destination=${o.buyerLat},${o.buyerLng}`
+        : null;
+      const statusColors = {
+        paid:"#fef3c7", ready_for_runner:"#dbeafe", assigned:"#fde68a", delivered:"#dcfce7"
+      };
+      const bg = statusColors[o.status] || "#f1f5f9";
+      return `
+        <div style="background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:10px 12px;margin-bottom:8px">
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:0.88rem">#${o.id} · ${total}</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px">${summary}</div>
+              <div style="font-size:0.78rem;margin-top:3px">
+                ${mapsUrl
+                  ? `<a href="${mapsUrl}" target="_blank" rel="noopener" style="color:#2563eb">${coords}</a>`
+                  : `<span style="color:#94a3b8">${coords}</span>`}
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <span style="font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:999px;background:${bg}">${o.status.replace(/_/g," ")}</span>
+              ${o.status !== "delivered"
+                ? `<button class="btn-small btn-outline" style="padding:3px 10px;font-size:0.78rem"
+                    onclick="geoMarkDelivered(${o.id},${eventID})">Mark Delivered</button>`
+                : ""}
+            </div>
+          </div>
+        </div>`;
+    }).join("");
+  } catch (err) {
+    if (list) list.innerHTML = '<span style="color:#dc2626;font-size:0.85rem">Failed to load orders.</span>';
+  }
+}
+
+function geoRefreshOrders(eventID) { loadGeoOrders(eventID); }
+
+async function geoMarkDelivered(orderId, eventID) {
+  try {
+    const res = await fetch(`${API_BASE}/api/geo-orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "delivered" }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    showToast("Marked as delivered.", "success");
+    loadGeoOrders(eventID);
+  } catch (err) {
+    showToast("Failed to update order.", "error");
+  }
+}
+
+function geoEsc(str) {
+  return String(str)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+window.geoToggleEnabled = geoToggleEnabled;
+window.geoShowQR        = geoShowQR;
+window.geoShowAddItem   = geoShowAddItem;
+window.geoEditItem      = geoEditItem;
+window.geoSaveItem      = geoSaveItem;
+window.geoDeleteItem    = geoDeleteItem;
+window.geoRefreshOrders = geoRefreshOrders;
+window.geoMarkDelivered = geoMarkDelivered;
 

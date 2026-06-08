@@ -713,5 +713,77 @@
  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
  <script src="/recipes_frontend.js"></script>
 </div>
+
+<!-- ── Geo-Delivery: QR Code Modal ──────────────────────────────── -->
+<div id="geoQrModal" class="hidden" style="
+  position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;
+  display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:360px;width:100%;text-align:center;position:relative">
+    <button onclick="document.getElementById('geoQrModal').classList.add('hidden')"
+      style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#94a3b8">✕</button>
+    <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:4px">Scan to Order</h3>
+    <p style="font-size:0.8rem;color:#64748b;margin-bottom:16px">Print or display this at your event. Buyers scan with their phone camera.</p>
+    <img id="geoQrImg" src="" alt="QR Code" style="width:200px;height:200px;margin:0 auto 14px;display:block;border:1px solid #e2e8f0;border-radius:8px">
+    <a id="geoQrUrl" href="#" target="_blank" rel="noopener"
+      style="display:block;font-size:0.75rem;color:#2563eb;word-break:break-all;margin-bottom:16px"></a>
+    <button onclick="geoPrintQR()" class="btn-small btn-outline" style="margin-right:8px">Print</button>
+    <button onclick="geoDownloadQR()" class="btn-small btn-primary">Download</button>
+  </div>
+</div>
+
+<!-- ── Geo-Delivery: Menu Item Modal ────────────────────────────── -->
+<div id="geoItemModal" class="hidden" style="
+  position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;
+  display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:400px;width:100%;position:relative">
+    <button onclick="document.getElementById('geoItemModal').classList.add('hidden')"
+      style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#94a3b8">✕</button>
+    <h3 id="geoItemModalTitle" style="font-size:1.1rem;font-weight:700;margin-bottom:18px">Add Menu Item</h3>
+    <input type="hidden" id="geoItemId">
+    <input type="hidden" id="geoItemEventId">
+    <div style="margin-bottom:12px">
+      <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:4px">Item Name *</label>
+      <input id="geoItemName" type="text" placeholder="e.g. Lemonade" maxlength="100"
+        style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.95rem">
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:4px">Description</label>
+      <input id="geoItemDesc" type="text" placeholder="Optional short description" maxlength="200"
+        style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.95rem">
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:4px">Price (USD) *</label>
+      <input id="geoItemPrice" type="number" placeholder="5.00" step="0.01" min="0"
+        style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.95rem">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('geoItemModal').classList.add('hidden')"
+        style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:8px;font-weight:600;cursor:pointer">Cancel</button>
+      <button onclick="geoSaveItem()"
+        style="flex:2;padding:10px;background:var(--vv-brand,#f5a623);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function geoPrintQR() {
+  const img = document.getElementById("geoQrImg");
+  const url = document.getElementById("geoQrUrl").href;
+  const w = window.open("","_blank","width=400,height=500");
+  w.document.write(`<html><body style="text-align:center;font-family:sans-serif;padding:32px">
+    <img src="${img.src}" style="width:240px;height:240px"><br>
+    <p style="word-break:break-all;font-size:12px;color:#64748b;margin-top:12px">${url}</p>
+    <script>window.print();<\/script></body></html>`);
+  w.document.close();
+}
+function geoDownloadQR() {
+  const img = document.getElementById("geoQrImg");
+  const a = document.createElement("a");
+  a.href = img.src;
+  a.download = "order-qr-code.png";
+  a.click();
+}
+</script>
+
 </body>
 </html>
